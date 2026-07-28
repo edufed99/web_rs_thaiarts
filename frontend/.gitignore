@@ -1,0 +1,20 @@
+# Next.js generated
+.next/
+out/
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local env
+.env.local
+.env.*.local
+
+# TypeScript build info
+*.tsbuildinfo
+next-env.d.ts.bak
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini

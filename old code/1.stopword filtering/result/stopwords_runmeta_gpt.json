@@ -1,0 +1,6 @@
+{
+  "dataset_signature": "12806620fe83bdae25054528f01a41a2",
+  "chunk_size": 30,
+  "model": "openai/gpt-4o-mini",
+  "created_at": "2026-04-22T07:17:36.246248Z"
+}

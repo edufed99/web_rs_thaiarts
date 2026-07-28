@@ -1,0 +1,503 @@
+﻿word,stopword_type,reason
+กลุ่มชน,Umbrella Term / Low Semantic Weight,เป็นคำเรียกหมวดหมู่กว้าง ไม่ชี้อัตลักษณ์เฉพาะของการแสดง
+กลุ่มชาติพันธุ์,Umbrella Term / Low Semantic Weight,เป็นคำระดับหมวดหมู่ของกลุ่มคน ใช้ได้กว้างเกินไป
+ขั้นตอน,Umbrella Term / Low Semantic Weight,เป็นคำเชิงโครงสร้างทั่วไป ไม่ได้บ่งชี้ลักษณะเฉพาะ
+รูปแบบ,Umbrella Term / Low Semantic Weight,เป็นคำกว้าง ใช้อธิบายได้หลายกรณี
+วิธี,Umbrella Term / Low Semantic Weight,เป็นคำทั่วไปเชิงกระบวนการ
+ระยะเวลา,Umbrella Term / Low Semantic Weight,เป็นคำบอกโครงสร้างข้อมูล
+ระดับชาติ,Umbrella Term / Low Semantic Weight,เป็นคำบ่งระดับกว้าง
+บุคคล,Umbrella Term / Low Semantic Weight,เป็นคำนามทั่วไปมาก
+ตัวละคร,Umbrella Term / Low Semantic Weight,เป็นคำหมวดกว้าง
+ตัวตน,Umbrella Term / Low Semantic Weight,เป็นนามธรรมและกว้าง
+กิจกรรม,Umbrella Term / Low Semantic Weight,เป็นคำทั่วไปมาก
+อาชีพ,Umbrella Term / Low Semantic Weight,เป็นหมวดหมู่ทั่วไป
+ประเทศ,Umbrella Term / Low Semantic Weight,เป็นคำระดับพื้นที่กว้าง
+สถานที่,Umbrella Term / Low Semantic Weight,เป็นคำกว้างเกี่ยวกับ location
+พื้นที่,Umbrella Term / Low Semantic Weight,เป็นคำทั่วไปเชิงภูมิศาสตร์
+ภูมิภาค,Umbrella Term / Low Semantic Weight,เป็นคำเชิงเขตกว้าง
+ลักษณะ,Umbrella Term / Low Semantic Weight,เป็นคำอธิบายกว้าง
+ลักษณะพิเศษ,Umbrella Term / Low Semantic Weight,เป็นคำกลาง ไม่เฉพาะเจาะจง
+แนวคิด,Umbrella Term / Low Semantic Weight,เป็นคำนามนามธรรม
+แนวความคิด,Umbrella Term / Low Semantic Weight,ซ้ำเชิงความหมายกับ แนวคิด
+ต้นแบบ,Umbrella Term / Low Semantic Weight,เป็นคำเชิงโครงสร้าง
+แบบอย่าง,Umbrella Term / Low Semantic Weight,เป็นคำกว้างเชิงนามธรรม
+ผลงาน,Umbrella Term / Low Semantic Weight,เป็นคำทั่วไปมาก
+วัตถุประสงค์,Umbrella Term / Low Semantic Weight,เป็นคำโครงสร้าง
+สัญลักษณ์,Umbrella Term / Low Semantic Weight,เป็นคำกว้าง
+โอกาส,Umbrella Term / Low Semantic Weight,เป็นคำทั่วไปเชิงบริบท
+ความสุข,Abstract or Evaluative Term,เป็นคำแสดงอารมณ์
+ความรัก,Abstract or Evaluative Term,เป็นคุณค่าทางอารมณ์
+ความศรัทธา,Abstract or Evaluative Term,เป็นนามธรรม
+ศรัทธา,Abstract or Evaluative Term,เป็นคำเชิงความเชื่อ
+ความประทับใจ,Abstract or Evaluative Term,เป็นการประเมิน
+ความภาคภูมิใจ,Abstract or Evaluative Term,เป็นอารมณ์เชิงคุณค่า
+ความสำนึก,Abstract or Evaluative Term,เป็นนามธรรม
+ความตระหนัก,Abstract or Evaluative Term,เป็นนามธรรม
+ความจงรักภักดี,Abstract or Evaluative Term,เป็นคุณค่า
+ความห่วงใย,Abstract or Evaluative Term,เป็นอารมณ์
+บันเทิงใจ,Abstract or Evaluative Term,เป็นผลทางอารมณ์
+เริงใจ,Abstract or Evaluative Term,เป็นอารมณ์
+ความวิจิตร,Abstract or Evaluative Term,เป็นคำประเมิน
+อ่อนช้อย,Abstract or Evaluative Term,เป็นคำเชิงสุนทรียะ
+สง่างาม,Abstract or Evaluative Term,เป็นคำเชิงคุณค่า
+ความไพเราะ,Abstract or Evaluative Term,เป็นการประเมิน
+คุณค่า,Abstract or Evaluative Term,เป็นคำกว้าง
+ทรงคุณค่า,Abstract or Evaluative Term,เป็นคำประเมิน
+เอกลักษณ์,Abstract or Evaluative Term,เป็นนามธรรม
+ความสมบูรณ์,Abstract or Evaluative Term,เป็นคำประเมิน
+ความหลากหลาย,Abstract or Evaluative Term,เป็นคำประเมิน
+ศักดิ์สิทธิ์,Abstract or Evaluative Term,เป็นคำเชิงความเชื่อ
+สิริมงคล,Abstract or Evaluative Term,เป็นคำเชิงมงคล
+สวัสดิมงคล,Abstract or Evaluative Term,เป็นคำเชิงความเชื่อ
+สัจจะ,Abstract or Evaluative Term,เป็นนามธรรม
+กตัญญู,Abstract or Evaluative Term,เป็นคุณธรรม
+กตเวที,Abstract or Evaluative Term,เป็นคุณธรรม
+ร่มเย็น,Abstract or Evaluative Term,เป็นคำประเมิน
+ความร่มเย็น,Abstract or Evaluative Term,เป็นนามธรรม
+เกียรติยศ,Abstract or Evaluative Term,เป็นนามธรรม
+ความว่องไว,Abstract or Evaluative Term,เป็นการประเมิน
+ความชำนาญ,Abstract or Evaluative Term,เป็นคำประเมิน
+ความเข้มแข็ง,Abstract or Evaluative Term,เป็นนามธรรม
+คล่องแคล่ว,Abstract or Evaluative Term,เป็นคำประเมิน
+ความมีน้ำใจ,Abstract or Evaluative Term,เป็นคุณค่า
+นาฏศิลป์,Domain-Specific Overuse,เป็นคำหลักที่พบถี่มาก
+นาฏกรรม,Domain-Specific Overuse,เป็นคำโดเมนหลัก
+การแสดง,Domain-Specific Overuse,พบในเกือบทุกระเบียน
+ศิลปะการแสดง,Domain-Specific Overuse,เป็นคำหมวดหลัก
+ละคร,Domain-Specific Overuse,เป็นคำหมวดหลัก
+ระบำ,Domain-Specific Overuse,เป็นคำหมวด
+วัฒนธรรม,Domain-Specific Overuse,เป็นคำพื้นฐาน
+ศิลปวัฒนธรรม,Domain-Specific Overuse,เป็นคำกว้าง
+ศิลปะ,Domain-Specific Overuse,เป็นคำกว้าง
+ประเพณี,Domain-Specific Overuse,เป็นคำบริบท
+ภูมิปัญญา,Domain-Specific Overuse,เป็นคำกว้าง
+ดนตรี,Domain-Specific Overuse,เป็นองค์ประกอบหลัก
+ดนตรีไทย,Domain-Specific Overuse,เป็นคำที่ใช้บ่อย
+ดนตรีพื้นบ้าน,Domain-Specific Overuse,เป็นคำหมวด
+การบรรเลง,Domain-Specific Overuse,เป็นคำกิจกรรม
+ขับร้อง,Domain-Specific Overuse,เป็นองค์ประกอบเสียง
+ที่มา,Umbrella Term / Low Semantic Weight,เป็นคำเชิงโครงสร้าง ไม่บ่งชี้ลักษณะเฉพาะ
+หน้าที่,Umbrella Term / Low Semantic Weight,เป็นคำทั่วไปเชิงบทบาท
+เครื่องมือ,Umbrella Term / Low Semantic Weight,เป็นคำทั่วไปเชิงวัตถุ
+เครื่องประดับ,Umbrella Term / Low Semantic Weight,เป็นคำหมวดกว้าง
+บริเวณ,Umbrella Term / Low Semantic Weight,เป็นคำเชิงพื้นที่กว้าง
+รื่นเริง,Abstract or Evaluative Term,เป็นคำประเมินอารมณ์
+รู้คุณค่า,Abstract or Evaluative Term,เป็นคำเชิงคุณค่านามธรรม
+ความเคารพ,Abstract or Evaluative Term,เป็นนามธรรม
+ความบันเทิง,Abstract or Evaluative Term,เป็นผลทางอารมณ์
+หลงใหล,Abstract or Evaluative Term,เป็นคำประเมินอารมณ์
+สนุกสนาน,Abstract or Evaluative Term,เป็นคำประเมินอารมณ์
+ความสำคัญ,Abstract or Evaluative Term,เป็นนามธรรม
+สวยงาม,Abstract or Evaluative Term,เป็นคำเชิงสุนทรียะ
+ความเชื่อ,Abstract or Evaluative Term,เป็นนามธรรมเชิงความเชื่อ
+งดงาม,Abstract or Evaluative Term,เป็นคำเชิงสุนทรียะ
+ความสัมพันธ์,Abstract or Evaluative Term,เป็นนามธรรมกว้าง
+ความรื่นเริง,Abstract or Evaluative Term,เป็นผลทางอารมณ์
+มรดกภูมิปัญญาทางวัฒนธรรม,Domain-Specific Overuse,เป็นคำหมวดหลักที่ใช้กว้าง
+พิธีกรรม,Domain-Specific Overuse,เป็นคำบริบทกว้าง
+ต่อสู้,Domain-Specific Overuse,เป็นคำกิจกรรมทั่วไป
+การต่อสู้,Domain-Specific Overuse,ซ้ำเชิงความหมายกับ ต่อสู้
+ขนบธรรมเนียมประเพณี,Domain-Specific Overuse,ซ้ำเชิงความหมายกับ ประเพณี
+กรรมวิธี,Umbrella Term / Low Semantic Weight,เป็นคำเชิงกระบวนการทั่วไป
+กระบวน,Umbrella Term / Low Semantic Weight,เป็นคำโครงสร้างกว้าง
+กระบวนการ,Umbrella Term / Low Semantic Weight,เป็นคำเชิงกระบวนการทั่วไป
+กสิกรรม,Umbrella Term / Low Semantic Weight,เป็นคำหมวดกิจกรรมกว้าง
+กิจการงาน,Umbrella Term / Low Semantic Weight,เป็นคำทั่วไปเชิงกิจกรรม
+กิจวัตร,Umbrella Term / Low Semantic Weight,เป็นคำเชิงกระบวนการทั่วไป
+กีฬา,Umbrella Term / Low Semantic Weight,เป็นคำหมวดกิจกรรมกว้าง
+วิถี,Umbrella Term / Low Semantic Weight,เป็นคำกว้างเชิงรูปแบบการดำเนินชีวิต
+ความกตัญญู,Abstract or Evaluative Term,เป็นคุณธรรมนามธรรม
+ความคล่องแคล่ว,Abstract or Evaluative Term,เป็นคำประเมิน
+ความคิดริเริ่ม,Abstract or Evaluative Term,เป็นนามธรรม
+ความงาม,Abstract or Evaluative Term,เป็นคำเชิงสุนทรียะ
+ความงดงาม,Abstract or Evaluative Term,เป็นคำเชิงสุนทรียะ
+ความตาย,Abstract or Evaluative Term,เป็นนามธรรมกว้าง
+ความทรงจำ,Abstract or Evaluative Term,เป็นนามธรรม
+ความนิยม,Abstract or Evaluative Term,เป็นคำประเมิน
+ความพร้อมเพรียง,Abstract or Evaluative Term,เป็นนามธรรม
+ความร้อน,Abstract or Evaluative Term,เป็นนามธรรมเชิงสภาวะ
+ความสง่างาม,Abstract or Evaluative Term,เป็นคำเชิงคุณค่า
+ความสวยงาม,Abstract or Evaluative Term,เป็นคำเชิงสุนทรียะ
+ความสามัคคี,Abstract or Evaluative Term,เป็นนามธรรม
+ความหมาย,Abstract or Evaluative Term,เป็นนามธรรมกว้าง
+ความเป็นอยู่,Abstract or Evaluative Term,เป็นนามธรรม
+ความเพลิดเพลิน,Abstract or Evaluative Term,เป็นผลทางอารมณ์
+ความเรียบง่าย,Abstract or Evaluative Term,เป็นคำประเมิน
+มีความหมาย,Abstract or Evaluative Term,ซ้ำเชิงความหมายกับ ความหมาย
+แรงบันดาลใจ,Abstract or Evaluative Term,เป็นนามธรรม
+วิถีชีวิต,Abstract or Evaluative Term,ซ้ำเชิงความหมายกับ วิถี และ ชีวิต
+การรำ,Domain-Specific Overuse,เป็นคำกิจกรรมหลักที่พบบ่อย
+การร่ายรำ,Domain-Specific Overuse,ซ้ำเชิงความหมายกับ การรำ
+การฟ้อนรำ,Domain-Specific Overuse,ซ้ำเชิงความหมายกับ การรำ
+มรดก,Domain-Specific Overuse,เป็นคำบริบทกว้างในโดเมน
+สืบทอด,Domain-Specific Overuse,เป็นคำกิจกรรมทั่วไปในโดเมน
+กระบวนท่า,Redundant or Synonym,ซ้ำเชิงความหมายกับ กระบวน
+กระบวนท่ารำ,Redundant or Synonym,ซ้ำเชิงความหมายกับ กระบวนท่า
+ทำนอง,Redundant or Synonym,ซ้ำเชิงความหมายในกลุ่มทำนอง
+ทำนองเพลง,Redundant or Synonym,ซ้ำเชิงความหมายกับ ทำนอง
+ท่วงทำนอง,Redundant or Synonym,ซ้ำเชิงความหมายกับ ทำนอง
+กิริยา,Redundant or Synonym,ซ้ำเชิงความหมายในกลุ่มกิริยา
+กิริยาอาการ,Redundant or Synonym,ซ้ำเชิงความหมายกับ กิริยา
+อากัปกิริยา,Redundant or Synonym,ซ้ำเชิงความหมายกับ กิริยา
+พื้นฐาน,Redundant or Synonym,ซ้ำเชิงความหมายในกลุ่มพื้นฐาน
+ขั้นพื้นฐาน,Redundant or Synonym,ซ้ำเชิงความหมายกับ พื้นฐาน
+ชีวิต,Redundant or Synonym,ซ้ำเชิงความหมายกับ วิถีชีวิต
+คำสั่ง,Redundant or Synonym,ซ้ำเชิงความหมายกับ ตามคำสั่ง
+ตามคำสั่ง,Redundant or Synonym,ซ้ำเชิงความหมายกับ คำสั่ง
+ประวัติศาสตร์,Umbrella Term / Low Semantic Weight,เป็นคำหมวดหมู่กว้าง ไม่ชี้เฉพาะเนื้อหา
+เครื่องแบบ,Umbrella Term / Low Semantic Weight,เป็นคำหมวดทั่วไปเกี่ยวกับเครื่องแต่งกาย
+บรรยากาศ,Umbrella Term / Low Semantic Weight,เป็นคำบรรยายกว้าง ไม่เฉพาะเจาะจง
+เนื้อเรื่อง,Umbrella Term / Low Semantic Weight,เป็นคำโครงสร้างกว้าง
+เรื่องราว,Umbrella Term / Low Semantic Weight,เป็นคำหมวดทั่วไป
+เรื่องใหญ่,Umbrella Term / Low Semantic Weight,เป็นคำประเมินกว้าง ไม่เฉพาะเจาะจง
+ประกอบอาชีพ,Umbrella Term / Low Semantic Weight,เป็นคำกิจกรรมทั่วไป
+จัดแสดง,Umbrella Term / Low Semantic Weight,เป็นคำกิจกรรมกว้างในโดเมน
+เลียนแบบ,Umbrella Term / Low Semantic Weight,เป็นคำกิจกรรมทั่วไป
+เป็นต้นแบบ,Umbrella Term / Low Semantic Weight,เป็นคำเชิงโครงสร้างทั่วไป
+สาวงาม,Abstract or Evaluative Term,เป็นคำเชิงประเมินค่า
+ขอความช่วยเหลือ,Abstract or Evaluative Term,เป็นคำกริยานามธรรมทั่วไป
+ชื่อเรื่อง,Abstract or Evaluative Term,เป็นคำโครงสร้างนามธรรม
+อันหนึ่งอันเดียว,Abstract or Evaluative Term,เป็นนามธรรมเชิงแนวคิด
+ทางวัฒนธรรม,Domain-Specific Overuse,ซ้ำเชิงความหมายกับ วัฒนธรรม
+มรดกวัฒนธรรม,Domain-Specific Overuse,ซ้ำเชิงความหมายกับ มรดก และ วัฒนธรรม
+มีวัฒนธรรม,Domain-Specific Overuse,ซ้ำเชิงความหมายกับ วัฒนธรรม
+เดินทาง,Redundant or Synonym,เป็นคำกิจกรรมทั่วไป ซ้ำกับบริบทอื่น
+แต่งกาย,Redundant or Synonym,ซ้ำเชิงความหมายกับ เครื่องแบบ/เครื่องแต่งกาย
+เคลื่อนไหว,Redundant or Synonym,เป็นคำกริยาทั่วไป ซ้ำความหมาย
+การร้อง,Redundant or Synonym,ซ้ำเชิงความหมายกับ ขับร้อง/การขับร้อง
+รูปร่าง,Umbrella Term / Low Semantic Weight,เป็นคำบรรยายกว้าง ไม่เฉพาะเจาะจง
+ทางการ,Umbrella Term / Low Semantic Weight,เป็นคำบริบทกว้าง ใช้ได้หลายกรณี
+สร้างสรรค์,Umbrella Term / Low Semantic Weight,เป็นคำประเมินกว้าง ไม่บ่งชี้เนื้อหาเฉพาะ
+นำเสนอ,Umbrella Term / Low Semantic Weight,เป็นคำกริยาทั่วไปเชิงกระบวนการ
+อุปกรณ์,Umbrella Term / Low Semantic Weight,เป็นคำหมวดหมู่กว้าง
+อิทธิพล,Umbrella Term / Low Semantic Weight,เป็นนามธรรมกว้าง ใช้ได้ทุกบริบท
+ประจำปี,Umbrella Term / Low Semantic Weight,เป็นคำบอกช่วงเวลากว้าง
+วิชา,Umbrella Term / Low Semantic Weight,เป็นคำหมวดหมู่ทั่วไป
+ตำรา,Umbrella Term / Low Semantic Weight,เป็นคำทั่วไปเชิงโครงสร้าง
+ผู้ชม,Umbrella Term / Low Semantic Weight,เป็นคำหมวดหมู่กว้าง
+ผู้แสดง,Umbrella Term / Low Semantic Weight,เป็นคำหมวดหมู่กว้างในโดเมน
+บรรพบุรุษ,Umbrella Term / Low Semantic Weight,เป็นคำหมวดหมู่กว้าง
+ธรรมชาติ,Umbrella Term / Low Semantic Weight,เป็นคำกว้าง ใช้ได้ทุกบริบท
+สมบัติ,Umbrella Term / Low Semantic Weight,เป็นคำหมวดหมู่กว้าง
+นวัตกรรม,Umbrella Term / Low Semantic Weight,เป็นคำกว้าง ไม่เฉพาะเจาะจงในโดเมน
+สากล,Umbrella Term / Low Semantic Weight,เป็นคำบอกระดับกว้าง
+ดินแดน,Umbrella Term / Low Semantic Weight,เป็นคำเชิงพื้นที่กว้าง
+เวลา,Umbrella Term / Low Semantic Weight,เป็นคำบอกโครงสร้างเวลากว้าง
+การอนุรักษ์,Umbrella Term / Low Semantic Weight,เป็นคำกิจกรรมกว้างในโดเมน
+การดำเนินชีวิต,Umbrella Term / Low Semantic Weight,เป็นคำหมวดกว้าง ซ้ำกับ วิถีชีวิต
+การประกอบอาชีพ,Umbrella Term / Low Semantic Weight,เป็นคำกิจกรรมกว้าง
+ที่อยู่,Umbrella Term / Low Semantic Weight,เป็นคำบอกสถานที่กว้าง
+โดยรวม,Umbrella Term / Low Semantic Weight,เป็นคำเชิงโครงสร้างกว้าง
+หลากหลาย,Umbrella Term / Low Semantic Weight,เป็นคำประเมินกว้าง
+บรรดา,Umbrella Term / Low Semantic Weight,เป็นคำบอกหมวดหมู่กว้าง
+ประชากร,Umbrella Term / Low Semantic Weight,เป็นคำหมวดหมู่กว้าง
+ร่างกาย,Umbrella Term / Low Semantic Weight,เป็นคำกว้าง ใช้ได้ทุกบริบท
+ค่านิยม,Abstract or Evaluative Term,เป็นนามธรรมเชิงคุณค่า
+มงคล,Abstract or Evaluative Term,เป็นคำเชิงความเชื่อนามธรรม
+ยุติธรรม,Abstract or Evaluative Term,เป็นนามธรรมเชิงประเมินค่า
+โดดเด่น,Abstract or Evaluative Term,เป็นคำประเมินค่ากว้าง
+สมควร,Abstract or Evaluative Term,เป็นคำประเมินค่า
+ผูกพัน,Abstract or Evaluative Term,เป็นนามธรรมทางอารมณ์
+รักสนุก,Abstract or Evaluative Term,เป็นคำประเมินอารมณ์
+ว่องไว,Abstract or Evaluative Term,เป็นคำประเมินค่า
+โมโห,Abstract or Evaluative Term,เป็นคำแสดงอารมณ์
+รำลึก,Abstract or Evaluative Term,เป็นนามธรรมเชิงความรู้สึก
+นึกถึง,Abstract or Evaluative Term,เป็นนามธรรมเชิงความรู้สึก
+หายตัว,Abstract or Evaluative Term,เป็นคำกว้างไม่เฉพาะเจาะจง
+ร้ายกาจ,Abstract or Evaluative Term,เป็นคำประเมินค่า
+อารยธรรม,Abstract or Evaluative Term,เป็นนามธรรมกว้าง
+สำนึก,Abstract or Evaluative Term,เป็นนามธรรม
+หล่อหลอม,Abstract or Evaluative Term,เป็นนามธรรมเชิงกระบวนการ
+ผสมผสาน,Abstract or Evaluative Term,เป็นนามธรรมเชิงกระบวนการ
+ปกป้อง,Abstract or Evaluative Term,เป็นคำกริยากว้างนามธรรม
+การแสดงพื้นเมือง,Domain-Specific Overuse,เป็นคำหมวดหลักที่ใช้บ่อยในโดเมน
+นาฏศิลป์พื้นบ้าน,Domain-Specific Overuse,เป็นคำหมวดหลักที่ใช้บ่อยในโดเมน
+การละเล่นพื้นเมือง,Domain-Specific Overuse,ซ้ำเชิงความหมายกับ การละเล่น
+จารีตประเพณี,Domain-Specific Overuse,ซ้ำเชิงความหมายกับ ประเพณี
+พิธีทางศาสนา,Domain-Specific Overuse,เป็นคำหมวดกว้างในโดเมน
+มหรสพ,Domain-Specific Overuse,เป็นคำหมวดการแสดงกว้าง
+ร่ายรำ,Domain-Specific Overuse,ซ้ำเชิงความหมายกับ การรำ
+ฟ้อนรำ,Domain-Specific Overuse,ซ้ำเชิงความหมายกับ การฟ้อนรำ
+การดำรงชีวิต,Redundant or Synonym,ซ้ำเชิงความหมายกับ การดำเนินชีวิต
+การเดินทาง,Redundant or Synonym,ซ้ำเชิงความหมายกับ ออกเดินทาง
+การแต่งกาย,Redundant or Synonym,ซ้ำเชิงความหมายกับ แต่งตัว/เครื่องแต่งกาย
+การเคลื่อนไหว,Redundant or Synonym,ซ้ำเชิงความหมายกับ เคลื่อนไหว
+กิริยาท่าทาง,Redundant or Synonym,ซ้ำเชิงความหมายกับ ท่าทาง และ กิริยา
+ออกเดินทาง,Redundant or Synonym,ซ้ำเชิงความหมายกับ การเดินทาง
+สิ้นชีวิต,Redundant or Synonym,ซ้ำเชิงความหมายกับ สิ้นชีพ/จนตาย
+สิ้นชีพ,Redundant or Synonym,ซ้ำเชิงความหมายกับ สิ้นชีวิต/จนตาย
+การดีด,Redundant or Synonym,เป็นคำกว้าง ซ้ำความหมาย
+การขับ,Redundant or Synonym,ซ้ำเชิงความหมายกับ ขับลำ/ขับร้อง
+คนไทย,Umbrella Term / Low Semantic Weight,เป็นคำเรียกกลุ่มคนกว้าง
+จังหวัด,Umbrella Term / Low Semantic Weight,เป็นคำบอกพื้นที่ระดับกว้าง
+ชาวบ้าน,Umbrella Term / Low Semantic Weight,เป็นคำเรียกกลุ่มคนกว้าง
+ชาวพื้นเมือง,Umbrella Term / Low Semantic Weight,เป็นคำเรียกกลุ่มคนกว้าง
+ดอกไม้เงิน,Umbrella Term / Low Semantic Weight,เป็นคำระบุสิ่งของทั่วไป
+ต้นไม้,Umbrella Term / Low Semantic Weight,เป็นคำหมวดพืชกว้าง
+ทิศตะวันตก,Umbrella Term / Low Semantic Weight,เป็นคำบอกทิศทางกว้าง
+ทิศตะวันออก,Umbrella Term / Low Semantic Weight,เป็นคำบอกทิศทางกว้าง
+น้ำมันยาง,Umbrella Term / Low Semantic Weight,เป็นคำระบุวัตถุดิบทั่วไป
+บุรุษ,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบุคคลกว้าง
+ประเทศไทย,Umbrella Term / Low Semantic Weight,เป็นคำบอกพื้นที่ระดับกว้าง
+ปัดเป่า,Umbrella Term / Low Semantic Weight,เป็นคำกริยาทั่วไปในบริบทกว้าง
+ฝั่งน้ำ,Umbrella Term / Low Semantic Weight,เป็นคำบอกสถานที่กว้าง
+พืชพรรณ,Umbrella Term / Low Semantic Weight,เป็นคำหมวดพืชกว้าง
+ภูเขา,Umbrella Term / Low Semantic Weight,เป็นคำบอกสถานที่กว้าง
+ริมแม่น้ำ,Umbrella Term / Low Semantic Weight,เป็นคำบอกสถานที่กว้าง
+ฤดูกาล,Umbrella Term / Low Semantic Weight,เป็นคำบอกเวลากว้าง
+ลอยน้ำ,Umbrella Term / Low Semantic Weight,เป็นคำกริยาทั่วไป
+ลูกไม้,Umbrella Term / Low Semantic Weight,เป็นคำหมวดสิ่งของกว้าง
+วสันตฤดู,Umbrella Term / Low Semantic Weight,เป็นคำบอกเวลากว้าง
+วัตถุดิบ,Umbrella Term / Low Semantic Weight,เป็นคำหมวดสิ่งของกว้าง
+วิดน้ำ,Umbrella Term / Low Semantic Weight,เป็นคำกริยาทั่วไป
+สมัยโบราณ,Umbrella Term / Low Semantic Weight,เป็นคำบอกช่วงเวลากว้าง
+สัตว์น้ำ,Umbrella Term / Low Semantic Weight,เป็นคำหมวดสัตว์กว้าง
+สายสืบ,Umbrella Term / Low Semantic Weight,เป็นคำหมวดบุคคลทั่วไป
+สีน้ำเงิน,Umbrella Term / Low Semantic Weight,เป็นคำบอกสีทั่วไป
+หน่อไม้,Umbrella Term / Low Semantic Weight,เป็นคำระบุสิ่งของทั่วไป
+เครื่องดนตรี,Umbrella Term / Low Semantic Weight,เป็นคำหมวดหมู่กว้างในโดเมน
+เครื่องแต่งกาย,Umbrella Term / Low Semantic Weight,เป็นคำหมวดหมู่กว้าง
+เล่นน้ำ,Umbrella Term / Low Semantic Weight,เป็นคำกริยาทั่วไป
+แต่งกายยืนเครื่องพระ,Umbrella Term / Low Semantic Weight,เป็นคำบรรยายการแต่งกายกว้าง
+แม่น้ำ,Umbrella Term / Low Semantic Weight,เป็นคำบอกสถานที่กว้าง
+แม่น้ำโขง,Umbrella Term / Low Semantic Weight,เป็นคำบอกสถานที่กว้าง
+แม่ไม้มวย,Umbrella Term / Low Semantic Weight,เป็นคำหมวดหมู่ท่ากว้าง
+แหล่งน้ำ,Umbrella Term / Low Semantic Weight,เป็นคำบอกสถานที่กว้าง
+ไม้ยาว,Umbrella Term / Low Semantic Weight,เป็นคำระบุอุปกรณ์กว้าง
+ไม้สั้น,Umbrella Term / Low Semantic Weight,เป็นคำระบุอุปกรณ์กว้าง
+กลอุบาย,Abstract or Evaluative Term,เป็นนามธรรมเชิงกลวิธี
+การขึ้นลอย,Abstract or Evaluative Term,เป็นคำกริยานามธรรมกว้าง
+การนุ่งห่ม,Abstract or Evaluative Term,เป็นคำกริยาทั่วไปไม่เฉพาะเจาะจง
+การปั้น,Abstract or Evaluative Term,เป็นคำกิจกรรมทั่วไป
+การยุติ,Abstract or Evaluative Term,เป็นนามธรรมเชิงกระบวนการ
+การรบ,Abstract or Evaluative Term,เป็นคำกิจกรรมกว้าง
+การละเล่น,Abstract or Evaluative Term,เป็นคำหมวดกิจกรรมกว้าง
+การศึก,Abstract or Evaluative Term,เป็นคำกิจกรรมกว้าง
+การสอน,Abstract or Evaluative Term,เป็นคำกิจกรรมทั่วไป
+การหลอมรวม,Abstract or Evaluative Term,เป็นนามธรรมเชิงกระบวนการ
+การออกไป,Abstract or Evaluative Term,เป็นคำกริยานามธรรมกว้าง
+การแปร,Abstract or Evaluative Term,เป็นนามธรรมเชิงกระบวนการ
+การโปรย,Abstract or Evaluative Term,เป็นคำกริยาทั่วไป
+การให้กำเนิด,Abstract or Evaluative Term,เป็นนามธรรมเชิงกระบวนการ
+การไถ,Abstract or Evaluative Term,เป็นคำกิจกรรมทั่วไป
+คุณูปการ,Abstract or Evaluative Term,เป็นนามธรรมเชิงคุณค่า
+ชั้นเดียว,Abstract or Evaluative Term,เป็นคำบรรยายกว้าง ไม่เฉพาะเจาะจง
+นิมิต,Abstract or Evaluative Term,เป็นนามธรรมเชิงความเชื่อ
+น้อยใจยา,Abstract or Evaluative Term,เป็นคำแสดงอารมณ์
+ประกอบการ,Abstract or Evaluative Term,เป็นคำกิจกรรมทั่วไป
+ปราชัย,Abstract or Evaluative Term,เป็นนามธรรมเชิงประเมิน
+ผู้มีพระคุณ,Abstract or Evaluative Term,เป็นนามธรรมเชิงคุณค่า
+พระคุณ,Abstract or Evaluative Term,เป็นนามธรรมเชิงคุณค่า
+พระราชวังบวรสถานมงคล,Abstract or Evaluative Term,เป็นคำสถานที่กว้าง ไม่ชี้เนื้อหาการแสดง
+มูลเหตุ,Abstract or Evaluative Term,เป็นนามธรรมเชิงโครงสร้าง
+วรรณคดี,Abstract or Evaluative Term,เป็นคำหมวดหมู่กว้างในโดเมน
+ว่าการ,Abstract or Evaluative Term,เป็นคำกริยาทั่วไปกว้าง
+หลักฐาน,Abstract or Evaluative Term,เป็นนามธรรมเชิงโครงสร้าง
+หลักปฏิบัติ,Abstract or Evaluative Term,เป็นนามธรรมเชิงโครงสร้าง
+หลักราชการ,Abstract or Evaluative Term,เป็นนามธรรมเชิงโครงสร้าง
+ออกอุบาย,Abstract or Evaluative Term,ซ้ำเชิงความหมายกับ อุบาย/กลอุบาย
+อุบาย,Abstract or Evaluative Term,เป็นนามธรรมเชิงกลวิธี
+เอาชนะ,Abstract or Evaluative Term,เป็นคำกริยาทั่วไปกว้าง
+ให้การ,Abstract or Evaluative Term,เป็นคำกริยานามธรรมกว้าง
+นางใน,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบุคคลกว้าง
+นานาชาติ,Umbrella Term / Low Semantic Weight,เป็นคำบอกระดับกว้าง
+บทร้อง,Umbrella Term / Low Semantic Weight,เป็นคำหมวดหมู่กว้างในโดเมน
+บทละคร,Umbrella Term / Low Semantic Weight,เป็นคำหมวดหมู่กว้างในโดเมน
+ปิดหน้า,Umbrella Term / Low Semantic Weight,เป็นคำกริยาทั่วไป
+ฝ่ามือ,Umbrella Term / Low Semantic Weight,เป็นคำบอกร่างกายกว้าง
+พระชายา,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบุคคลกว้าง
+พระญาติ,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบุคคลกว้าง
+พระตำหนัก,Umbrella Term / Low Semantic Weight,เป็นคำบอกสถานที่กว้าง
+พระนิพนธ์,Umbrella Term / Low Semantic Weight,เป็นคำหมวดหมู่ผลงานกว้าง
+พระมหากษัตริย์,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบุคคลกว้าง
+พระยา,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบรรดาศักดิ์กว้าง
+พระราชธิดา,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบุคคลกว้าง
+พระราชบัญชา,Umbrella Term / Low Semantic Weight,เป็นคำนามธรรมเชิงโครงสร้าง
+พระลาน,Umbrella Term / Low Semantic Weight,เป็นคำบอกสถานที่กว้าง
+พระสวามี,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบุคคลกว้าง
+พระองค์,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบุคคลกว้าง
+พระอุโบสถ,Umbrella Term / Low Semantic Weight,เป็นคำบอกสถานที่กว้าง
+พระเมรุ,Umbrella Term / Low Semantic Weight,เป็นคำบอกสถานที่กว้าง
+พระเอก,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบทบาทกว้างในโดเมน
+พระแม่คงคา,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบุคคลในตำนานกว้าง
+มนุษยชาติ,Umbrella Term / Low Semantic Weight,เป็นคำหมวดหมู่กว้างมาก
+มือขวา,Umbrella Term / Low Semantic Weight,เป็นคำบอกร่างกายกว้าง
+มือซ้าย,Umbrella Term / Low Semantic Weight,เป็นคำบอกร่างกายกว้าง
+มือเปล่า,Umbrella Term / Low Semantic Weight,เป็นคำบรรยายกว้าง
+ย่านาง,Umbrella Term / Low Semantic Weight,เป็นคำระบุพืชทั่วไป ไม่เฉพาะโดเมน
+ศิลปินแห่งชาติ,Domain-Specific Overuse,เป็นคำบรรดาศักดิ์กว้างในโดเมน
+หน้าบัน,Umbrella Term / Low Semantic Weight,เป็นคำบอกสถาปัตยกรรมกว้าง
+องค์ปะตาระกาหลา,Umbrella Term / Low Semantic Weight,เป็นชื่อตัวละครที่ใช้ในหลายบริบท
+อาภรณ์,Umbrella Term / Low Semantic Weight,เป็นคำหมวดเครื่องแต่งกายกว้าง
+อิริยาบถ,Umbrella Term / Low Semantic Weight,เป็นคำบรรยายท่าทางกว้าง
+เจ้าที่เจ้าทาง,Abstract or Evaluative Term,เป็นนามธรรมเชิงความเชื่อ
+เจ้าหญิง,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบุคคลกว้าง
+เจ้าเซ็น,Umbrella Term / Low Semantic Weight,เป็นชื่อตัวละครที่ใช้ในหลายบริบท
+เจ้าเมือง,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบุคคลกว้าง
+เชื้อชาติ,Umbrella Term / Low Semantic Weight,เป็นคำหมวดหมู่กว้าง
+เทพเจ้า,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบุคคลในตำนานกว้าง
+เปรียบเสมือน,Abstract or Evaluative Term,เป็นคำเชิงนามธรรม ไม่บ่งชี้เนื้อหา
+เพลงไทย,Domain-Specific Overuse,เป็นคำหมวดหลักที่ใช้บ่อยในโดเมน
+เมืองหลวง,Umbrella Term / Low Semantic Weight,เป็นคำบอกสถานที่กว้าง
+เสียงดนตรี,Domain-Specific Overuse,ซ้ำเชิงความหมายกับ ดนตรี
+แปลงกาย,Abstract or Evaluative Term,เป็นคำกริยานามธรรม
+แห่งชาติ,Umbrella Term / Low Semantic Weight,เป็นคำบอกระดับกว้าง
+โบราณ,Umbrella Term / Low Semantic Weight,เป็นคำบรรยายกว้าง
+โบราณสถาน,Umbrella Term / Low Semantic Weight,เป็นคำบอกสถานที่กว้าง
+โรงละครแห่งชาติ,Domain-Specific Overuse,เป็นคำบอกสถานที่เฉพาะโดเมนกว้าง
+ร้อนแรง,Abstract or Evaluative Term,เป็นคำประเมินอารมณ์/สถานการณ์
+แกล้งทำ,Abstract or Evaluative Term,เป็นคำกริยาแสดงเจตนา
+โลดโผน,Abstract or Evaluative Term,เป็นคำประเมินค่า
+ยั่วเย้า,Abstract or Evaluative Term,เป็นคำแสดงพฤติกรรมเชิงประเมิน
+นิสัย,Abstract or Evaluative Term,เป็นนามธรรมเชิงบุคลิกภาพ
+สังสรรค์,Abstract or Evaluative Term,เป็นคำกิจกรรมนามธรรม
+มีอายุ,Abstract or Evaluative Term,เป็นคำประเมินกว้าง
+ประดุจ,Abstract or Evaluative Term,เป็นคำเปรียบเทียบนามธรรม
+ลีลา,Abstract or Evaluative Term,เป็นนามธรรมเชิงสุนทรียะ
+ซุกซน,Abstract or Evaluative Term,เป็นคำประเมินบุคลิกภาพ
+เสนียดจัญไร,Abstract or Evaluative Term,เป็นนามธรรมเชิงความเชื่อ
+หยอกล้อ,Abstract or Evaluative Term,เป็นคำกริยาแสดงพฤติกรรมกว้าง
+อุปสรรค,Abstract or Evaluative Term,เป็นนามธรรมกว้าง
+จนตาย,Abstract or Evaluative Term,เป็นนามธรรมเชิงผล
+ดำรงตำแหน่ง,Abstract or Evaluative Term,เป็นคำกริยาทั่วไป
+สะเดาะ,Abstract or Evaluative Term,เป็นนามธรรมเชิงความเชื่อ
+มาจาก,Abstract or Evaluative Term,เป็นคำกริยาเชิงโครงสร้างกว้าง
+พบปะ,Abstract or Evaluative Term,เป็นคำกริยาทั่วไป
+คืนหนึ่ง,Abstract or Evaluative Term,เป็นคำบอกเวลานามธรรม
+ออกศึก,Abstract or Evaluative Term,เป็นคำกริยากว้างในบริบทสงคราม
+กำเริบ,Abstract or Evaluative Term,เป็นคำประเมินพฤติกรรม
+ครั้งสุดท้าย,Abstract or Evaluative Term,เป็นคำบอกเวลาเชิงประเมิน
+สมทบ,Abstract or Evaluative Term,เป็นคำกริยาทั่วไป
+ทัพหน้า,Abstract or Evaluative Term,เป็นคำโครงสร้างทางทหารกว้าง
+ฟาดฟัน,Abstract or Evaluative Term,เป็นคำกริยาแสดงการกระทำกว้าง
+บอกทาง,Abstract or Evaluative Term,เป็นคำกริยาทั่วไป
+กราบทูล,Abstract or Evaluative Term,เป็นคำกริยาทั่วไปในบริบทราชสำนัก
+หมดแรง,Abstract or Evaluative Term,เป็นคำประเมินสภาวะ
+ตำนาน,Abstract or Evaluative Term,เป็นนามธรรมเชิงโครงสร้างกว้าง
+รังควาญ,Abstract or Evaluative Term,เป็นคำประเมินพฤติกรรม
+ฟันปลา,Abstract or Evaluative Term,เป็นคำกริยาเฉพาะบริบทกว้าง
+วันวาน,Abstract or Evaluative Term,เป็นนามธรรมเชิงเวลา
+หล่อเลี้ยง,Abstract or Evaluative Term,เป็นคำกริยานามธรรม
+ประกาศ,Abstract or Evaluative Term,เป็นคำกริยาทั่วไป
+อิทธิฤทธิ์,Abstract or Evaluative Term,เป็นนามธรรมเชิงความเชื่อ
+กลับบ้าน,Abstract or Evaluative Term,เป็นคำกริยาทั่วไป
+คำบอกเล่า,Abstract or Evaluative Term,เป็นนามธรรมเชิงโครงสร้าง
+กลยุทธ,Abstract or Evaluative Term,เป็นนามธรรมเชิงกลวิธี
+ออกรบ,Abstract or Evaluative Term,เป็นคำกริยากว้าง
+มีฤทธิ์,Abstract or Evaluative Term,เป็นคำประเมินคุณสมบัตินามธรรม
+หลงกล,Abstract or Evaluative Term,เป็นคำแสดงสถานการณ์นามธรรม
+ประชิดตัว,Abstract or Evaluative Term,เป็นคำกริยาทั่วไป
+กลายร่าง,Abstract or Evaluative Term,เป็นนามธรรมเชิงการเปลี่ยนแปลง
+ขัดตาทัพ,Abstract or Evaluative Term,เป็นคำกริยากว้างในบริบทสงคราม
+ถอยทัพ,Abstract or Evaluative Term,เป็นคำกริยากว้างในบริบทสงคราม
+ตีลังกา,Abstract or Evaluative Term,เป็นคำกริยาเฉพาะบริบทกว้าง
+จำกาย,Abstract or Evaluative Term,เป็นนามธรรมเชิงการเปลี่ยนแปลง
+หลบหนี,Abstract or Evaluative Term,เป็นคำกริยาทั่วไป
+หาทาง,Abstract or Evaluative Term,เป็นคำกริยานามธรรม
+ผึ่งแดด,Abstract or Evaluative Term,เป็นคำกริยาทั่วไป
+เป็นบ้า,Abstract or Evaluative Term,เป็นคำประเมินสภาวะ
+สังหาร,Abstract or Evaluative Term,เป็นคำกริยากว้าง
+ฤทธิ์เดช,Abstract or Evaluative Term,เป็นนามธรรมเชิงความเชื่อ
+เป็นครั้งแรก,Abstract or Evaluative Term,เป็นคำบอกเวลาเชิงประเมิน
+ที่รัก,Abstract or Evaluative Term,เป็นคำประเมินทางอารมณ์
+ร่วมใน,Abstract or Evaluative Term,เป็นคำกริยานามธรรมกว้าง
+ประทาน,Abstract or Evaluative Term,เป็นคำกริยาในบริบทราชสำนักกว้าง
+สภาพอากาศ,Abstract or Evaluative Term,เป็นคำบรรยายสภาพแวดล้อมกว้าง
+อาณาจักร,Umbrella Term / Low Semantic Weight,เป็นคำบอกพื้นที่/หน่วยการปกครองกว้าง
+แต่งตัว,Umbrella Term / Low Semantic Weight,ซ้ำเชิงความหมายกับ เครื่องแต่งกาย/การแต่งกาย
+ชุมนุม,Umbrella Term / Low Semantic Weight,เป็นคำกิจกรรมกว้าง
+เข้าเฝ้า,Umbrella Term / Low Semantic Weight,เป็นคำกริยาในบริบทราชสำนักกว้าง
+นางเอก,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบทบาทกว้างในโดเมน
+ขับไล่,Umbrella Term / Low Semantic Weight,เป็นคำกริยาทั่วไป
+ของที่ระลึก,Umbrella Term / Low Semantic Weight,เป็นคำหมวดสิ่งของกว้าง
+สวามี,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบุคคลกว้าง
+อนุชา,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบุคคลกว้าง
+ตัวต่อตัว,Umbrella Term / Low Semantic Weight,เป็นคำบรรยายสถานการณ์กว้าง
+วาจา,Umbrella Term / Low Semantic Weight,เป็นนามธรรมเชิงการสื่อสารกว้าง
+ขับลำ,Umbrella Term / Low Semantic Weight,เป็นคำกิจกรรมกว้างในโดเมน
+แผ่อิทธิพล,Umbrella Term / Low Semantic Weight,เป็นคำกริยานามธรรมกว้าง
+นายขวัญ,Umbrella Term / Low Semantic Weight,เป็นชื่อตัวละครที่ใช้ในหลายบริบท
+ได้ยิน,Umbrella Term / Low Semantic Weight,เป็นคำกริยาทั่วไป
+มารดา,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบุคคลกว้าง
+รับอาสา,Umbrella Term / Low Semantic Weight,เป็นคำกริยาทั่วไป
+รุ่นหลัง,Umbrella Term / Low Semantic Weight,เป็นคำบอกช่วงเวลากว้าง
+เข้าพบ,Umbrella Term / Low Semantic Weight,เป็นคำกริยาทั่วไป
+แผ่นดิน,Umbrella Term / Low Semantic Weight,เป็นคำบอกพื้นที่กว้าง
+สุทธาวาส,Umbrella Term / Low Semantic Weight,เป็นคำบอกสถานที่กว้าง
+อาหาร,Umbrella Term / Low Semantic Weight,เป็นคำหมวดหมู่กว้าง
+ปางลีลา,Umbrella Term / Low Semantic Weight,เป็นคำบรรยายท่าทางกว้าง
+เขาอังกาศ,Umbrella Term / Low Semantic Weight,เป็นคำบอกสถานที่กว้าง
+อเนก,Umbrella Term / Low Semantic Weight,เป็นคำบอกปริมาณกว้าง
+ชายแดน,Umbrella Term / Low Semantic Weight,เป็นคำบอกพื้นที่กว้าง
+พระพี่เลี้ยง,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบุคคลกว้าง
+ดวงแก้ว,Umbrella Term / Low Semantic Weight,เป็นคำบอกวัตถุกว้าง
+ลงกา,Umbrella Term / Low Semantic Weight,เป็นคำบอกสถานที่ในตำนานกว้าง
+ผู้เชี่ยวชาญ,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบุคคลกว้าง
+ภาษา,Umbrella Term / Low Semantic Weight,เป็นคำหมวดหมู่กว้าง
+ชั้นเชิง,Umbrella Term / Low Semantic Weight,เป็นคำบอกทักษะกว้าง
+กระทุ้ง,Umbrella Term / Low Semantic Weight,เป็นคำกริยาทั่วไป
+ทำพิธี,Umbrella Term / Low Semantic Weight,เป็นคำกิจกรรมกว้างในโดเมน
+พี่เลี้ยง,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบุคคลกว้าง
+บัญชา,Umbrella Term / Low Semantic Weight,เป็นคำกริยานามธรรม
+ชั้นใน,Umbrella Term / Low Semantic Weight,เป็นคำบอกตำแหน่งกว้าง
+รับใช้,Umbrella Term / Low Semantic Weight,เป็นคำกริยาทั่วไป
+แปลงตัว,Umbrella Term / Low Semantic Weight,เป็นคำกริยาทั่วไป
+พาหนะ,Umbrella Term / Low Semantic Weight,เป็นคำหมวดหมู่กว้าง
+ขบวนแห่,Umbrella Term / Low Semantic Weight,เป็นคำกิจกรรมกว้างในโดเมน
+จำแลง,Umbrella Term / Low Semantic Weight,ซ้ำเชิงความหมายกับ แปลงตัว/จำกาย
+ผู้ประดิษฐ์,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบุคคลกว้าง
+แตกทัพ,Umbrella Term / Low Semantic Weight,เป็นคำกริยากว้างในบริบทสงคราม
+ผู้แสดงฝ่ายชาย,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบุคคลกว้างในโดเมน
+เชิงบันได,Umbrella Term / Low Semantic Weight,เป็นคำบอกสถานที่กว้าง
+ประทับ,Umbrella Term / Low Semantic Weight,เป็นคำกริยาในบริบทราชสำนักกว้าง
+ท่าทาง,Umbrella Term / Low Semantic Weight,เป็นคำบรรยายกว้าง
+ข้าหลวง,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบุคคลกว้าง
+ต้นขา,Umbrella Term / Low Semantic Weight,เป็นคำบอกร่างกายกว้าง
+ชาวไทย,Umbrella Term / Low Semantic Weight,เป็นคำเรียกกลุ่มคนกว้าง
+รับสั่ง,Umbrella Term / Low Semantic Weight,เป็นคำกริยาในบริบทราชสำนักกว้าง
+คำร้อง,Umbrella Term / Low Semantic Weight,เป็นคำหมวดหมู่กว้างในโดเมน
+บริวาร,Umbrella Term / Low Semantic Weight,เป็นคำเรียกกลุ่มบุคคลกว้าง
+ทางธรรมชาติ,Umbrella Term / Low Semantic Weight,เป็นคำบอกสภาพแวดล้อมกว้าง
+ที่รวม,Umbrella Term / Low Semantic Weight,เป็นคำบอกสถานที่กว้าง
+รัชกาล,Umbrella Term / Low Semantic Weight,เป็นคำบอกช่วงเวลากว้าง
+ที่นั่ง,Umbrella Term / Low Semantic Weight,เป็นคำบอกสถานที่กว้าง
+ผู้ครองนคร,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบุคคลกว้าง
+ไพร่พล,Umbrella Term / Low Semantic Weight,เป็นคำเรียกกลุ่มบุคคลกว้าง
+เดินอากาศ,Umbrella Term / Low Semantic Weight,เป็นคำกริยาทั่วไป
+ผู้ใช้,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบุคคลกว้าง
+ศีรษะ,Umbrella Term / Low Semantic Weight,เป็นคำบอกร่างกายกว้าง
+ยมะ,Umbrella Term / Low Semantic Weight,เป็นชื่อตัวละครในตำนานกว้าง
+ผู้มาเยือน,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบุคคลกว้าง
+อาจารย์,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบุคคลกว้าง
+ผู้แสดงฝ่ายหญิง,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบุคคลกว้างในโดเมน
+สิ่งชั่วร้าย,Umbrella Term / Low Semantic Weight,เป็นนามธรรมเชิงคุณค่ากว้าง
+ขึ้นไป,Umbrella Term / Low Semantic Weight,เป็นคำกริยาทั่วไป
+ไหล่เขา,Umbrella Term / Low Semantic Weight,เป็นคำบอกสถานที่กว้าง
+หมู่เกาะ,Umbrella Term / Low Semantic Weight,เป็นคำบอกสถานที่กว้าง
+บุรี,Umbrella Term / Low Semantic Weight,เป็นคำบอกพื้นที่กว้าง
+ตัวจริง,Umbrella Term / Low Semantic Weight,เป็นคำบรรยายกว้าง
+ฝากตัว,Umbrella Term / Low Semantic Weight,เป็นคำกริยาทั่วไป
+ตามเพลง,Umbrella Term / Low Semantic Weight,เป็นคำบอกกิจกรรมกว้างในโดเมน
+พื้นบ้าน,Umbrella Term / Low Semantic Weight,เป็นคำบริบทกว้างในโดเมน
+ทำนาย,Umbrella Term / Low Semantic Weight,เป็นคำกริยานามธรรม
+ให้ร้าย,Umbrella Term / Low Semantic Weight,เป็นคำกริยาประเมินค่ากว้าง
+ไปมา,Umbrella Term / Low Semantic Weight,เป็นคำกริยาทั่วไป
+อาสา,Umbrella Term / Low Semantic Weight,เป็นคำกริยาทั่วไป
+บิดา,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบุคคลกว้าง
+รัชฎา,Umbrella Term / Low Semantic Weight,เป็นชื่อตัวละครที่ใช้ในหลายบริบท
+กิจจะ,Umbrella Term / Low Semantic Weight,เป็นชื่อตัวละครที่ใช้ในหลายบริบท
+ขอขมา,Umbrella Term / Low Semantic Weight,เป็นคำกิจกรรมกว้าง
+บินหนี,Umbrella Term / Low Semantic Weight,เป็นคำกริยาทั่วไป
+ผู้พบเห็น,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบุคคลกว้าง
+ข้างใน,Umbrella Term / Low Semantic Weight,เป็นคำบอกตำแหน่งกว้าง
+จังหวะ,Umbrella Term / Low Semantic Weight,เป็นคำบอกโครงสร้างกว้างในโดเมน
+ป้องกันตัว,Umbrella Term / Low Semantic Weight,เป็นคำกริยาทั่วไป
+สอดแทรก,Umbrella Term / Low Semantic Weight,เป็นคำกริยาทั่วไป
+รูปนอก,Umbrella Term / Low Semantic Weight,เป็นคำบรรยายกว้าง ไม่ชี้เนื้อหาเฉพาะ
+งานรื่นเริง,Abstract or Evaluative Term,เป็นนามธรรมเชิงกิจกรรมประเมินค่า
+จุดไฟ,Umbrella Term / Low Semantic Weight,เป็นคำกริยาทั่วไป
+แก้แค้น,Abstract or Evaluative Term,เป็นคำแสดงเจตนาเชิงประเมินค่า
+ชายหนุ่ม,Umbrella Term / Low Semantic Weight,เป็นคำเรียกบุคคลกว้าง
+ขึ้นทะเบียน,Umbrella Term / Low Semantic Weight,เป็นคำกริยาทั่วไปเชิงกระบวนการ
+มีแบบแผน,Abstract or Evaluative Term,เป็นคำประเมินค่าเชิงนามธรรม
+คู่ใจ,Abstract or Evaluative Term,เป็นนามธรรมเชิงความสัมพันธ์

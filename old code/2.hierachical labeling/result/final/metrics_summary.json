@@ -1,0 +1,192 @@
+{
+  "run_id": "20260423_131036",
+  "master_input": {
+    "source_file": "c:\\Users\\Pichaya\\Downloads\\1.2 Hierachical labeling\\input\\non_stopwords_gemini.csv",
+    "original_rows": 584,
+    "filtered_rows": 584,
+    "kept_ratio": 1.0,
+    "input_strategy": "primary_gemini"
+  },
+  "phase1": {
+    "clusters_total": 4,
+    "candidate_raw_count": 54,
+    "candidate_valid_count": 53,
+    "invalid_schema_count": 1,
+    "avg_candidates_per_cluster_raw": 13.5,
+    "avg_candidates_per_cluster_valid": 13.25,
+    "invalid_schema_rate": 0.018518518518518517
+  },
+  "phase2": {
+    "input_candidate_count": 53,
+    "refined_count": 23,
+    "reduction_ratio": 0.5660377358490566
+  },
+  "critic": {
+    "agreement_rate": 0.9583333333333334,
+    "strong_agreement_rate": 0.9166666666666666,
+    "base_agreement_rate": 1.0,
+    "majority_supported_items": 23,
+    "additions": 0,
+    "dropped": 0,
+    "kept": 23,
+    "change_ratio": 0.0,
+    "unique_items_proposed_by_critics": 24,
+    "per_critic_edit_ratio": {
+      "gpt": 0.08695652173913043,
+      "qwen": 0.0,
+      "deepseek": 0.0
+    },
+    "targeted_second_pass_used": false
+  },
+  "architect": {
+    "input_count": 23,
+    "final_count": 23,
+    "compression_ratio": 0.0
+  },
+  "taxonomy_structure": {
+    "total_paths": 23,
+    "unique_lvl1": 6,
+    "unique_lvl2_pairs": 19,
+    "duplicate_exact_path_count": 0,
+    "duplicate_category_rate": 0.0,
+    "hierarchy_violation_count": 0,
+    "hierarchy_violation_rate": 0.0,
+    "avg_l2_per_l1": 3.1666666666666665,
+    "singleton_l2_count": 15,
+    "singleton_l2_rate": 0.7894736842105263,
+    "depth_consistency_rate": 1.0
+  },
+  "classification": {
+    "total_words": 584,
+    "raw_records_received": 584,
+    "direct_valid": 584,
+    "fallback_to_nearest": 0,
+    "out_of_taxonomy": 0,
+    "final_kept": 584,
+    "coverage_rate": 1.0,
+    "direct_valid_rate": 1.0,
+    "fallback_rate": 0.0,
+    "out_of_taxonomy_rate": 0.0,
+    "final_valid_rate": 1.0
+  },
+  "classification_by_model": {
+    "gemini": {
+      "total_words": 584,
+      "raw_records_received": 584,
+      "direct_valid": 584,
+      "fallback_to_nearest": 0,
+      "out_of_taxonomy": 0,
+      "final_kept": 584,
+      "coverage_rate": 1.0,
+      "direct_valid_rate": 1.0,
+      "fallback_rate": 0.0,
+      "out_of_taxonomy_rate": 0.0,
+      "final_valid_rate": 1.0
+    },
+    "gpt": {
+      "total_words": 584,
+      "raw_records_received": 584,
+      "direct_valid": 514,
+      "fallback_to_nearest": 70,
+      "out_of_taxonomy": 0,
+      "final_kept": 584,
+      "coverage_rate": 1.0,
+      "direct_valid_rate": 0.8801369863013698,
+      "fallback_rate": 0.11986301369863013,
+      "out_of_taxonomy_rate": 0.0,
+      "final_valid_rate": 1.0
+    },
+    "qwen": {
+      "total_words": 584,
+      "raw_records_received": 584,
+      "direct_valid": 576,
+      "fallback_to_nearest": 8,
+      "out_of_taxonomy": 0,
+      "final_kept": 584,
+      "coverage_rate": 1.0,
+      "direct_valid_rate": 0.9863013698630136,
+      "fallback_rate": 0.0136986301369863,
+      "out_of_taxonomy_rate": 0.0,
+      "final_valid_rate": 1.0
+    },
+    "deepseek": {
+      "total_words": 584,
+      "raw_records_received": 584,
+      "direct_valid": 560,
+      "fallback_to_nearest": 24,
+      "out_of_taxonomy": 0,
+      "final_kept": 584,
+      "coverage_rate": 1.0,
+      "direct_valid_rate": 0.958904109589041,
+      "fallback_rate": 0.0410958904109589,
+      "out_of_taxonomy_rate": 0.0,
+      "final_valid_rate": 1.0
+    }
+  },
+  "classification_multi": {
+    "total_words": 584,
+    "perfect_agreement_rate": 0.3698630136986301,
+    "fleiss_kappa": 0.5465683299880192
+  },
+  "api": {
+    "calls": 167,
+    "success": 165,
+    "failures": 2,
+    "failure_types": {
+      "HTTP_ERROR": 2
+    },
+    "by_phase": {
+      "phase1": {
+        "calls": 4,
+        "success": 4,
+        "failures": 0,
+        "failure_types": {},
+        "avg_latency_sec": 9.272937774999946
+      },
+      "phase2": {
+        "calls": 1,
+        "success": 1,
+        "failures": 0,
+        "failure_types": {},
+        "avg_latency_sec": 17.351282900000115
+      },
+      "critic_review_gpt": {
+        "calls": 1,
+        "success": 1,
+        "failures": 0,
+        "failure_types": {},
+        "avg_latency_sec": 31.031202300000587
+      },
+      "critic_review_qwen": {
+        "calls": 1,
+        "success": 1,
+        "failures": 0,
+        "failure_types": {},
+        "avg_latency_sec": 85.20863940000072
+      },
+      "critic_review_deepseek": {
+        "calls": 1,
+        "success": 1,
+        "failures": 0,
+        "failure_types": {},
+        "avg_latency_sec": 500.6006987999999
+      },
+      "final_cleanup": {
+        "calls": 1,
+        "success": 1,
+        "failures": 0,
+        "failure_types": {},
+        "avg_latency_sec": 89.56533590000072
+      },
+      "phase3": {
+        "calls": 158,
+        "success": 156,
+        "failures": 2,
+        "failure_types": {
+          "HTTP_ERROR": 2
+        },
+        "avg_latency_sec": 39.67261969430376
+      }
+    }
+  }
+}

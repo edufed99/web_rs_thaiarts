@@ -1,0 +1,11 @@
+﻿metric,value
+Total Paths,23
+Unique Level 1,6
+Unique L1-L2 pairs,19
+Duplicate Category Rate,0.0
+Hierarchy Violation Rate,0.0
+Average L2 per L1,3.1666666666666665
+Singleton L2 Rate,0.7894736842105263
+Depth Consistency Rate,1.0
+Taxonomy Needs Deepening,0
+Primary Model Used,gemini

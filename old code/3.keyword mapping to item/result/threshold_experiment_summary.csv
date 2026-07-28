@@ -1,0 +1,8 @@
+﻿threshold,ablation,guaranteed_coverage,n_words,n_raw_rows,n_items,n_mapped_words,unmapped_words,n_mapped_items,unmapped_items,exact_matches,token_set_matches,partial_matches,semantic_matches,exact_ratio,fuzzy_contrib_ratio,semantic_contrib_ratio
+90,default,False,584,114,114,584,0,114,0,1143,7,21,0,0.9761,0.0239,0.0
+95,default,False,584,114,114,584,0,114,0,1145,7,1,0,0.9931,0.0069,0.0
+96,default,False,584,114,114,584,0,114,0,1145,7,1,0,0.9931,0.0069,0.0
+97,default,False,584,114,114,584,0,114,0,1145,7,1,0,0.9931,0.0069,0.0
+98,default,False,584,114,114,584,0,114,0,1145,7,1,0,0.9931,0.0069,0.0
+99,default,False,584,114,114,584,0,114,0,1145,7,1,0,0.9931,0.0069,0.0
+100,default,False,584,114,114,584,0,114,0,1145,7,1,0,0.9931,0.0069,0.0

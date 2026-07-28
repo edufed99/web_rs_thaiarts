@@ -1,0 +1,8 @@
+﻿threshold,ablation,exact_matches,token_set_matches,partial_matches,semantic_matches,total_matches,exact_ratio,fuzzy_contrib_ratio,semantic_contrib_ratio,exact_unique_words,token_set_unique_words,partial_unique_words,semantic_unique_words
+90,default,1143,7,21,0,1171,0.9761,0.0239,0.0,580,6,7,0
+95,default,1145,7,1,0,1153,0.9931,0.0069,0.0,582,6,1,0
+96,default,1145,7,1,0,1153,0.9931,0.0069,0.0,582,6,1,0
+97,default,1145,7,1,0,1153,0.9931,0.0069,0.0,582,6,1,0
+98,default,1145,7,1,0,1153,0.9931,0.0069,0.0,582,6,1,0
+99,default,1145,7,1,0,1153,0.9931,0.0069,0.0,582,6,1,0
+100,default,1145,7,1,0,1153,0.9931,0.0069,0.0,582,6,1,0

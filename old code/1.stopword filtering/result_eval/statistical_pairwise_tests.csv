@@ -1,0 +1,9 @@
+﻿method_a,method_b,mean_diff,p_value,significant,ci_lo,ci_hi
+gemini,gpt,0.178144,0.0,True,0.131782,0.225391
+gemini,qwen,0.053372,0.0067,True,0.009767,0.095587
+gemini,deepseek,0.031809,0.0488,True,-0.005967,0.068736
+gemini,consensus_all4,0.273873,0.0,True,0.234762,0.314514
+gemini,majority_ge3,0.04278,0.0019,True,0.012968,0.072331
+consensus_all4,union_any1,-0.254293,1.0,False,-0.307205,-0.201456
+majority_ge3,union_any1,-0.023199,0.8988,False,-0.05857,0.012691
+majority_ge3,consensus_all4,0.231094,0.0,True,0.188908,0.275575

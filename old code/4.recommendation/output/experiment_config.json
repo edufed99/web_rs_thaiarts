@@ -1,0 +1,30 @@
+{
+  "seeds": [
+    42,
+    123,
+    999,
+    2024,
+    555
+  ],
+  "max_cands_list": [
+    20,
+    40,
+    80,
+    null
+  ],
+  "device": "cpu",
+  "k": 10,
+  "cbf_models": [
+    "intfloat/multilingual-e5-large-instruct",
+    "BAAI/bge-m3",
+    "kornwtp/SCT-KD-model-phayathaibert",
+    "airesearch/wangchanberta-base-att-spm-uncased"
+  ],
+  "cf_models": [
+    "EASE_R",
+    "BiasedMF",
+    "BiasedMF-BPR",
+    "ItemKNN",
+    "SimpleX"
+  ]
+}

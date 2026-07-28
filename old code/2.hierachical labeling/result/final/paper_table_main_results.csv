@@ -1,0 +1,21 @@
+﻿stage,metric,value
+Phase 1,Candidate Categories,53.0
+Phase 1,Invalid Schema Rate,0.018518518518518517
+Phase 2,Refined Categories,23.0
+Phase 2,Reduction Ratio,0.5660377358490566
+Critic,Agreement Rate,0.9583333333333334
+Critic,Strong Agreement Rate,0.9166666666666666
+Critic,Base Agreement Rate,1.0
+Critic,Majority Supported Items,23.0
+Critic,Additions,0.0
+Critic,Dropped,0.0
+Critic,Change Ratio,0.0
+Architect,Final Categories,23.0
+Architect,Compression Ratio,0.0
+Classification,Total Words,584.0
+Classification,Coverage Rate,1.0
+Classification,Direct Valid Rate,1.0
+Classification,Fallback Rate,0.0
+Classification,Out-of-Taxonomy Rate,0.0
+System,API Success,165.0
+System,API Failures,2.0

@@ -1,0 +1,8 @@
+pandas
+matplotlib
+pythainlp
+torch
+rapidfuzz
+sentence-transformers
+python-dotenv
+regex

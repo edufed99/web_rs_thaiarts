@@ -1,8 +1,13 @@
 """
 services/recommendation_service.py — Orchestrator.
 
-Runs eligibility → CBF → CF → hybrid → explanation → top-K and returns a
-``RecommendationResponseOut``.
+Runs eligibility → CBF → CF → hybrid → negative penalty → explanation →
+top-K and returns a ``RecommendationResponseOut``.
+
+Per-user live state (``likes`` / ``saved_items`` / ``ratings``) is read
+once and applied to both the scoring pipeline (negative penalty,
+``hybrid_service.apply_negative_penalty``) and the response payload
+(``UserState`` on each result item).
 """
 from __future__ import annotations
 
@@ -11,6 +16,7 @@ from typing import Dict, List, Optional
 
 from ..core.config import Settings
 from ..core.exceptions import ContextNotFoundError, InvalidRequestError
+from ..db import is_db_enabled
 from ..model_loader import ArtifactLoader
 from ..schemas.context import ContextOut
 from ..schemas.item import ItemOut, UserState
@@ -24,11 +30,16 @@ from ..schemas.recommendation import (
 from ..explanations import build_explanation
 from .cbf_service import score_items_by_content
 from .cf_service import score_items_by_itemknn
+from .db_query import (
+    live_user_negative_ratings,
+    live_user_state_for_items,
+)
 from .eligibility import (
     context_name_for_id,
     get_context_valid_items,
 )
-from .hybrid_service import weighted_sum
+from .hybrid_service import apply_negative_penalty, weighted_sum
+from .suitability import catalog_match_percent, suitability_label
 
 
 def generate_recommendations(
@@ -74,6 +85,18 @@ def generate_recommendations(
     )
     hybrid = weighted_sum(cbf, cf, settings=settings)
 
+    # 4b. Negative-rating penalty: items the user rated below the positive
+    #     threshold (live DB only — mirrors legacy services.apply_negative_penalty).
+    negative_ratings: Dict[int, int] = {}
+    if request.user_key:
+        negative_ratings = live_user_negative_ratings(
+            request.user_key, max_rating=settings.positive_threshold
+        )
+    if negative_ratings:
+        hybrid = apply_negative_penalty(
+            hybrid, negative_ratings, alpha=settings.negative_penalty_alpha
+        )
+
     # 5. Rank by (hybrid, cbf, name) desc, take top_k
     ranked = sorted(
         candidates,
@@ -85,11 +108,19 @@ def generate_recommendations(
         reverse=True,
     )[: request.top_k]
 
-    # 6. Build result rows
+    # 6. Bulk-fetch per-item user state for the top-K so the response carries
+    #    liked/saved/rating flags without N extra queries.
+    ranked_ids: List[int] = [int(item["item_id"]) for item in ranked]
+    state_map: Dict[int, UserState] = live_user_state_for_items(
+        request.user_key or "", ranked_ids
+    )
+
+    # 7. Build result rows
     results: List[RecommendationResultOut] = []
     for rank, item in enumerate(ranked, start=1):
         iid = int(item["item_id"])
         item_keywords = list(item.get("keyword_names") or [])
+        item_contexts = list(item.get("context_names") or [])
         matched = [k for k in selected_keyword_names if k in item_keywords]
         explanation = build_explanation(
             item=item,
@@ -99,10 +130,21 @@ def generate_recommendations(
             cf_score=float(cf.get(iid, 0.0)),
             matched_keywords=matched,
         )
+        # Display-only suitability hint. Mirrors the legacy
+        # catalog_match_percent heuristic (see services/suitability.py).
+        # rating_average is not precomputed for the new app — we use the
+        # legacy default of 0.66 so the formula matches ``/items?context=``
+        # ordering downstream.
+        mp = catalog_match_percent(
+            keyword_count=len(item_keywords),
+            context_count=len(item_contexts),
+            description_length=len(str(item.get("description") or "")),
+            rating_average=0.66,
+        )
         results.append(
             RecommendationResultOut(
                 rank=rank,
-                item=_build_item_out(loader, item, iid),
+                item=_build_item_out(loader, item, iid, user_state=state_map.get(iid)),
                 scores=ScoresOut(
                     cbf=float(cbf.get(iid, 0.0)),
                     cf=float(cf.get(iid, 0.0)),
@@ -111,6 +153,8 @@ def generate_recommendations(
                 is_context_valid=True,
                 matched_keywords=matched,
                 explanation=explanation,
+                match_percent=mp,
+                suitability_label=suitability_label(mp),
             )
         )
 
@@ -128,7 +172,11 @@ def generate_recommendations(
             "cbf_keyword_boost": float(settings.cbf_keyword_boost),
             "itemknn_k": int(settings.itemknn_k),
             "itemknn_shrink": float(settings.itemknn_shrink),
+            "negative_penalty_alpha": float(settings.negative_penalty_alpha),
             "user_key_provided": bool(request.user_key),
+            "db_enabled": bool(is_db_enabled()),
+            "user_state_resolved": bool(request.user_key and is_db_enabled()),
+            "negative_ratings_applied": bool(negative_ratings),
         },
         results=results,
     )
@@ -189,7 +237,12 @@ def _context_group_for(loader: ArtifactLoader, ctx_name: str) -> str:
     return ""
 
 
-def _build_item_out(loader: ArtifactLoader, item: Dict, item_id: int) -> ItemOut:
+def _build_item_out(
+    loader: ArtifactLoader,
+    item: Dict,
+    item_id: int,
+    user_state: Optional[UserState] = None,
+) -> ItemOut:
     from ._ids import stable_id
     item_keywords = list(item.get("keyword_names") or [])
     keyword_objs = [
@@ -226,7 +279,7 @@ def _build_item_out(loader: ArtifactLoader, item: Dict, item_id: int) -> ItemOut
         video_url="",
         keywords=keyword_objs,
         contexts=context_objs,
-        user_state=UserState(),
+        user_state=user_state or UserState(),
     )
 
 

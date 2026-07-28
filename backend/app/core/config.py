@@ -59,8 +59,29 @@ class Settings(BaseSettings):
     min_cands: int = 10
     max_cands: Optional[int] = None  # None = no cap
     default_top_k: int = 10
-    cors_origins: List[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+    cors_origins: List[str] = Field(
+        default_factory=lambda: [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ]
+    )
     app_version: str = "1.0.0"
+
+    # Auth (admin slice — see ADR §11.1)
+    jwt_secret: str = "dev-only-change-me"
+    jwt_expiry_days: int = 7
+    admin_usernames: List[str] = Field(default_factory=list)
+
+    # Live ingest (see ADR §3 — runtime embedding exception)
+    e5_model_name: str = "intfloat/multilingual-e5-large-instruct"
+    e5_max_length: int = 512
+    e5_local_path: Optional[Path] = None
+    e5_enabled: bool = True
+
+    # Layer B (LLM assist — Gemini per paper)
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-3-flash-preview"
+    grounding_use_llm: bool = True
 
     @field_validator("max_cands", mode="before")
     @classmethod
@@ -75,6 +96,13 @@ class Settings(BaseSettings):
     def _split_cors(cls, v):
         if isinstance(v, str):
             return [origin.strip() for origin in v.split(",") if origin.strip()]
+        return v
+
+    @field_validator("admin_usernames", mode="before")
+    @classmethod
+    def _split_admin_usernames(cls, v):
+        if isinstance(v, str):
+            return [name.strip() for name in v.split(",") if name.strip()]
         return v
 
     @property

@@ -53,7 +53,7 @@ def test_settings_cors_split(monkeypatch):
 
 def test_settings_cors_default():
     s = Settings()
-    assert s.cors_origins == ["http://localhost:3000"]
+    assert s.cors_origins == ["http://localhost:3000", "http://127.0.0.1:3000"]
 
 
 def test_get_settings_is_singleton(monkeypatch):

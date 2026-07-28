@@ -8,12 +8,17 @@ between the legacy system and the new FastAPI + Postgres architecture.
 Usage:
     python pipelines/migrate_sqlite_to_postgres.py \\
         --sqlite "C:/Users/Pichaya/Downloads/web_appRS/thai_arts_webapp/db.sqlite3" \\
-        --target-url "postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/thai_arts_recommender"
+        --target-url "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/web_rs_thaiarts"
 
 What it migrates (read from SQLite):
     catalog_context, catalog_taxonomynode, catalog_keyword
     catalog_item, catalog_itemcontext, catalog_itemkeyword
     recommender_legacyinteraction   (2534 rows from user logs)
+
+Schema management:
+    The target schema is owned by Alembic (see ``backend/migrations/``).
+    This script calls ``alembic upgrade head`` automatically before
+    importing data. Pass ``--skip-alembic`` to skip the schema step.
 
 What it does NOT migrate (out of scope — not used by backend):
     auth_*, django_*, sqlite_sequence, accounts_*, recommender_itemembedding
@@ -24,6 +29,7 @@ The legacy project is never modified. This script only opens it with mode=ro.
 from __future__ import annotations
 
 import argparse
+import os
 import sqlite3
 import sys
 from pathlib import Path
@@ -51,6 +57,11 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=500,
         help="Rows per bulk insert.",
+    )
+    p.add_argument(
+        "--skip-alembic",
+        action="store_true",
+        help="Skip 'alembic upgrade head'. Use only when the schema is known to be at head.",
     )
     return p.parse_args()
 
@@ -185,76 +196,77 @@ def migrate_legacy_interactions(session, con, metadata) -> int:
     return upsert(session, metadata.tables["legacy_interactions"], payload, ["id"])
 
 
-def ensure_schema(engine) -> MetaData:
-    """Create the tables we migrate into. Returns the MetaData with the
-    reflected Table objects so callers can use them in upserts."""
-    ddl_statements = [
-        # contexts
-        """CREATE TABLE IF NOT EXISTS contexts (
-            id BIGINT PRIMARY KEY,
-            name VARCHAR(255) NOT NULL UNIQUE,
-            group_name VARCHAR(255) DEFAULT '',
-            description TEXT DEFAULT ''
-        )""",
-        # taxonomy_nodes
-        """CREATE TABLE IF NOT EXISTS taxonomy_nodes (
-            id BIGINT PRIMARY KEY,
-            name VARCHAR(255) NOT NULL,
-            level SMALLINT NOT NULL,
-            parent_id BIGINT REFERENCES taxonomy_nodes(id) ON DELETE SET NULL
-        )""",
-        # keywords
-        """CREATE TABLE IF NOT EXISTS keywords (
-            id BIGINT PRIMARY KEY,
-            name VARCHAR(255) NOT NULL UNIQUE,
-            taxonomy_node_id BIGINT REFERENCES taxonomy_nodes(id) ON DELETE SET NULL
-        )""",
-        # items
-        """CREATE TABLE IF NOT EXISTS items (
-            id BIGINT PRIMARY KEY,
-            name VARCHAR(255) NOT NULL UNIQUE,
-            description TEXT DEFAULT '',
-            category_group VARCHAR(255) DEFAULT '',
-            performance_type VARCHAR(255) DEFAULT '',
-            performers_count INTEGER,
-            duration_minutes INTEGER,
-            price_text VARCHAR(255) DEFAULT '',
-            image_url VARCHAR(500) DEFAULT '',
-            video_url VARCHAR(500) DEFAULT '',
-            is_active BOOLEAN NOT NULL DEFAULT TRUE
-        )""",
-        # item_contexts (M2M with metadata)
-        """CREATE TABLE IF NOT EXISTS item_contexts (
-            id BIGINT PRIMARY KEY,
-            item_id BIGINT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
-            context_id BIGINT NOT NULL REFERENCES contexts(id) ON DELETE CASCADE,
-            validity_status VARCHAR(30) DEFAULT 'valid'
-        )""",
-        # item_keywords (M2M with metadata)
-        """CREATE TABLE IF NOT EXISTS item_keywords (
-            id BIGINT PRIMARY KEY,
-            item_id BIGINT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
-            keyword_id BIGINT NOT NULL REFERENCES keywords(id) ON DELETE CASCADE,
-            source VARCHAR(100) DEFAULT ''
-        )""",
-        # legacy_interactions
-        """CREATE TABLE IF NOT EXISTS legacy_interactions (
-            id BIGINT PRIMARY KEY,
-            legacy_user_id VARCHAR(150) NOT NULL,
-            item_id BIGINT NOT NULL REFERENCES items(id) ON DELETE CASCADE,
-            context_id BIGINT REFERENCES contexts(id) ON DELETE CASCADE,
-            rating SMALLINT NOT NULL,
-            keywords JSONB DEFAULT '[]'::jsonb,
-            raw_item_name VARCHAR(255) DEFAULT '',
-            imported_at TIMESTAMPTZ NOT NULL
-        )""",
-    ]
-    with engine.begin() as conn:
-        for ddl in ddl_statements:
-            conn.execute(text(ddl))
+def ensure_schema(engine, *, skip_alembic: bool = False) -> MetaData:
+    """Bring the target schema up to head via Alembic.
+
+    Replaces the original ``CREATE TABLE IF NOT EXISTS`` block. Alembic is
+    the source of truth for the catalog + legacy_interactions + live-action
+    tables (see ``backend/migrations/``). The migration script only writes
+    data; the schema is owned by ``alembic upgrade head``.
+
+    On a database that already has data (e.g. one previously bootstrapped
+    by the legacy ``ensure_schema``) Alembic's stamp will be applied
+    automatically so ``alembic upgrade head`` is a no-op on the table side
+    and only adds the new columns (e.g. ``items.artifact_item_id``) and
+    new tables (``likes``, ``saved_items``, ``ratings``, ``interaction_logs``).
+
+    Pass ``skip_alembic=True`` to skip the schema step entirely (useful for
+    re-running only the data migration after a schema change).
+    """
+    if not skip_alembic:
+        _run_alembic_upgrade_head(engine.url)
+
     metadata = MetaData()
     metadata.reflect(bind=engine)
     return metadata
+
+
+def _run_alembic_upgrade_head(url) -> None:
+    """Invoke ``alembic upgrade head`` from the backend/ directory.
+
+    Done via subprocess so we get the same wiring the operator gets on the
+    command line (env.py reading ``$RECSYS_DATABASE_URL`` etc.). Stamping
+    the legacy bootstrap revision is automatic: ``0001_baseline`` is a
+    pure-stamp migration and 0002 backfills ``items.artifact_item_id`` from
+    rows that the legacy ``ensure_schema`` already created.
+    """
+    import subprocess
+    from pathlib import Path
+
+    backend_dir = Path(__file__).resolve().parent.parent / "backend"
+    if not (backend_dir / "alembic.ini").exists():
+        # The Alembic config is shipped with the backend; if it's missing
+        # we fall back to no-op so the rest of the migration still works.
+        print(
+            "WARN: backend/alembic.ini not found — skipping schema upgrade. "
+            "Run 'alembic upgrade head' manually if the schema is missing.",
+            file=sys.stderr,
+        )
+        return
+
+    env = os.environ.copy()
+    # Propagate the target URL to the subprocess so env.py sees it.
+    env["RECSYS_DATABASE_URL"] = str(url.render_as_string(hide_password=False))
+    # Refuse to run while DB layer is globally disabled.
+    env.setdefault("RECSYS_DB_ENABLED", "1")
+
+    print(f"Running 'alembic upgrade head' against {url} ...")
+    result = subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        cwd=str(backend_dir),
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        sys.stderr.write(result.stdout)
+        sys.stderr.write(result.stderr)
+        raise RuntimeError(
+            f"alembic upgrade head failed (exit {result.returncode})"
+        )
+    # Surface just the last info line so the migration log stays terse.
+    for line in result.stdout.strip().splitlines()[-3:]:
+        print("  ", line)
 
 
 def upsert(session, table, payload, index_elements):
@@ -280,8 +292,8 @@ def main() -> int:
     legacy = open_legacy_sqlite(sqlite_path)
     target = create_engine(args.target_url, future=True)
 
-    print("Ensuring target schema (CREATE TABLE IF NOT EXISTS)...")
-    metadata = ensure_schema(target)
+    print(f"Ensuring target schema (Alembic upgrade head, skip={args.skip_alembic})...")
+    metadata = ensure_schema(target, skip_alembic=args.skip_alembic)
 
     with Session(target) as session:
         with session.begin():

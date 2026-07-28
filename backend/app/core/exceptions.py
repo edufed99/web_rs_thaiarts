@@ -55,6 +55,41 @@ class KeywordNotFoundError(DomainError):
     code = "keyword_not_found"
 
 
+class InvalidActionError(DomainError):
+    """Raised when a /actions/* payload is malformed (unknown action, rating out of range)."""
+
+    status_code = 400
+    code = "invalid_action"
+
+
+class DbDisabledError(DomainError):
+    """Raised when an action requires the DB layer but RECSYS_DB_ENABLED=0."""
+
+    status_code = 503
+    code = "db_disabled"
+
+
+class AuthError(DomainError):
+    """Raised when authentication is missing / invalid / expired.
+
+    Maps to HTTP 401. Carries ``code="unauthorized"`` by default; specific
+    subclasses (or callers) can override the code via the constructor.
+    """
+
+    status_code = 401
+    code = "unauthorized"
+
+
+class ForbiddenError(DomainError):
+    """Raised when an authenticated user lacks the required role.
+
+    Maps to HTTP 403. Used by ``Depends(get_current_admin)``.
+    """
+
+    status_code = 403
+    code = "forbidden"
+
+
 def _payload(code: str, message: str, extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     body: Dict[str, Any] = {"code": code, "message": message}
     if extra:

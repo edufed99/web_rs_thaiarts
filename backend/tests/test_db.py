@@ -6,12 +6,14 @@ SQLite in-memory so they don't require a running Postgres server.
 from __future__ import annotations
 
 import os
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 # Re-import inside test functions because we need to flip RECSYS_DB_ENABLED.
 # We use SQLite in-memory so the tests are hermetic.
@@ -119,9 +121,195 @@ def test_session_scope_disabled_yields_none(monkeypatch):
 def test_orm_models_importable():
     from app.models_db import (
         Base, Context, TaxonomyNode, Keyword, Item,
-        ItemContext, ItemKeyword, LegacyInteraction,
+        ItemContext, ItemKeyword, LegacyInteraction, Like, Rating, SavedItem,
     )
     # All tables exist on Base.metadata
     table_names = set(Base.metadata.tables.keys())
     assert {"contexts", "taxonomy_nodes", "keywords", "items",
             "item_contexts", "item_keywords", "legacy_interactions"}.issubset(table_names)
+
+
+# ---------------------------------------------------------------------------
+# Live-action layer (likes / saved_items / ratings / interaction_logs)
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def sqlite_db_with_live_actions(monkeypatch):
+    """In-memory SQLite with items (artifact ids backfilled) + seed rows.
+
+    Returns (engine, items_by_artifact_id) so tests can assert against the
+    real ORM layer. Also monkeypatches ``app.db.get_engine`` and
+    ``session_scope`` so service code uses this engine.
+    """
+    import hashlib
+    from app.core import config as config_module
+    from app import db as db_module
+    from app.models_db import (
+        Base, Item, Like, Rating, SavedItem, LegacyInteraction,
+    )
+
+    eng = create_engine(INMEM_URL, future=True)
+    Base.metadata.create_all(eng)
+    SessionLocal = sessionmaker(bind=eng, expire_on_commit=False, future=True)
+
+    items = {
+        111: "แสดงโขน",
+        222: "ระบำ",
+        333: "ลิเก",
+    }
+    by_artifact = {}
+    with SessionLocal() as s:
+        for django_id, name in items.items():
+            aid = int(hashlib.sha256(f"item::{name}".encode("utf-8")).hexdigest()[:7], 16)
+            by_artifact[aid] = django_id
+            s.add(Item(
+                id=django_id,
+                name=name,
+                is_active=True,
+                artifact_item_id=aid,
+            ))
+        s.commit()
+
+    def fake_engine():
+        return eng
+
+    @contextmanager
+    def fake_scope():
+        sess = SessionLocal()
+        try:
+            yield sess
+            sess.commit()
+        finally:
+            sess.close()
+
+    # Patch the symbols where they are *imported into* — services do
+    # ``from ..db import session_scope`` which creates a module-local binding
+    # in their own namespace. Patching only ``app.db`` would leave the
+    # services pointing at the original generator. We patch both to be safe.
+    monkeypatch.setattr(db_module, "is_db_enabled", lambda: True)
+    monkeypatch.setattr(db_module, "get_engine", fake_engine)
+    monkeypatch.setattr(db_module, "session_scope", fake_scope)
+    from app.services import db_query as dbq_module
+    from app.services import actions as actions_module
+    monkeypatch.setattr(dbq_module, "is_db_enabled", lambda: True)
+    monkeypatch.setattr(dbq_module, "session_scope", fake_scope)
+    monkeypatch.setattr(actions_module, "is_db_enabled", lambda: True)
+    monkeypatch.setattr(actions_module, "session_scope", fake_scope)
+    db_module.reset_engine()
+    config_module.reset_settings_cache()
+    yield eng, by_artifact
+    eng.dispose()
+
+
+def test_orm_tables_include_live_action_tables():
+    from app.models_db import Base
+    table_names = set(Base.metadata.tables.keys())
+    assert {"likes", "saved_items", "ratings", "interaction_logs"}.issubset(table_names)
+
+
+def test_live_user_positive_items_merges_likes_and_high_ratings(sqlite_db_with_live_actions):
+    from app.services.db_query import live_user_positive_items
+    from app.models_db import Like, Rating
+
+    eng, by_artifact = sqlite_db_with_live_actions
+    aid_khon, aid_rabam, aid_like = (
+        next(a for a, d in by_artifact.items() if d == 111),
+        next(a for a, d in by_artifact.items() if d == 222),
+        next(a for a, d in by_artifact.items() if d == 333),
+    )
+
+    SessionLocal = sessionmaker(bind=eng, expire_on_commit=False, future=True)
+    with SessionLocal() as s:
+        s.add(Like(user_key="anon:u1", item_id=by_artifact[aid_khon]))
+        s.add(Like(user_key="anon:u1", item_id=by_artifact[aid_rabam]))
+        s.add(Rating(user_key="anon:u1", item_id=by_artifact[aid_like], rating=5))
+        s.add(Rating(user_key="anon:u1", item_id=by_artifact[aid_khon], rating=2))
+        s.commit()
+
+    pos = live_user_positive_items("anon:u1")
+    # like on khon + rabam, rating 5 on like, rating 2 on khon is negative.
+    assert aid_khon in pos
+    assert aid_rabam in pos
+    assert aid_like in pos
+
+
+def test_live_user_negative_ratings_returns_low_ratings(sqlite_db_with_live_actions):
+    from app.services.db_query import live_user_negative_ratings
+    from app.models_db import Rating
+
+    eng, by_artifact = sqlite_db_with_live_actions
+    aid_khon = next(a for a, d in by_artifact.items() if d == 111)
+    aid_rabam = next(a for a, d in by_artifact.items() if d == 222)
+
+    SessionLocal = sessionmaker(bind=eng, expire_on_commit=False, future=True)
+    with SessionLocal() as s:
+        s.add(Rating(user_key="anon:u2", item_id=by_artifact[aid_khon], rating=1))
+        s.add(Rating(user_key="anon:u2", item_id=by_artifact[aid_rabam], rating=5))
+        s.commit()
+
+    neg = live_user_negative_ratings("anon:u2", max_rating=4)
+    assert neg == {aid_khon: 1}
+
+
+def test_live_user_state_for_items_returns_per_item_state(sqlite_db_with_live_actions):
+    from app.services.db_query import live_user_state_for_items
+    from app.models_db import Like, Rating, SavedItem
+
+    eng, by_artifact = sqlite_db_with_live_actions
+    aid_khon = next(a for a, d in by_artifact.items() if d == 111)
+    aid_rabam = next(a for a, d in by_artifact.items() if d == 222)
+    aid_like = next(a for a, d in by_artifact.items() if d == 333)
+
+    SessionLocal = sessionmaker(bind=eng, expire_on_commit=False, future=True)
+    with SessionLocal() as s:
+        s.add(Like(user_key="anon:u3", item_id=by_artifact[aid_khon]))
+        s.add(SavedItem(user_key="anon:u3", item_id=by_artifact[aid_rabam]))
+        s.add(Rating(user_key="anon:u3", item_id=by_artifact[aid_like], rating=4))
+        s.commit()
+
+    state = live_user_state_for_items("anon:u3", [aid_khon, aid_rabam, aid_like])
+    assert state[aid_khon].liked is True
+    assert state[aid_khon].saved is False
+    assert state[aid_rabam].saved is True
+    assert state[aid_rabam].liked is False
+    assert state[aid_like].rating == 4
+    assert state[aid_like].liked is False
+
+
+def test_live_positive_users_per_item_artifact_joins_artifact_id(sqlite_db_with_live_actions):
+    from app.services.db_query import live_positive_users_per_item_artifact
+    from app.models_db import LegacyInteraction
+
+    eng, by_artifact = sqlite_db_with_live_actions
+    aid_khon = next(a for a, d in by_artifact.items() if d == 111)
+
+    SessionLocal = sessionmaker(bind=eng, expire_on_commit=False, future=True)
+    with SessionLocal() as s:
+        s.add(LegacyInteraction(
+            id=1, legacy_user_id="legacy1", item_id=by_artifact[aid_khon],
+            context_id=None, rating=5, keywords=[], raw_item_name="",
+            imported_at=datetime.now(timezone.utc),
+        ))
+        s.commit()
+
+    out = live_positive_users_per_item_artifact()
+    assert aid_khon in out
+    assert "legacy:legacy1" in out[aid_khon]
+
+
+def test_live_user_positive_items_returns_empty_when_db_disabled(monkeypatch):
+    from app import db as db_module
+    from app.services.db_query import live_user_positive_items
+
+    monkeypatch.setattr(db_module, "is_db_enabled", lambda: False)
+    assert live_user_positive_items("anon:nobody") == set()
+
+
+def test_django_to_artifact_translation_round_trip(sqlite_db_with_live_actions):
+    from app.services.db_query import artifact_id_to_django_id, django_id_to_artifact_id
+
+    eng, by_artifact = sqlite_db_with_live_actions
+    aid = next(iter(by_artifact.keys()))
+    django_id = by_artifact[aid]
+    assert artifact_id_to_django_id(aid) == django_id
+    assert django_id_to_artifact_id(django_id) == aid

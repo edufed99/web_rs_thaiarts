@@ -35,6 +35,21 @@ class ItemOut(BaseModel):
     keywords: List[KeywordOut] = Field(default_factory=list)
     contexts: List[ContextOut] = Field(default_factory=list)
     user_state: UserState = Field(default_factory=UserState)
+    # Display-only suitability hint, populated when an item is returned in
+    # a context that requires it (e.g. ``GET /items?context=`` or
+    # ``POST /recommendations``).  Mirrors the legacy
+    # ``catalog.views.catalog_match_percent`` heuristic and is **never**
+    # used to influence the recommendation ranking itself.
+    match_percent: Optional[int] = Field(
+        default=None,
+        ge=82,
+        le=98,
+        description="Display-only match percent in [82, 98]. Set when the item is served in a ranked context.",
+    )
+    suitability_label: Optional[str] = Field(
+        default=None,
+        description=("Thai suitability label — 'เหมาะมาก' / 'เหมาะสม' / 'เหมาะใช้ได้'. Set together with match_percent."),
+    )
 
 
 class ItemListOut(BaseModel):

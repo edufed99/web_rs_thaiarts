@@ -1,18 +1,49 @@
 """
-models_db.py — SQLAlchemy ORM models for the catalog + legacy interactions.
+models_db.py — SQLAlchemy ORM models for the catalog + legacy interactions +
+live user actions.
 
-These mirror the schema created by pipelines/migrate_sqlite_to_postgres.py.
-The backend uses them to query legacy user logs at serving time so the CF
-service can merge live positive evidence with the precomputed CF index.
+These mirror the schema managed by Alembic (see backend/migrations/).
+The backend uses them to query legacy user logs and live user actions
+(likes / ratings / saved items) at serving time so the CF service can
+merge live positive evidence with the precomputed CF index, and so the
+actions router can persist user clicks.
+
+Notes
+-----
+* ``Item.artifact_item_id`` bridges the artifact id space
+  (``stable_id("item", name)`` from the pipeline) and the legacy Django id
+  space from the imported ``items`` rows. The two never overlap; live
+  actions and CF live merge both translate through this column.
+* All column types are SQL-portable (no JSONB / ARRAY / Postgres-only
+  types) so the SQLite in-memory engine used in ``tests/test_db.py`` can
+  create the same schema.
 """
 from __future__ import annotations
 
 from datetime import datetime
 from typing import List, Optional
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, SmallInteger, String, Text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    JSON,
+    SmallInteger,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+
+# Cross-dialect big-autoincrement primary key: Postgres keeps BIGINT,
+# SQLite renders INTEGER PRIMARY KEY so the column autoincrements via
+# rowid without an explicit server-side sequence.
+BigAutoPK = BigInteger().with_variant(Integer(), "sqlite")
 
 
 class Base(DeclarativeBase):
@@ -22,7 +53,7 @@ class Base(DeclarativeBase):
 class Context(Base):
     __tablename__ = "contexts"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(BigAutoPK, primary_key=True)
     name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     group_name: Mapped[str] = mapped_column(String(255), default="")
     description: Mapped[str] = mapped_column(Text, default="")
@@ -31,7 +62,7 @@ class Context(Base):
 class TaxonomyNode(Base):
     __tablename__ = "taxonomy_nodes"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(BigAutoPK, primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     level: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     parent_id: Mapped[Optional[int]] = mapped_column(
@@ -42,7 +73,7 @@ class TaxonomyNode(Base):
 class Keyword(Base):
     __tablename__ = "keywords"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(BigAutoPK, primary_key=True)
     name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     taxonomy_node_id: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("taxonomy_nodes.id", ondelete="SET NULL"), nullable=True
@@ -51,8 +82,12 @@ class Keyword(Base):
 
 class Item(Base):
     __tablename__ = "items"
+    __table_args__ = (
+        UniqueConstraint("artifact_item_id", name="uq_items_artifact_item_id"),
+        Index("ix_items_artifact_item_id", "artifact_item_id", unique=True),
+    )
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(BigAutoPK, primary_key=True)
     name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     description: Mapped[str] = mapped_column(Text, default="")
     category_group: Mapped[str] = mapped_column(String(255), default="")
@@ -63,12 +98,15 @@ class Item(Base):
     image_url: Mapped[str] = mapped_column(String(500), default="")
     video_url: Mapped[str] = mapped_column(String(500), default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Bridge to the artifact id space used by CF indices, API responses, and
+    # the live-action tables below. Backfilled by migration 0002.
+    artifact_item_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
 
 class ItemContext(Base):
     __tablename__ = "item_contexts"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(BigAutoPK, primary_key=True)
     item_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("items.id", ondelete="CASCADE"))
     context_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("contexts.id", ondelete="CASCADE"))
     validity_status: Mapped[str] = mapped_column(String(30), default="valid")
@@ -77,7 +115,7 @@ class ItemContext(Base):
 class ItemKeyword(Base):
     __tablename__ = "item_keywords"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(BigAutoPK, primary_key=True)
     item_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("items.id", ondelete="CASCADE"))
     keyword_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("keywords.id", ondelete="CASCADE"))
     source: Mapped[str] = mapped_column(String(100), default="")
@@ -86,16 +124,151 @@ class ItemKeyword(Base):
 class LegacyInteraction(Base):
     __tablename__ = "legacy_interactions"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(BigAutoPK, primary_key=True)
     legacy_user_id: Mapped[str] = mapped_column(String(150), nullable=False)
     item_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("items.id", ondelete="CASCADE"))
     context_id: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("contexts.id", ondelete="CASCADE"), nullable=True
     )
     rating: Mapped[int] = mapped_column(SmallInteger, nullable=False)
-    keywords: Mapped[list] = mapped_column(JSONB, default=list)
+    # SQL-portable JSON. SQLAlchemy's ``JSON`` type renders as native
+    # JSON / JSONB on Postgres (with ``astext_type`` available for
+    # jsonb_path_ops queries) and as TEXT on SQLite so the test suite
+    # can keep using in-memory SQLite without a Postgres dependency.
+    keywords: Mapped[list] = mapped_column(JSON, default=list)
     raw_item_name: Mapped[str] = mapped_column(String(255), default="")
     imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+# ---------------------------------------------------------------------------
+# Live user actions
+# ---------------------------------------------------------------------------
+
+class Like(Base):
+    __tablename__ = "likes"
+    __table_args__ = (
+        UniqueConstraint("user_key", "item_id", name="uq_likes_user_item"),
+        Index("ix_likes_user_key", "user_key"),
+    )
+
+    id: Mapped[int] = mapped_column(BigAutoPK, primary_key=True)
+    user_key: Mapped[str] = mapped_column(String(150), nullable=False)
+    # FK to the catalog row (Django id) — the artifact id is recovered via
+    # Item.artifact_item_id at query time.
+    item_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("items.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class SavedItem(Base):
+    __tablename__ = "saved_items"
+    __table_args__ = (
+        UniqueConstraint("user_key", "item_id", name="uq_saved_items_user_item"),
+        Index("ix_saved_items_user_key", "user_key"),
+    )
+
+    id: Mapped[int] = mapped_column(BigAutoPK, primary_key=True)
+    user_key: Mapped[str] = mapped_column(String(150), nullable=False)
+    item_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("items.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class Rating(Base):
+    __tablename__ = "ratings"
+    __table_args__ = (
+        UniqueConstraint("user_key", "item_id", name="uq_ratings_user_item"),
+        Index("ix_ratings_user_key", "user_key"),
+    )
+
+    id: Mapped[int] = mapped_column(BigAutoPK, primary_key=True)
+    user_key: Mapped[str] = mapped_column(String(150), nullable=False)
+    item_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("items.id", ondelete="CASCADE"), nullable=False
+    )
+    # 1..5. CHECK constraint is added by migration 0003 so SQLite (no CHECK
+    # enforcement) still allows tests to insert any value while production
+    # Postgres rejects out-of-range writes.
+    rating: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
+class InteractionLog(Base):
+    """Append-only audit trail for every user action.
+
+    Mirrors ``recommender.InteractionLog`` from the legacy Django project.
+    Used by the dashboard / future analytics — not read by the recommendation
+    hot path.
+    """
+
+    __tablename__ = "interaction_logs"
+    __table_args__ = (
+        Index("ix_interaction_logs_user_key", "user_key"),
+        Index("ix_interaction_logs_action_type", "action_type"),
+        Index("ix_interaction_logs_created_at", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigAutoPK, primary_key=True)
+    user_key: Mapped[str] = mapped_column(String(150), nullable=False)
+    # SET NULL on item delete so a deleted item's history is preserved.
+    item_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("items.id", ondelete="SET NULL"), nullable=True
+    )
+    action_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    # JSON-as-string for SQLite parity. Callers use json.dumps / json.loads.
+    metadata_json: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
+class User(Base):
+    """Application user (admin slice — see ADR §11.1).
+
+    The auth slice replaces the opaque ``anon:<uuid>`` user_key with a
+    bcrypt-hashed username/password backed by this table. The first signed-up
+    user (or anyone whose username is in ``RECSYS_ADMIN_USERNAMES``) is
+    granted ``is_admin=True``; only admins can call ``/admin/*``.
+
+    Lives alongside (not replaces) the existing ``anon:<uuid>`` flow —
+    catalog browse remains anonymous-compatible via the user_key query
+    param.
+    """
+
+    __tablename__ = "users"
+    __table_args__ = (
+        Index("ix_users_username", "username", unique=True),
+    )
+
+    id: Mapped[int] = mapped_column(BigAutoPK, primary_key=True)
+    username: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(120), default="")
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 __all__ = [
@@ -107,4 +280,9 @@ __all__ = [
     "ItemContext",
     "ItemKeyword",
     "LegacyInteraction",
+    "Like",
+    "SavedItem",
+    "Rating",
+    "InteractionLog",
+    "User",
 ]

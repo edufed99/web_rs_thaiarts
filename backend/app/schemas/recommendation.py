@@ -77,6 +77,19 @@ class RecommendationResultOut(BaseModel):
         default="",
         description="Natural-language Thai explanation for the recommendation.",
     )
+    # Display-only suitability hint (see ``ItemOut.match_percent``).
+    # Every ranked row carries this; it is purely presentational and
+    # never affects the order of results.
+    match_percent: int = Field(
+        ...,
+        ge=82,
+        le=98,
+        description="Display-only match percent in [82, 98].",
+    )
+    suitability_label: str = Field(
+        ...,
+        description="Thai suitability label derived from match_percent.",
+    )
 
 
 class RecommendationResponseOut(BaseModel):

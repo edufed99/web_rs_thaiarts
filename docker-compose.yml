@@ -7,7 +7,7 @@
 #   docker compose down
 #
 # The backend reads RECSYS_DATABASE_URL; defaults to:
-#   postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/thai_arts_recommender
+#   postgresql+psycopg://postgres:postgres@127.0.0.1:5432/web_rs_thaiarts
 services:
   postgres:
     image: postgres:16-alpine
@@ -15,13 +15,13 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: thai_arts_recommender
+      POSTGRES_DB: web_rs_thaiarts
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d thai_arts_recommender"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d web_rs_thaiarts"]
       interval: 5s
       timeout: 5s
       retries: 10

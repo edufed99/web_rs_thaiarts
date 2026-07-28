@@ -11,15 +11,25 @@ numpy>=1.26.0
 pandas>=2.0.0
 pyarrow>=14.0.0
 
-# Database (PostgreSQL via SQLAlchemy + asyncpg)
+# Database (PostgreSQL via SQLAlchemy + psycopg sync driver)
 sqlalchemy>=2.0.30
-asyncpg>=0.29.0
+psycopg[binary]>=3.1.0
 alembic>=1.13.0
 
-# Password hashing for user auth (used by /api/users endpoints)
-passlib[bcrypt]>=1.7.4
-# python-jose for future JWT support
-# python-jose[cryptography]>=3.3.0
+# Auth slice (admin ingest — see ADR §11.1)
+# bcrypt is used directly (no passlib wrapper) to avoid the 72-byte password
+# truncation footgun in older bcrypt bindings.
+bcrypt>=4.1.0
+pyjwt>=2.8.0
+cryptography>=42.0.0
+
+# Live-ingest slice (admin adds new items at runtime — see ADR §3)
+# E5 model is ~2.5 GB; downloaded from HuggingFace on the first ingest.
+# Set RECSYS_E5_ENABLED=0 in CI / tests to skip model load entirely.
+sentence-transformers>=3.0.0
+torch>=2.1.0
+google-generativeai>=0.7.0
+pythainlp>=4.0.0
 
 # Testing
 pytest>=8.0.0

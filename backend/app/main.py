@@ -26,7 +26,7 @@ from .core.exceptions import (
     register_exception_handlers,
 )
 from .model_loader import ArtifactLoader, set_singleton
-from .routers import catalog, health, legacy, metrics, recommendations
+from .routers import actions, admin, auth, catalog, health, legacy, metrics, recommendations
 
 logger = logging.getLogger("recsys")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -91,6 +91,9 @@ def create_app() -> FastAPI:
     app.include_router(catalog.router)
     app.include_router(metrics.router)
     app.include_router(legacy.router)
+    app.include_router(actions.router)
+    app.include_router(auth.router)
+    app.include_router(admin.router)
 
     return app
 

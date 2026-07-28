@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Suspense, useEffect, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { EmptyState } from "@/components/EmptyState";
@@ -12,7 +12,10 @@ import { ApiClientError, postRecommendations } from "@/lib/api";
 import type {
   RecommendationRequestIn,
   RecommendationResponseOut,
+  UserState,
 } from "@/lib/types";
+import { useAuthHeaders } from "@/lib/useAuthHeaders";
+import { getUserKey } from "@/lib/user";
 
 function ResultsContent() {
   const params = useSearchParams();
@@ -32,6 +35,13 @@ function ResultsContent() {
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | undefined>(undefined);
   const [reloadKey, setReloadKey] = useState(0);
+  // SSR-safe user key. Initialized to "" on the server, replaced on mount.
+  const [userKey, setUserKey] = useState<string>("");
+  const authHeaders = useAuthHeaders();
+
+  useEffect(() => {
+    setUserKey(getUserKey());
+  }, []);
 
   useEffect(() => {
     if (!contextId || isNaN(contextId)) {
@@ -47,7 +57,8 @@ function ResultsContent() {
       keyword_ids: keywordIds,
       top_k: topK,
     };
-    postRecommendations(body)
+    if (userKey) body.user_key = userKey;
+    postRecommendations(body, authHeaders)
       .then((resp) => {
         if (!cancelled) setData(resp);
       })
@@ -63,23 +74,25 @@ function ResultsContent() {
     return () => {
       cancelled = true;
     };
-  }, [contextId, topK, keywordsCsv, reloadKey]);
+  }, [contextId, topK, keywordsCsv, reloadKey, userKey, authHeaders]);
 
-  if (error) {
+  const handleUserStateChange = useCallback((itemId: number, next: UserState) => {
+    setData((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        results: prev.results.map((r) =>
+          r.item.id === itemId
+            ? { ...r, item: { ...r.item, user_state: next } }
+            : r,
+        ),
+      };
+    });
+  }, []);
+
+  const headerLabel = useMemo(() => {
+    if (!data) return null;
     return (
-      <ErrorState
-        message={error}
-        code={errorCode}
-        onRetry={() => setReloadKey((k) => k + 1)}
-      />
-    );
-  }
-  if (!data) {
-    return <LoadingState message="กำลังคำนวณคำแนะนำ..." />;
-  }
-
-  return (
-    <div style={{ display: "grid", gap: "1rem" }}>
       <section
         style={{
           padding: "1rem 1.25rem",
@@ -99,7 +112,25 @@ function ResultsContent() {
           </p>
         ) : null}
       </section>
+    );
+  }, [data]);
 
+  if (error) {
+    return (
+      <ErrorState
+        message={error}
+        code={errorCode}
+        onRetry={() => setReloadKey((k) => k + 1)}
+      />
+    );
+  }
+  if (!data) {
+    return <LoadingState message="กำลังคำนวณคำแนะนำ..." />;
+  }
+
+  return (
+    <div style={{ display: "grid", gap: "1rem" }}>
+      {headerLabel}
       {data.results.length === 0 ? (
         <EmptyState
           title="ไม่มีผลลัพธ์"
@@ -108,7 +139,14 @@ function ResultsContent() {
       ) : (
         <div style={{ display: "grid", gap: "0.75rem" }}>
           {data.results.map((r) => (
-            <RecommendationCard key={r.item.id} result={r} />
+            <RecommendationCard
+              key={r.item.id}
+              result={r}
+              userKey={userKey}
+              contextId={data.selected_context.id}
+              requestId={data.request_id}
+              onUserStateChange={handleUserStateChange}
+            />
           ))}
         </div>
       )}

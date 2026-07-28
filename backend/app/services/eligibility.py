@@ -72,7 +72,11 @@ def get_context_valid_items(
         pool = _concat(hit, miss).reset_index(drop=True)
 
     if max_cands is not None and max_cands > 0:
-        adaptive_min = min(min_cands, len(pool), max_cands)
+        # Adaptive fill: if cap < adaptive_min, expand back to adaptive_min.
+        # Note: adaptive_min is min(min_cands, len(pool)) — without the max_cands
+        # bound. This matches the legacy behaviour where the cap is a target
+        # but a minimum pool size is enforced when possible.
+        adaptive_min = min(min_cands, len(pool))
         capped = pool.iloc[:max_cands]
         if len(capped) < adaptive_min:
             selected_ids = set(capped["item_id"].astype(int))

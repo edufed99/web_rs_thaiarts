@@ -74,8 +74,20 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def _validation_handler(_request: Request, exc: RequestValidationError):
-        # Flatten Pydantic errors into a readable summary.
-        first = exc.errors()[0] if exc.errors() else {}
+        # Flatten Pydantic errors into a readable summary. We coerce error
+        # contexts to strings because some contexts contain non-JSON types
+        # (e.g. ValueError instances raised by validators).
+        errors = []
+        for err in exc.errors():
+            ctx = err.get("ctx")
+            ctx_str = {k: str(v) for k, v in ctx.items()} if isinstance(ctx, dict) else None
+            errors.append({
+                "loc": list(err.get("loc", [])),
+                "msg": str(err.get("msg", "")),
+                "type": str(err.get("type", "")),
+                "ctx": ctx_str,
+            })
+        first = errors[0] if errors else {}
         loc = ".".join(str(p) for p in first.get("loc", []))
         msg = first.get("msg", "Invalid request")
         message = f"{loc}: {msg}" if loc else msg
@@ -84,6 +96,6 @@ def register_exception_handlers(app: FastAPI) -> None:
             content=_payload(
                 "validation_error",
                 message,
-                {"errors": exc.errors()},
+                {"errors": errors},
             ),
         )

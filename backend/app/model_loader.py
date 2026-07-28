@@ -233,11 +233,17 @@ class ArtifactLoader:
 
 
 def _ensure_list(value):
-    """Coerce None / NaN / ndarray to a Python list."""
+    """Coerce None / NaN / ndarray to a Python list.
+
+    Strings are treated as scalar (wrapped to a single-element list), not as
+    iterables of characters.
+    """
     if value is None:
         return []
     if isinstance(value, list):
         return value
+    if isinstance(value, (str, bytes)):
+        return [value]
     try:
         import pandas as pd  # local import to avoid touching module-level import cost
         if pd.isna(value):

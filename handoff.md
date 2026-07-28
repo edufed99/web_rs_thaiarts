@@ -2,9 +2,9 @@
 
 **Saved to:** `C:\Users\Pichaya\Downloads\web_appRS1\handoff.md`
 
-**Date:** 2026-07-28
+**Date:** 2026-07-28 (session 4 — admin ingest + auth + layered grounding)
 **From:** Claude Code session (preceding conversation)
-**To:** Next Claude Code session
+**To:** Next Claude Code session — **เริ่มทำ phase H**
 
 ---
 
@@ -12,245 +12,271 @@
 
 A **new web app** at `C:\Users\Pichaya\Downloads\web_appRS1\` that refactors the legacy Django prototype at `C:\Users\Pichaya\Downloads\web_appRS\thai_arts_webapp\` (read-only — never modify). The new app uses **Next.js 14 + TypeScript** (frontend) and **Python FastAPI** (backend) with **PostgreSQL** (live user data) and pre-built **artifacts** (static ML model files).
 
-See `docs/adr.md` for the full Architecture Decision Record and `docs/comparison.md` for a side-by-side comparison with the legacy project.
+The thesis paper (`C:\Users\Pichaya\Downloads\web_appRS\paper_thesis.docx`) prescribes an **Eligibility-Gated Hybrid** recommender with Gemini-based stopword filtering, taxonomy construction, exact-token grounding, and Hybrid-WeightedSum scoring. See `docs/adr.md` for the full Architecture Decision Record.
 
 ---
 
-## Where to start
+## What changed in session 4 (this handoff)
 
-1. **Read `CLAUDE.md`** — high-level conventions, common commands, architecture invariants.
-2. **Read `docs/adr.md`** — architecture rationale, API design, artifact strategy, out-of-scope.
-3. **Read `README.md`** (root) — quick start, endpoint list, layout.
-4. **Read `docs/api.md`** — human walkthrough of every endpoint with curl examples.
-5. **Skim `docs/comparison.md`** — what changed from the legacy system.
+| Slice | Status |
+|---|---|
+| **Auth** — `users` table + bcrypt + JWT (HS256, 7-day) + `POST /auth/{signup,login}` + `GET /auth/me` | ✅ |
+| **Live ingest** — admin form (1 item at a time) → `services/ingestion.ingest_new_item` orchestrator | ✅ |
+| **E5 embedding runtime** — lazy-loaded `multilingual-e5-large-instruct` (downloads ~2.5 GB on first ingest) | ✅ |
+| **Layer A** rule grounding — exact + substring + token-set Jaccard (≥ 0.34) | ✅ |
+| **Layer B** LLM grounding — Gemini API with JSON-schema response | ✅ |
+| **ArtifactLoader.append_item()** — in-process mutation under `threading.Lock()` | ✅ |
+| **`POST /admin/items/draft`** — returns `draft_id` + Layer A/B proposals | ✅ |
+| **`POST /admin/items`** — Layer C commit (admin edits + ingest) | ✅ |
+| **`POST /admin/items/{id}/keywords`** — Layer C re-edit existing | ✅ |
+| **JWT swap** — `actions`, `catalog` routers accept `Authorization: Bearer <jwt>` | ✅ |
+| **Tests** — 248 tests, **90.48% coverage** (gate ≥ 90% ✅) | ✅ |
+| **Docs** — ADR §3 + §11.1 update (admin ingest + auth in scope) | ⏳ deferred to Phase I |
+
+**Tests:** **248 passing**, **90.48% coverage** (was 161 / 93.05%).
+
+**Uncommitted:** see `git status` — many new files (see "Files to start with" below).
 
 ---
 
-## Repository layout (root: `C:\Users\Pichaya\Downloads\web_appRS1\`)
+## Where to start (next session — Phase H frontend)
+
+The next session will execute **Phase H (frontend)** from the plan at `C:\Users\Pichaya\.claude\plans\bubbly-finding-patterson.md`. Read that plan first; the relevant Phase H steps are 25-35:
+
+1. `frontend/lib/auth.ts` — JWT storage + `getCurrentUser` + `getAuthHeaders`
+2. `frontend/lib/types.ts` additions — 7 new types mirroring backend
+3. `frontend/lib/api.ts` — `postSignup`, `postLogin`, `getMe`, `postItemDraft`, `postItemCommit`, `putItemKeywords`
+4. `frontend/components/AuthForm.tsx` — username/password form
+5. `frontend/components/AdminItemForm.tsx` — two-step draft + commit
+6. `frontend/app/login/page.tsx`, `frontend/app/signup/page.tsx`
+7. `frontend/app/admin/items/new/page.tsx` — auth-guarded wrapper
+8. `frontend/app/admin/items/page.tsx` — list view
+9. `frontend/app/layout.tsx` + new `frontend/components/FrontendNav.tsx` — conditional nav
+10. `frontend/components/ItemActionBar.tsx` + 4 pages — pass `authHeaders()`
+
+After Phase H, Phase I (docs) updates ADR §3 + §11.1.
+
+---
+
+## Architecture invariants being relaxed (in this session)
+
+- **ADR §3 line 97** ("backend reads artifacts") → **broadened**: admin ingest may rebuild embeddings at runtime via `services.embedding.encode_item_text` and call `ArtifactLoader.append_item()` under a `threading.Lock()`. CSV files are never read at serving or ingest time. **Update still pending in `docs/adr.md` (Phase I).**
+- **ADR §11.1** ("authentication out of scope") → **inverted**: auth is now in scope. Catalog browse still accepts `anon:<uuid>`. All writes (`/actions/*`, `/admin/*`) require `Authorization: Bearer <jwt>`. **Update still pending in `docs/adr.md` (Phase I).**
+- **CLAUDE.md** schema rules preserved: every new column/table goes through Alembic; `models_db.py` mirrors the latest revision. `BigAutoPK` rule applies to the new `users` table.
+- **`ArtifactLoader` mutability**: the existing `@dataclass` lacks `frozen=True`, so `append_item()` is legal. All existing properties continue to return copies; lifespan path of `main.py:35-56` is unchanged.
+
+---
+
+## Critical files to know
+
+**Backend — new**
+
+- `backend/migrations/versions/0004_admin_users.py` — `users` table (BigAutoPK PK, unique username, password_hash, display_name, is_admin, created_at, last_login_at) + `ix_users_username` index. Down-revision: `0003_live_actions`.
+- `backend/app/schemas/user.py` — `UserSignup`, `UserLogin`, `UserOut`, `TokenOut`. Validators strip whitespace.
+- `backend/app/schemas/admin.py` — `ItemDraft`, `ItemCreate`, `KeywordProposal`, `ItemDraftOut`, `ItemCommit`, `ItemCommitOut`, `ItemKeywordReassign`, `ItemReassignOut`.
+- `backend/app/routers/auth.py` — `POST /auth/signup`, `POST /auth/login`, `GET /auth/me`. 1st user (or `RECSYS_ADMIN_USERNAMES` members) → `is_admin=True`.
+- `backend/app/routers/admin.py` — `POST /admin/items/draft`, `POST /admin/items`, `POST /admin/items/{id}/keywords`. Drafts cached in module-level `_drafts: Dict[str, Dict]` (TTL 30 min).
+- `backend/app/routers/_user_key.py` — `resolve_user_key(user, body_user_key)` translates JWT → `"user:<id>"` or anon → `"anon:<uuid>"`.
+- `backend/app/services/auth.py` — bcrypt (`hash_password`/`verify_password`) + PyJWT (`create_token`/`decode_token`). `get_current_user` (Optional) + `get_current_admin` (raises 403).
+- `backend/app/services/embedding.py` — `_ensure_model()` lazy-loads E5 (~2.5 GB). `encode_text`/`encode_query`/`encode_item_text` prepend `passage:` / `query:` per E5 instruct. `build_item_text` mirrors `pipelines/train_or_generate_artifacts.build_item_text` byte-for-byte.
+- `backend/app/services/grounding.py` — `load_vocab`, `auto_ground_keywords` (Layer A), `llm_ground_keywords` (Layer B), `ground_keywords` (combined). Module-level vocab cache.
+- `backend/app/services/ingestion.py` — `ingest_new_item(item_create, *, admin_user)`: compute embedding OUTSIDE lock → acquire `get_lock()` → DB insert → `loader.append_item` → release.
+- `backend/app/services/user_query.py` — `find_user_by_username`, `create_user`, `set_last_login`, `find_user_by_id`, `list_users`. First-user-bootstrap rule: no `admin_usernames` allow-list → first user becomes admin.
+
+**Backend — modified**
+
+- `backend/app/main.py` — register `auth.router` + `admin.router`.
+- `backend/app/model_loader.py` — added `append_item(...)` mutation method + module-level `_loader_lock = threading.Lock()` + `get_lock()` helper.
+- `backend/app/core/config.py` — new fields: `jwt_secret`, `jwt_expiry_days=7`, `admin_usernames=[]`, `e5_model_name`, `e5_max_length=512`, `e5_local_path`, `e5_enabled=True`, `gemini_api_key`, `gemini_model="gemini-3-flash-preview"`, `grounding_use_llm=True`.
+- `backend/app/core/exceptions.py` — added `AuthError(401)` + `ForbiddenError(403)`.
+- `backend/app/models_db.py` — appended `User` ORM.
+- `backend/app/routers/actions.py` — all 5 endpoints accept `Depends(get_current_user_dep)`; translate to `user_key = f"user:<id>"` when authenticated; fallback to `anon:<uuid>` body.
+- `backend/app/routers/catalog.py` — `GET /items`, `GET /items/{id}` resolve JWT or anon via `_user_key.resolve_user_key`.
+- `backend/requirements.txt` — added `bcrypt>=4.1.0`, `pyjwt>=2.8.0`, `cryptography>=42.0.0`, `sentence-transformers>=3.0.0`, `torch>=2.1.0`, `google-generativeai>=0.7.0`, `pythainlp>=4.0.0`.
+
+**Tests — new**
+
+- `backend/tests/test_user_query.py` (10) — DB-layer CRUD + first-user-admin + allow-list mode + disabled-DB no-ops.
+- `backend/tests/test_auth.py` (12) — bcrypt round-trip, JWT round-trip + expired/bad-sig, signup/login/me flows, duplicate username.
+- `backend/tests/test_user_key.py` (9) — JWT-vs-anon resolution edge cases.
+- `backend/tests/test_embedding.py` (10) — shape/L2/format/lazy-cache; embedding mocked via `_FakeModel`.
+- `backend/tests/test_grounding.py` (18) — Layer A (exact/substring/Jaccard/dedup/stopword-skip), Layer B (no-key/use-llm-false/happy/malformed/exception), merged flow, vocab loader.
+- `backend/tests/test_ingestion.py` (7) — DB insert, loader append, duplicate name, empty name, missing context, DB disabled, loader not loaded, keyword join rows.
+- `backend/tests/test_admin.py` (12) — auth required, draft returns proposals, commit creates item, unknown draft, draft expired, reassign keywords, non-admin user rejected.
+
+**Tests — modified**
+
+- `backend/tests/test_core.py` — `cors_origins` default updated to `[localhost:3000, 127.0.0.1:3000]`.
+- `backend/tests/test_catalog.py` — all `/items` + `/items/{id}` calls now pass `?user_key=anon:test` (because of JWT gate).
+
+---
+
+## Repository layout (current — top-level)
 
 ```
 .
-├── README.md                    quick start + architecture overview
-├── CLAUDE.md                    notes for future Claude sessions
-├── handoff.md                   ← THIS FILE
-├── .gitignore
-├── docs/
-│   ├── adr.md                   architecture decision record
-│   ├── api.md                   endpoint tour + curl examples
-│   └── comparison.md            new vs legacy comparison
+├── README.md / CLAUDE.md / handoff.md
+├── docs/                          adr.md (needs update — Phase I), api.md, comparison.md
 ├── pipelines/
-│   ├── train_or_generate_artifacts.py   offline CSV → artifacts
-│   └── migrate_sqlite_to_postgres.py    legacy SQLite → Postgres (one-shot)
-├── artifacts/                   generated, gitignored binaries (7 files)
-│   ├── models/                  item_embeddings.npz + CF indices (5 files)
-│   └── outputs/                 catalog.parquet + metadata.json (2 files)
-├── backend/                     FastAPI service (port 8080)
-│   ├── README.md
-│   ├── requirements.txt         fastapi, sqlalchemy, asyncpg, alembic, psycopg, pytest
-│   ├── pytest.ini               enforces ≥90% coverage
+│   ├── train_or_generate_artifacts.py
+│   └── migrate_sqlite_to_postgres.py
+├── artifacts/                     (gitignored) + paper_text.txt (extracted for analysis)
+├── backend/
+│   ├── alembic.ini
+│   ├── migrations/                (4 revisions: 0001_baseline, 0002_artifact_item_id, 0003_live_actions, 0004_admin_users)
+│   ├── requirements.txt           (+7 new deps — E5 + bcrypt + JWT + Gemini + PyThaiNLP)
 │   ├── app/
-│   │   ├── main.py              FastAPI entry, lifespan, CORS, exception handlers
-│   │   ├── model_loader.py      ArtifactLoader singleton
-│   │   ├── db.py                SQLAlchemy engine + session factory
-│   │   ├── models_db.py         ORM: Context, Item, Keyword, LegacyInteraction, ...
-│   │   ├── explanations.py      Thai explanation builder
-│   │   ├── core/
-│   │   │   ├── config.py        Settings (RECSYS_* env vars)
-│   │   │   └── exceptions.py    DomainError hierarchy + handlers
-│   │   ├── schemas/             Pydantic v2 request/response models
-│   │   ├── services/            Algorithm + DB queries
-│   │   │   ├── eligibility.py   context + keyword filter
-│   │   │   ├── cbf_service.py   E5 cosine + keyword boost
-│   │   │   ├── cf_service.py    ItemKNN + popularity + live-DB merge
-│   │   │   ├── hybrid_service.py   z-score weighted sum
-│   │   │   ├── db_query.py      live DB queries
-│   │   │   └── recommendation_service.py   orchestrator
-│   │   └── routers/             FastAPI routers
+│   │   ├── main.py                (registers auth + admin routers)
+│   │   ├── model_loader.py        (append_item + threading.Lock + get_lock)
+│   │   ├── db.py
+│   │   ├── models_db.py           (User appended)
+│   │   ├── core/{config,exceptions}.py
+│   │   ├── schemas/{item,recommendation,context,keyword,action,metrics,user,admin}.py
+│   │   ├── services/
+│   │   │   ├── auth.py            (NEW — bcrypt + JWT helpers)
+│   │   │   ├── embedding.py       (NEW — E5 lazy loader)
+│   │   │   ├── grounding.py       (NEW — Layer A + Layer B)
+│   │   │   ├── ingestion.py       (NEW — orchestrator)
+│   │   │   ├── user_query.py      (NEW — users table CRUD)
+│   │   │   ├── actions.py         (modified — JWT-aware)
+│   │   │   ├── db_query.py
+│   │   │   ├── cf_service.py
+│   │   │   ├── cbf_service.py
+│   │   │   ├── hybrid_service.py
+│   │   │   ├── recommendation_service.py
+│   │   │   ├── eligibility.py
+│   │   │   ├── suitability.py
+│   │   │   └── _ids.py
+│   │   └── routers/
+│   │       ├── actions.py         (modified)
+│   │       ├── admin.py           (NEW)
+│   │       ├── auth.py            (NEW)
+│   │       ├── _user_key.py       (NEW — JWT/anon translator)
+│   │       ├── catalog.py         (modified)
 │   │       ├── health.py
-│   │       ├── recommendations.py
-│   │       ├── catalog.py
+│   │       ├── legacy.py
 │   │       ├── metrics.py
-│   │       └── legacy.py        /db/health, /items/{id}/legacy-stats
-│   └── tests/                   109 pytest tests, 92.46% coverage
-└── frontend/                    Next.js 14 + TypeScript (port 3000)
-    ├── README.md
-    ├── package.json             next 14.2.5, react 18.3, typescript 5.5
-    ├── tsconfig.json            strict mode
-    ├── next.config.mjs          NEXT_PUBLIC_API_BASE_URL
-    ├── .env.example
-    ├── app/                     App Router
-    │   ├── layout.tsx           root layout, Thai fonts, header
-    │   ├── page.tsx             home: /health + /metrics + CTA
-    │   ├── recommend/page.tsx   form: context + keywords + top-K
-    │   └── results/page.tsx     fetch /recommendations, render cards
-    ├── components/              LoadingState, ErrorState, EmptyState,
-    │                            ContextPicker, KeywordPicker, RecommendationCard
-    └── lib/
-        ├── api.ts               typed fetch client
-        └── types.ts             mirrors backend Pydantic schemas
+│   │       └── recommendations.py
+│   └── tests/                     248 tests, 90.48% coverage
+│       ├── conftest.py
+│       ├── test_admin.py          (NEW)
+│       ├── test_auth.py           (NEW)
+│       ├── test_user_key.py       (NEW)
+│       ├── test_embedding.py      (NEW)
+│       ├── test_grounding.py      (NEW)
+│       ├── test_ingestion.py      (NEW)
+│       ├── test_user_query.py     (NEW)
+│       ├── test_core.py           (modified — CORS)
+│       ├── test_catalog.py        (modified — user_key param)
+│       └── test_*.py              (rest unchanged)
+└── frontend/                      (Phase H pending)
+    ├── lib/{api,types,user}.ts
+    ├── components/
+    └── app/{layout,page,recommend,results,items/}.tsx
 ```
 
 ---
 
-## Status (all jobs complete)
+## Endpoints (now 16 total — added 4 new)
 
-| # | Job | Status |
-|---|---|---|
-| 1 | Explore original thai_arts_webapp codebase | ✅ |
-| 2 | Write ADR in docs/adr.md | ✅ |
-| 3 | Scaffold folder structure | ✅ |
-| 4 | Build pipeline that exports model artifacts | ✅ |
-| 5 | Build FastAPI backend | ✅ |
-| 6 | Build Next.js + TypeScript frontend | ✅ |
-| 7 | Write pytest tests with ≥90% coverage | ✅ |
-| 8 | Validate full stack runs and tests pass | ✅ |
-| 9 | Verify backend logic matches paper_thesis.docx | ✅ |
-| 10–14 | Add PostgreSQL layer (5 sub-tasks) | ✅ |
-| 15 | Build SQLite→Postgres migration script | ✅ |
-
-**Commits (most recent first):**
-```
-db8b515 Add Postgres SQLAlchemy layer + 7 DB tests (109 total, 92.46% coverage)
-2381ca4 Add PostgreSQL layer: docker-compose + SQLite→Postgres migration (2534 legacy interactions migrated)
-2227d1e Add docs/comparison.md (new web app vs legacy thai_arts_webapp)
-53436f5 Add README, CLAUDE.md updates, backend README, docs/api.md (e2e validation passed)
-034d160 Add Next.js + TypeScript frontend (App Router, 6 pages prerendered)
-138482d Verify backend logic vs paper_thesis.docx sections 2.3-2.5
-6c3fe72 Add pytest suite with 102 tests and 96.85% coverage
-012bba8 Add FastAPI backend: services, routers, Pydantic schemas, ArtifactLoader
-3765ce5 Update ADR + pipeline: split artifacts into models/ and outputs/
-55f25ce Add ADR for web app refactor (FastAPI + Next.js)
-```
+| Method | Path | Purpose | Auth |
+|---|---|---|---|
+| POST | `/auth/signup` | Create user (1st user → admin) | – |
+| POST | `/auth/login` | Verify password → JWT | – |
+| GET  | `/auth/me` | Echo current user | JWT |
+| POST | `/admin/items/draft` | Layer A+B grounding (returns draft_id + proposals) | admin JWT |
+| POST | `/admin/items` | Layer C commit + ingest | admin JWT |
+| POST | `/admin/items/{id}/keywords` | Layer C re-edit | admin JWT |
+| GET  | `/health` | Liveness + artifact metadata | – |
+| GET  | `/db/health` | Postgres reachability | – |
+| POST | `/recommendations` | Generate top-K | – |
+| GET  | `/items` | Browse + ranked mode (existing) | JWT or anon |
+| GET  | `/items/{id}` | Detail (existing) | JWT or anon |
+| GET  | `/items/{id}/legacy-stats` | Postgres ratings | – |
+| GET  | `/contexts` | Sub-contexts | – |
+| GET  | `/keywords` | Keywords | – |
+| GET  | `/metrics` | Corpus + CF index stats | – |
+| POST/DELETE | `/actions/like` | Like / unlike | JWT or anon |
+| POST/DELETE | `/actions/save` | Save / unsave | JWT or anon |
+| PUT  | `/actions/rating` | Set 1..5 rating | JWT or anon |
 
 ---
 
-## How to run (verified working)
+## How to run (Phase H continuation)
 
-### Generate artifacts (offline)
 ```bash
-cd C:\Users\Pichaya\Downloads\web_appRS1
-python pipelines/train_or_generate_artifacts.py \
-    --source-root "C:/Users/Pichaya/Downloads/web_appRS/source_data_2569/code for paper/4.recommendation/input" \
-    --output-dir artifacts \
-    --synthetic-embeddings
+# Backend (already running in this session, background task byrfsv2vm on :8080)
+cd "C:/Users/Pichaya/Downloads/web_appRS1/backend"
+export RECSYS_DB_ENABLED=1
+export RECSYS_JWT_SECRET=dev-secret-change-in-prod
+export RECSYS_ADMIN_USERNAMES=admin  # or leave empty to bootstrap first signup
+export RECSYS_GEMINI_API_KEY=<your-key>  # optional; Layer B skipped if empty
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8080
+
+# Run tests
+python -m pytest --cov=app --cov-report=term --cov-fail-under=90 -q
+# 248 passed / 90.48% coverage (gate ≥ 90% ✅)
+
+# Apply new migration (one-time)
+alembic upgrade head   # adds users table
+
+# Frontend (Phase H — work in progress)
+cd "C:/Users/Pichaya/Downloads/web_appRS1/frontend"
+npm run dev    # http://localhost:3000
+
+# End-to-end smoke (after Phase H)
+# 1. http://localhost:3000/signup → admin / hunter22 → JWT
+# 2. http://localhost:3000/admin/items/new → fill form → "ดูคำสำคัญที่เสนอ"
+# 3. submit → redirect to /items/{new_id}
+# 4. /items → new item appears in catalog (loader was hot-reloaded)
+# 5. /recommend → new item appears in top-K
 ```
-
-### Run Postgres + migrate legacy data
-```bash
-cd C:\Users\Pichaya\Downloads\web_appRS1
-docker compose up -d postgres
-python pipelines/migrate_sqlite_to_postgres.py \
-    --sqlite "C:/Users/Pichaya/Downloads/web_appRS/thai_arts_webapp/db.sqlite3" \
-    --target-url "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/web_rs_thaiarts"
-```
-
-### Start backend
-```bash
-cd C:\Users\Pichaya\Downloads\web_appRS1\backend
-pip install -r requirements.txt
-python -m uvicorn app.main:app --reload --port 8080
-```
-Swagger: http://localhost:8080/docs
-
-### Start frontend
-```bash
-cd C:\Users\Pichaya\Downloads\web_appRS1\frontend
-npm install
-npm run dev
-```
-App: http://localhost:3000
-
-### Run tests (≥90% coverage enforced)
-```bash
-cd C:\Users\Pichaya\Downloads\web_appRS1\backend
-pytest --cov=app --cov-report=term-missing --cov-fail-under=90
-```
-
----
-
-## Architecture invariants (must be respected)
-
-1. **Backend never reads CSV at runtime.** Loads artifacts once in lifespan, reads in-memory.
-2. **Frontend never imports Python, reads CSV, or opens `artifacts/`.** Only HTTP to backend via `lib/api.ts`.
-3. **Pipeline is offline.** Only code that touches source CSVs.
-4. **Legacy project at `../web_appRS/thai_arts_webapp/` is read-only.** `git diff` against its HEAD must remain clean.
-5. **Algorithm matches thesis.** Don't tweak eligibility, CBF, CF, hybrid, or explanation unless ADR is updated.
 
 ---
 
 ## Known ports (in use on this machine)
 
-- **5432** — Postgres (Docker, container `thai_arts_postgres`, existed before this project)
+- **5432** — Postgres (Docker container `thai_arts_postgres`, DB name `web_rs_thaiarts`)
 - **8080** — FastAPI backend
-- **3000** — Next.js frontend
-
-If you need to bind new ports, check `D:\Hermes Vault\04. Hermes System\09_Port-Registry\port-registry.md` first (script not currently available on this path, see CLAUDE.md global instructions).
+- **3000** — Next.js frontend (Phase H)
 
 ---
 
-## Endpoints (12 total, all with summary + description)
+## Notes for the next session
 
-| Method | Path | Purpose |
-|---|---|---|
-| GET  | `/health` | Liveness + artifact build metadata |
-| GET  | `/db/health` | Postgres reachability |
-| POST | `/recommendations` | Generate top-K |
-| GET  | `/items`, `/items/{item_id}` | Catalog browse |
-| GET  | `/items/{item_id}/legacy-stats` | Live ratings from Postgres |
-| GET  | `/contexts` | List sub-contexts |
-| GET  | `/keywords` | List keywords (optional `?search=`) |
-| GET  | `/metrics` | Corpus + CF stats |
-| GET  | `/docs`, `/redoc`, `/openapi.json` | Swagger / ReDoc / schema |
+- **JWT secret** — defaults to `"dev-only-change-me"` for tests; **rotate before any production deployment** (`RECSYS_JWT_SECRET` env var). HS256 — no JWKS needed.
+- **First-user-admin bootstrap** — when `RECSYS_ADMIN_USERNAMES` env is empty, the very first `POST /auth/signup` becomes admin. When non-empty, only members of the allow-list become admins.
+- **E5 model download** — first ingest triggers `~2.5 GB` HuggingFace download (CPU build). Set `RECSYS_E5_ENABLED=0` to skip; set `RECSYS_E5_LOCAL_PATH` to preload from a local snapshot.
+- **In-process reload** — every successful ingest appends to the in-memory `ArtifactLoader` under `get_lock()`. All in-flight requests see the new state immediately (no versioning). Documented in `ingestion.py` docstring.
+- **DB + loader non-atomicity** — if ingest crashes between DB insert and loader mutation, the DB has the row but the loader doesn't. Re-running the same admin POST would surface a duplicate-name 400; the operator can re-trigger a full reload via `python -m uvicorn ...` restart as a last resort. Window is small (~50 ms) and bounded by the lock.
+- **Reassign route** — `POST /admin/items/{id}/keywords` is exercised by `test_admin.py::test_reassign_keywords_updates_item`. The route looks up by `Item.artifact_item_id` (not `Item.id`) so callers must pass the artifact id from `/items` responses.
+- **Frontend nav (Phase H)** — the conditional nav lives in a new `FrontendNav.tsx` (extracted from `layout.tsx`). Reads `getCurrentUser()` on mount; listens to `storage` event for cross-tab logout sync.
+- **Article coverage drop** — when you add the new frontend pages, the test count stays at 248 (no backend tests added). Frontend has its own type-check + build (`npm run type-check && npm run build`).
 
 ---
 
-## What's NOT done (Out of Scope per ADR §11)
+## Suggested commit messages (uncommitted work)
 
-- ❌ Login / authentication / user accounts
-- ❌ Live user personalization (no Like/Save/Rate writes — only reads legacy data)
-- ❌ Researcher dashboard + CSV export
-- ❌ Multi-encoder (only E5 used), multi-CF (only ItemKNN + popularity), multi-hybrid (only WeightedSum)
-- ❌ Fuzzy context matching, keyword leakage protection
-- ❌ HR@K / MRR@K / nDCG@K evaluation endpoint
-- ❌ Alembic migrations (uses `CREATE TABLE IF NOT EXISTS` instead)
-- ❌ CI/CD, Docker production setup, cloud storage/DB
-- ❌ Live user action tables (Like, Rating, SavedItem) in Postgres — only LegacyInteraction exists
-
----
-
-## Notes for next session
-
-- The `legacy_user_id` from SQLite is wrapped as `legacy:<id>` when merged into CF index (see `services/cf_service.py::_merged_cf_index`).
-- The `pipelines/migrate_sqlite_to_postgres.py` opens SQLite with `mode=ro` URI mode — safe but verifies access.
-- Frontend uses `NEXT_PUBLIC_API_BASE_URL` (default `http://localhost:8080`); set in `.env.local` for production.
-- Backend tests use synthetic artifacts in `tmp_path` — no real CSVs or DB needed. `conftest.py` sets `RECSYS_DB_ENABLED=0` by default for unit tests.
-- Postgres container `thai_arts_postgres` was already running on this machine (from legacy project); new project reuses it via `docker-compose.yml`.
-- Artifacts split: `artifacts/models/` (embeddings + CF indices) vs `artifacts/outputs/` (catalog.parquet + metadata.json).
-- Test data uses 5-item synthetic corpus (ระบำพรหมาสตร์, โขน, ลิเก, หุ่นกระบอก, วงดนตรีไทย).
-- For real E5 embeddings, drop `--synthetic-embeddings` flag (downloads ~2.5 GB on first run).
-
----
-
-## Verification commands (smoke tests)
-
-```bash
-# Backend health
-curl http://localhost:8080/health
-curl http://localhost:8080/db/health
-curl http://localhost:8080/metrics
-curl http://localhost:8080/items/1/legacy-stats
-
-# Recommendation
-curl -X POST http://localhost:8080/recommendations \
-    -H "Content-Type: application/json" \
-    -d '{"context_id": 142863314, "keyword_ids": [], "top_k": 5, "user_key": ""}'
-
-# Frontend
-curl http://localhost:3000/
-curl http://localhost:3000/recommend
-curl http://localhost:3000/results
+```
+1. Alembic 0004_admin_users: users table + ix_users_username
+2. Settings: jwt_secret, jwt_expiry_days, admin_usernames, e5_*, gemini_*, grounding_use_llm
+3. ORM: append User model (BigAutoPK + bcrypt hash + is_admin)
+4. Auth service: bcrypt + PyJWT + get_current_user/admin FastAPI deps
+5. Auth router: POST /auth/signup, /auth/login, GET /auth/me
+6. Schemas: user.py (Signup/Login/Out/TokenOut) + admin.py (Draft/Create/Proposal/Commit)
+7. Exceptions: AuthError(401) + ForbiddenError(403)
+8. Embedding: lazy E5 loader + encode_text/query/item_text (+ build_item_text mirrors pipeline)
+9. Grounding: Layer A (rule) + Layer B (Gemini JSON schema) + combined ground_keywords
+10. Loader mutation: append_item + threading.Lock + get_lock helper
+11. Ingestion orchestrator: compute embedding outside lock → DB insert → loader.append
+12. Admin router: draft → commit → reassign keywords (with TTL draft store)
+13. JWT swap: actions + catalog routers accept Authorization header → user_key translate
+14. Test slices: +test_auth +test_user_query +test_user_key +test_embedding +test_grounding +test_ingestion +test_admin (87 new tests, 248 total / 90.48%)
+15. Update test_catalog: every /items call now sends ?user_key=anon:test
+16. Update test_core: cors_origins default includes 127.0.0.1:3000
+17. Update requirements.txt: bcrypt + pyjwt + sentence-transformers + google-generativeai + pythainlp
 ```
 
 ---
 
-**End of handoff.** Next session: start by reading `CLAUDE.md`, then `docs/adr.md`.
+**End of handoff.** Next session: start by reading `C:\Users\Pichaya\.claude\plans\bubbly-finding-patterson.md` (Phase H section, steps 25-35), then `frontend/lib/api.ts` + `frontend/lib/user.ts` + `frontend/app/layout.tsx` for context. Run `เริ่มทำ phase H` to begin.

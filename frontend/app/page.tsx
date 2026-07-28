@@ -8,6 +8,7 @@ import type { HealthOut, MetricsOut } from "@/lib/types";
 
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingState } from "@/components/LoadingState";
+import { isAdmin } from "@/lib/auth";
 
 export default function HomePage() {
   const [health, setHealth] = useState<HealthOut | null>(null);
@@ -15,6 +16,16 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | undefined>(undefined);
   const [reloadKey, setReloadKey] = useState(0);
+  const [admin, setAdmin] = useState(false);
+
+  useEffect(() => {
+    setAdmin(isAdmin());
+    function onStorage(e: StorageEvent) {
+      if (e.key === "thai_arts_jwt") setAdmin(isAdmin());
+    }
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,6 +113,54 @@ export default function HomePage() {
         </ul>
       </section>
 
+      {admin ? (
+        <section
+          data-testid="admin-cta"
+          style={{
+            padding: "1.25rem",
+            border: "1px solid #1e6fd9",
+            borderRadius: "8px",
+            backgroundColor: "#f0f6ff",
+          }}
+        >
+          <h2 style={{ marginTop: 0 }}>ทางลัดสำหรับผู้ดูแล</h2>
+          <p style={{ marginTop: 0, color: "#1e3a5f" }}>
+            เพิ่มการแสดงใหม่เข้าสู่ระบบได้ทันที — ระบบจะช่วยเลือกคำสำคัญและ embed อัตโนมัติ
+          </p>
+          <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+            <Link
+              href="/admin/items/new"
+              style={{
+                display: "inline-block",
+                padding: "0.6rem 1.2rem",
+                backgroundColor: "#1e6fd9",
+                color: "#fff",
+                borderRadius: "4px",
+                textDecoration: "none",
+                fontWeight: 600,
+              }}
+            >
+              + เพิ่มการแสดงใหม่
+            </Link>
+            <Link
+              href="/admin/items"
+              style={{
+                display: "inline-block",
+                padding: "0.6rem 1.2rem",
+                backgroundColor: "#fff",
+                color: "#1e6fd9",
+                border: "1px solid #1e6fd9",
+                borderRadius: "4px",
+                textDecoration: "none",
+                fontWeight: 600,
+              }}
+            >
+              จัดการแคตตาล็อก →
+            </Link>
+          </div>
+        </section>
+      ) : null}
+
       <section
         style={{
           padding: "1.25rem",
@@ -111,21 +170,38 @@ export default function HomePage() {
         }}
       >
         <h2 style={{ marginTop: 0 }}>เริ่มใช้งาน</h2>
-        <p style={{ marginTop: 0 }}>ไปที่หน้าขอคำแนะนำเพื่อเลือกบริบทและคำสำคัญ</p>
-        <Link
-          href="/recommend"
-          style={{
-            display: "inline-block",
-            padding: "0.6rem 1.2rem",
-            backgroundColor: "#1e6fd9",
-            color: "#fff",
-            borderRadius: "4px",
-            textDecoration: "none",
-            fontWeight: 600,
-          }}
-        >
-          ขอคำแนะนำ →
-        </Link>
+        <p style={{ marginTop: 0 }}>เลือกแคตตาล็อกเพื่อเรียกดูรายการทั้งหมด หรือไปที่หน้าขอคำแนะนำเพื่อเลือกบริบทและคำสำคัญ</p>
+        <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+          <Link
+            href="/items"
+            style={{
+              display: "inline-block",
+              padding: "0.6rem 1.2rem",
+              backgroundColor: "#fff",
+              color: "#1e6fd9",
+              border: "1px solid #1e6fd9",
+              borderRadius: "4px",
+              textDecoration: "none",
+              fontWeight: 600,
+            }}
+          >
+            เรียกดูแคตตาล็อก →
+          </Link>
+          <Link
+            href="/recommend"
+            style={{
+              display: "inline-block",
+              padding: "0.6rem 1.2rem",
+              backgroundColor: "#1e6fd9",
+              color: "#fff",
+              borderRadius: "4px",
+              textDecoration: "none",
+              fontWeight: 600,
+            }}
+          >
+            ขอคำแนะนำ →
+          </Link>
+        </div>
       </section>
     </div>
   );

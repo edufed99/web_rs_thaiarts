@@ -6,6 +6,11 @@ deterministic, in-memory data without touching the real catalog or CSV files.
 """
 from __future__ import annotations
 
+# IMPORTANT: disable the Postgres layer for unit tests so conftest imports
+# don't try to connect to a real DB.
+import os
+os.environ.setdefault("RECSYS_DB_ENABLED", "0")
+
 import json
 from pathlib import Path
 from typing import Dict, List

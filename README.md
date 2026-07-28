@@ -240,13 +240,13 @@ Coverage threshold is enforced by `pytest.ini`:
 --cov-fail-under=90
 ```
 
-Current coverage: **96.85%** (102 tests).
+Current coverage: **92.79%** (135 tests).
 
 ---
 
 ## Out of scope
 
-- Login / authentication
+- Login / authentication (opaque `anon:<uuid>` only)
 - Production deployment / Docker / cloud
 - CI/CD pipeline
 - Cloud database / cloud storage

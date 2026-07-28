@@ -119,31 +119,79 @@ curl http://localhost:8080/health
 
 ## `GET /items`
 
-Paginated list of active items. Optional `search` substring filter.
+List active catalog items. Supports two modes:
+
+**Browse mode** (default) — paginated, optional substring search across
+`name`, `description`, and `keyword_names`. Returns up to `limit` items
+starting at `offset`, with the unfiltered `total` reported alongside.
+
+**Ranked mode** (`?context=<id>`) — mirrors the legacy
+`catalog.views.item_list` ranked behaviour: returns the top-10 items
+valid for the selected sub-context, sorted by `match_percent` desc, with
+the legacy suitability label on each row. `limit` and `offset` are
+ignored in this mode.
+
+`match_percent` and `suitability_label` are populated on **every** row
+in both modes; they are purely presentational and never influence the
+recommendation ranking.
 
 ```bash
+# browse mode
 curl 'http://localhost:8080/items?limit=5'
 curl 'http://localhost:8080/items?search=ระบำ'
-curl 'http://localhost:8080/items?limit=10&offset=20'
+curl 'http://localhost:8080/items?limit=10&offset=20&user_key=anon:abc'
+
+# ranked mode (legacy top-10 by context)
+curl 'http://localhost:8080/items?context=142863314'
 ```
 
-Response:
+Response (browse mode):
 
 ```json
 {
-  "items": [{"id": 1, "name": "...", "keywords": [...], "contexts": [...], "user_state": {...}}],
+  "items": [
+    {
+      "id": 222445941,
+      "name": "ระบำพรหมาสตร์",
+      "keywords": [...],
+      "contexts": [...],
+      "user_state": {"liked": false, "saved": false, "rating": 0},
+      "match_percent": 88,
+      "suitability_label": "เหมาะสม"
+    }
+  ],
   "total": 114
 }
+```
+
+Response (ranked mode) — same shape but `items` length is `<= 10` and
+already sorted by `match_percent` desc; `total` reflects the returned
+size.
+
+| Query param | Type | Default | Notes |
+|---|---|---|---|
+| `search` | string | — | Substring match against `name`, `description`, and `keyword_names` |
+| `limit` | int 1-200 | 20 | Ignored in ranked mode |
+| `offset` | int ≥ 0 | 0 | Ignored in ranked mode |
+| `context` | int > 0 | — | When set, switches to ranked mode (legacy top-10) |
+| `user_key` | string ≤ 150 | — | When provided, populates `user_state` on each item |
+
+404 if `context` is unknown:
+
+```bash
+curl 'http://localhost:8080/items?context=99999'
+# {"error": {"code": "context_not_found", "message": "Context id 99999 is not known.", "context_id": 99999}}
 ```
 
 ---
 
 ## `GET /items/{item_id}`
 
-One item with its keywords, contexts, and per-user state.
+One item with its keywords, contexts, per-user state, and suitability hint.
 
 ```bash
-curl http://localhost:8080/items/45123
+curl 'http://localhost:8080/items/45123'
+curl 'http://localhost:8080/items/45123?user_key=anon:abc'
 ```
 
 404 if the id is unknown:
@@ -256,3 +304,78 @@ Stable `code` strings you can branch on:
 Start the backend and open `http://localhost:8080/docs` — Swagger UI has a
 "Try it out" button on every endpoint, with the request/response schema
 inline.
+---
+
+## Live user actions (Like / Save / Rate)
+
+The backend persists per-user actions to Postgres and uses them to
+personalize the next `/recommendations` call. All endpoints return the
+updated item with its resolved `user_state` so the client can re-render
+optimistically.
+
+Authentication is intentionally absent — clients send an opaque
+`user_key` like `anon:<uuid>` (the frontend stores one in `localStorage`
+on first load). See `frontend/lib/user.ts`.
+
+### `POST /actions/like`
+
+Likes an item. Idempotent.
+
+```bash
+curl -X POST http://localhost:8080/actions/like \
+    -H "Content-Type: application/json" \
+    -d '{"user_key":"anon:7f3a","item_id":222445941}'
+```
+
+```json
+{
+  "item": {
+    "id": 222445941,
+    "name": "ระบำพรหมาสตร์",
+    "user_state": {"liked": true, "saved": false, "rating": 0},
+    "..."
+  },
+  "action": "liked",
+  "rating": null,
+  "metadata": {"liked": true}
+}
+```
+
+### `DELETE /actions/like`
+
+Removes the like. Idempotent.
+
+```bash
+curl -X DELETE http://localhost:8080/actions/like \
+    -H "Content-Type: application/json" \
+    -d '{"user_key":"anon:7f3a","item_id":222445941}'
+```
+
+### `POST /actions/save` / `DELETE /actions/save`
+
+Same shape as the like endpoints, but writes to the `saved_items` table.
+
+### `PUT /actions/rating`
+
+Upserts a 1..5 rating. `rating` must be supplied in the body.
+
+```bash
+curl -X PUT http://localhost:8080/actions/rating \
+    -H "Content-Type: application/json" \
+    -d '{"user_key":"anon:7f3a","item_id":222445941,"rating":4}'
+```
+
+The next `/recommendations` call from the same `user_key` will:
+
+* Include the item in the live positive history (ItemKNN picks it up
+  via `live_user_positive_items`).
+* Apply `apply_negative_penalty` for items the user rated < 4.
+
+### Error codes
+
+| Code | Status | When |
+|---|---|---|
+| `item_not_found` | 404 | `item_id` has no catalog row in Postgres (missing `artifact_item_id` backfill). |
+| `invalid_action` | 400 | Unknown action or out-of-range rating. |
+| `db_disabled` | 503 | `RECSYS_DB_ENABLED=0` — actions require a live DB. |
+| `validation_error` | 422 | Pydantic validation on the request body (e.g. `rating: 0`). |

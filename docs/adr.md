@@ -369,8 +369,9 @@ backend/tests/
 | **Artifact staleness.** If source CSVs change, recommendations go stale silently. | `metadata.json` carries `build_timestamp` and `config_hash`; `/health` exposes them; `README.md` documents how to re-run the pipeline. |
 | **Cold start latency.** Loading `artifacts.parquet` + npz on first request is slower than DB. | Use FastAPI `lifespan` to load once at startup, not per-request. Target < 2 s for 1k items. |
 | **Sentence-transformers still needed at pipeline time** to embed new items. | Pipeline is offline; no serving-time impact. Document `pip install sentence-transformers` as a pipeline-only dep. |
-| **No user personalization at runtime** in this MVP (the legacy `personalized_recommendations_from_history` is deferred). | Out of scope. Documented in §11. CF index still uses historical ratings as a static artifact, so "popularity fallback" still works. |
-| **Language mismatch on negative penalty.** Legacy `apply_negative_penalty` requires live user ratings per request. | Defer live personalization; static CF index assumes positive history only. Documented as M9 backlog. |
+| **No user personalization at runtime** in this MVP (the legacy `personalized_recommendations_from_history` is deferred). | **RESOLVED.** See §11 (live personalization is now in scope). CF merges live `likes` / `ratings` from Postgres on top of the static artifact via `live_positive_users_per_item_artifact()` + `live_user_positive_items()`. |
+| **Language mismatch on negative penalty.** Legacy `apply_negative_penalty` requires live user ratings per request. | **RESOLVED.** `recommendation_service.generate_recommendations` calls `apply_negative_penalty(hybrid, live_user_negative_ratings(user_key), alpha=negative_penalty_alpha)` exactly as `recommender.services.apply_negative_penalty` does. |
+| **Item id bridge (artifact vs Django id).** The pipeline's `stable_id("item", name)` and the imported Django `items.id` live in different id spaces, so any DB join was silently empty. | **RESOLVED.** Migration `0002_artifact_item_id` adds `items.artifact_item_id` (backfilled from `items.name` via the same `stable_id`) and `db_query.live_positive_users_per_item_artifact()` joins through it. |
 | **Two systems coexisting.** During transition both Django and FastAPI may run on different ports. | Use ports 8080 (backend) and 3000 (frontend). Django stays at 8000. Document in README. |
 | **Coverage threshold may be brittle** as new code lands. | Pre-commit hook (out of scope here) could enforce; for now, CI is manual `pytest` run. |
 
@@ -380,12 +381,12 @@ backend/tests/
 
 The following are explicitly **not** part of this refactor:
 
-1. **Authentication / login / consent flow.** Legacy `accounts/` is left untouched. Backend endpoints are open in this MVP. Production must add OAuth or JWT — separate ADR.
-2. **Live user personalization** (`personalized_recommendations_from_history`, like / save / rate actions). CF uses static historical-positive index only. No `InteractionLog` writes at runtime.
-3. **Migration of existing PostgreSQL data.** The Django DB stays where it is; the new system reads CSVs and rebuilds artifacts from scratch.
-4. **CI/CD, Docker, deployment scripts.** Manual `uvicorn` and `npm run dev` only.
+1. **Authentication / login / consent flow.** Legacy `accounts/` is left untouched. Backend endpoints are open in this MVP. Production must add OAuth or JWT — separate ADR. (Live actions use an opaque `user_key` like `anon:<uuid>` — see §5 + §6.)
+2. ~~**Live user personalization** (`personalized_recommendations_from_history`, like / save / rate actions).~~ **In scope as of 2026-07-28.** Tables `likes` / `saved_items` / `ratings` / `interaction_logs` exist; the `/actions/*` endpoints persist writes; `cf_service` merges live history into the ItemKNN index; `recommendation_service` applies `apply_negative_penalty` for negative ratings.
+3. **Migration of existing PostgreSQL data.** The Django DB stays where it is; the new system reads CSVs and rebuilds artifacts from scratch. (Live-action tables are owned by Alembic; legacy `legacy_interactions` data is migrated once via `pipelines/migrate_sqlite_to_postgres.py`.)
+4. **CI/CD, Docker, deployment scripts.** Manual `uvicorn` and `npm run dev` only. (Docker compose for the local Postgres is the only exception.)
 5. **Replacing `intfloat/multilingual-e5-large-instruct` with a smaller model.** Pipeline uses the same model the legacy system uses.
-6. **Cloud storage, cloud database.** Artifacts are local files.
+6. **Cloud storage, cloud database.** Artifacts are local files; DB is local Postgres.
 7. **i18n / localization of API responses.** Backend uses Thai names directly from the catalog CSV.
 8. **Modifying or moving the legacy Django project.** It lives at `web_appRS/thai_arts_webapp/` and remains the reference implementation.
 

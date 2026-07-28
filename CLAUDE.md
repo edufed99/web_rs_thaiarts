@@ -37,8 +37,8 @@ See `docs/adr.md` for the full Architecture Decision Record.
 │   ├── pytest.ini              enforces ≥90% coverage
 │   └── requirements.txt
 └── frontend/                   Next.js 14 + TypeScript
-    ├── app/                    App Router (layout, page, recommend, results)
-    ├── components/             LoadingState, ErrorState, EmptyState, ContextPicker, KeywordPicker, RecommendationCard
+    ├── app/                    App Router (layout, page, recommend, results, items, items/[id])
+    ├── components/             LoadingState, ErrorState, EmptyState, ContextPicker, KeywordPicker, RecommendationCard, CatalogItemCard
     └── lib/                    api.ts (typed fetch), types.ts (mirror of backend schemas)
 ```
 
@@ -89,7 +89,7 @@ pytest                                            # default
 pytest --cov=app --cov-report=term-missing        # show missing lines
 ```
 
-Coverage threshold: ≥ 90% (enforced by `pytest.ini`). Current: **96.85%** (102 tests).
+Coverage threshold: ≥ 90% (enforced by `pytest.ini`). Current: **93.05%** (161 tests).
 
 ### Type-check the frontend
 
@@ -118,14 +118,39 @@ When working on this repo, respect these:
 | Method | Path | Purpose |
 |---|---|---|
 | GET  | /health | Liveness + build metadata |
-| POST | /recommendations | Generate top-K |
-| GET  | /items, /items/{id} | Catalog browse |
+| POST | /recommendations | Generate top-K; `user_key` enables live personalization |
+| GET  | /items | Catalog browse (`?search=`, `?context=` ranked mode, `?user_key=`) |
+| GET  | /items/{id} | One item with keywords, contexts, user_state |
 | GET  | /contexts | List sub-contexts |
 | GET  | /keywords | List keywords (optional `?search=`) |
 | GET  | /metrics | Corpus + CF index stats |
 | GET  | /docs, /redoc, /openapi.json | Swagger / ReDoc / schema |
 
 Every endpoint has `summary` + `description` in Swagger.
+
+### Suitability hint on item responses
+
+`ItemOut` and `RecommendationResultOut` both carry a **display-only**
+suitability pair:
+
+* `match_percent: int` — integer in `[82, 98]` from the legacy
+  `catalog.views.catalog_match_percent` heuristic (see
+  `backend/app/services/suitability.py`).
+* `suitability_label: str` — `เหมาะมาก` (≥92), `เหมาะสม` (≥87), or
+  `เหมาะใช้ได้` (else).
+
+Both fields are populated on every `/items` row (browse + ranked mode),
+on `/items/{id}`, and on every row of `/recommendations`. **They never
+influence the recommendation ranking** — the hybrid score remains the
+sole sort key. New code should treat the suitability hint as cosmetic
+UI only.
+
+### `GET /items` ranked mode
+
+`/items?context=<sub_context_id>` returns the top-10 context-valid
+items sorted by `match_percent` desc, mirroring the legacy
+`catalog.views.item_list` ranked behaviour. `limit` and `offset` are
+ignored in this mode. `404 context_not_found` if the id is unknown.
 
 ## Conventions
 
@@ -136,6 +161,24 @@ Every endpoint has `summary` + `description` in Swagger.
 - Tests use the `artifacts_dir` / `loader` / `client` fixtures in
   `backend/tests/conftest.py`. They build a synthetic 5-item corpus in
   `tmp_path` so tests don't need real CSVs.
+- **User identity** is an opaque `user_key VARCHAR(150)`. The frontend
+  generates `anon:<uuid>` in `localStorage` on first load and sends it
+  with every action + recommendation request. No auth.
+- **Item IDs come in two flavours**: the legacy Django `items.id`
+  (1..114) and the artifact id from the pipeline
+  (`stable_id("item", name)`, e.g. 222445941). Live queries MUST
+  translate through `items.artifact_item_id` (added by Alembic
+  revision `0002_artifact_item_id`). Use the helpers in
+  `app.services.db_query` (`live_positive_users_per_item_artifact`,
+  `live_user_positive_items`, `artifact_id_to_django_id`,
+  `django_id_to_artifact_id`) — never join on `items.id` directly
+  in service code.
+- **Schema changes** go through Alembic (`backend/migrations/versions/`).
+  Do NOT add `CREATE TABLE IF NOT EXISTS` to the migration script or to
+  service code. The new tables (`likes`, `saved_items`, `ratings`,
+  `interaction_logs`) are managed by revision `0003_live_actions`.
+- **DB driver** is `psycopg` (sync). Do not introduce `asyncpg` — it
+  is no longer listed in `requirements.txt`.
 
 ## Tooling conventions
 
@@ -146,7 +189,8 @@ Every endpoint has `summary` + `description` in Swagger.
 
 ## What this file deliberately does NOT contain
 
-- No login/auth setup — out of scope per ADR §11.
+- No login/auth setup — out of scope per ADR §11. (Live actions use
+  an opaque `anon:<uuid>` user key, not a real account.)
 - No production deployment scripts — out of scope.
 - No CI/CD — out of scope.
 - No multi-encoder / multi-CF / multi-hybrid strategy implementation —

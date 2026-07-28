@@ -1,0 +1,97 @@
+"""
+main.py — FastAPI application entry point.
+
+Run:
+    uvicorn app.main:app --reload --port 8080
+
+Endpoints:
+    GET  /health              (health router)
+    POST /recommendations     (recommendations router)
+    GET  /items, /items/{id}  (catalog router)
+    GET  /contexts, /keywords, /metrics  (metrics router)
+    GET  /docs, /redoc, /openapi.json   (FastAPI built-ins)
+"""
+from __future__ import annotations
+
+import logging
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from . import __version__
+from .core.config import get_settings
+from .core.exceptions import (
+    ArtifactsNotLoadedError,
+    register_exception_handlers,
+)
+from .model_loader import ArtifactLoader, set_singleton
+from .routers import catalog, health, metrics, recommendations
+
+logger = logging.getLogger("recsys")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Load artifacts once at startup. If anything fails, /health returns 503
+    but the app still mounts so /docs remains reachable."""
+    settings = get_settings()
+    loader = ArtifactLoader()
+    try:
+        loader.load(settings.artifact_dir)
+        set_singleton(loader)
+        logger.info(
+            "Artifacts loaded: %d items, %d embeddings, root=%s",
+            len(loader.item_ids),
+            int(loader.metadata.get("embedding_dim", 0)),
+            settings.artifact_dir,
+        )
+    except ArtifactsNotLoadedError as exc:
+        logger.error("Artifacts NOT loaded: %s", exc)
+        # Leave singleton unset; routers will surface 503 via /health.
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Unexpected error loading artifacts: %s", exc)
+
+    yield
+
+    # No teardown needed — everything is in-process.
+
+
+def create_app() -> FastAPI:
+    settings = get_settings()
+
+    app = FastAPI(
+        title="Thai Arts Recommender API",
+        version=__version__,
+        description=(
+            "REST API for the Thai performing-arts recommender. The backend "
+            "loads pre-built artifacts (embeddings, CF index, catalog) at "
+            "startup and serves recommendations in milliseconds. See "
+            "`/docs` for the Swagger UI."
+        ),
+        lifespan=lifespan,
+    )
+
+    # CORS — frontend dev server runs on http://localhost:3000 by default
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # Domain exception handlers
+    register_exception_handlers(app)
+
+    # Routers
+    app.include_router(health.router)
+    app.include_router(recommendations.router)
+    app.include_router(catalog.router)
+    app.include_router(metrics.router)
+
+    return app
+
+
+app = create_app()

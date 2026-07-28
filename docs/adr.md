@@ -68,6 +68,12 @@ The deliverable of this refactor is a **new** project at `web_appRS1/` (root) th
     ├─ /contexts                     ← list of contexts (GET)
     ├─ /keywords                     ← list of keywords (GET)
     ├─ /metrics                      ← evaluator dashboard summary (GET)
+    ├─ /auth/signup, /auth/login     ← JWT issuance (POST)
+    ├─ /auth/me                      ← echo current user (GET, JWT)
+    ├─ /admin/items/draft            ← Layer A + Layer B grounding (POST, admin JWT)
+    ├─ /admin/items                  ← Layer C commit + ingest (POST, admin JWT)
+    ├─ /admin/items/{id}/keywords    ← Layer C re-edit (POST, admin JWT)
+    ├─ /actions/like, /actions/save  ← like/save (POST/DELETE, JWT or anon)
     └─ /docs, /openapi.json          ← Swagger / OpenAPI surface
     │
     │  reads from:
@@ -94,7 +100,14 @@ The deliverable of this refactor is a **new** project at `web_appRS1/` (root) th
         └─ user_log_with_keywords_only_list.csv
 ```
 
-**Hard rule:** no Python file under `backend/` reads CSV at serving time. The pipeline reads CSVs and writes artifacts; the backend reads artifacts.
+**Hard rule (broadened 2026-07-28):** no Python file under `backend/` reads CSV at serving time **or at admin-ingest time**. The pipeline reads CSVs and writes artifacts; the backend reads artifacts.
+
+**Runtime-embedding exception (admin ingest only):** an authenticated admin may submit a new item via `POST /admin/items`. To keep recommendations fresh without re-running the pipeline, the backend:
+1. Computes a fresh embedding for the new item using `multilingual-e5-large-instruct` via `services/embedding.encode_item_text` (~2-3 s on CPU).
+2. Inserts the row into Postgres (`items`, `item_contexts`, `item_keywords`).
+3. Calls `ArtifactLoader.append_item(...)` under `get_lock()` to mutate the in-memory catalog + embedding matrix + CF index in place.
+
+CSV files are **never** read at serving or ingest time. The E5 model download (~2.5 GB) happens once on first ingest.
 
 ---
 
@@ -302,6 +315,8 @@ python pipelines/train_or_generate_artifacts.py \
 
 **Backend loading:** `model_loader.ArtifactLoader` is instantiated in FastAPI `lifespan`. If any required artifact is missing, the loader raises `ArtifactsNotLoadedError`, the lifespan returns 503 from `/health`, and the FastAPI app refuses to mount recommendation routes.
 
+**Loader mutation (2026-07-28):** `ArtifactLoader.append_item(...)` is exposed for admin ingest. It acquires `get_lock()` (module-level `threading.Lock()`), concatenates the new row into the items dataframe + embedding matrix, updates the inverse CF index, and bumps `metadata.item_count`. All callers go through `services/ingestion.ingest_new_item` which computes the embedding **outside** the lock so reads are not blocked during inference.
+
 ---
 
 ## 7. Swagger / OpenAPI Strategy
@@ -374,6 +389,12 @@ backend/tests/
 | **Item id bridge (artifact vs Django id).** The pipeline's `stable_id("item", name)` and the imported Django `items.id` live in different id spaces, so any DB join was silently empty. | **RESOLVED.** Migration `0002_artifact_item_id` adds `items.artifact_item_id` (backfilled from `items.name` via the same `stable_id`) and `db_query.live_positive_users_per_item_artifact()` joins through it. |
 | **Two systems coexisting.** During transition both Django and FastAPI may run on different ports. | Use ports 8080 (backend) and 3000 (frontend). Django stays at 8000. Document in README. |
 | **Coverage threshold may be brittle** as new code lands. | Pre-commit hook (out of scope here) could enforce; for now, CI is manual `pytest` run. |
+| **E5 model download (~2.5 GB) on first ingest.** First admin POST downloads `intfloat/multilingual-e5-large-instruct` from HuggingFace into the process. | Comment in `requirements.txt`; env `RECSYS_E5_LOCAL_PATH` to preload from a local snapshot; env `RECSYS_E5_ENABLED=0` to skip embedding entirely (Layer B still works for keyword grounding; ingest will reject). |
+| **In-process reload under load.** Every successful admin ingest mutates the in-memory `ArtifactLoader` under `get_lock()`. All in-flight requests see the new state immediately (no versioning). | `append_item()` is the only mutator. Documented in `ingestion.py` docstring. Window is small (~50 ms; only DB+loader, not embedding inference). |
+| **DB + loader non-atomicity.** If `ingest_new_item` crashes between DB insert and loader mutation, the DB has the row but the loader doesn't. | Window is bounded by the lock; on retry the duplicate-name 400 surfaces; last-resort is a `uvicorn` restart to reload from the latest artifacts. |
+| **JWT secret rotation.** Invalidates all outstanding tokens. | HS256 (no JWKS); documented `RECSYS_JWT_SECRET` env-var procedure. Tokens have a 7-day expiry. |
+| **Gemini API outage.** | `RECSYS_GROUNDING_USE_LLM=0` disables Layer B; Layer A still works for keyword grounding. |
+| **Layer A false positives.** Rule-based token-set Jaccard ≥ 0.34 can attach unrelated keywords. | Admin reviews proposals in Layer C before commit; proposals are surfaced as checkboxes, not auto-applied. |
 
 ---
 
@@ -381,7 +402,11 @@ backend/tests/
 
 The following are explicitly **not** part of this refactor:
 
-1. **Authentication / login / consent flow.** Legacy `accounts/` is left untouched. Backend endpoints are open in this MVP. Production must add OAuth or JWT — separate ADR. (Live actions use an opaque `user_key` like `anon:<uuid>` — see §5 + §6.)
+1. **Authentication / login.** ~~Legacy `accounts/` is left untouched. Backend endpoints are open in this MVP. Production must add OAuth or JWT — separate ADR. (Live actions use an opaque `user_key` like `anon:<uuid>` — see §5 + §6.)~~ **In scope as of 2026-07-28.** Username + password (no email verification) via **bcrypt** + **JWT (HS256, 7-day)**. Endpoints: `POST /auth/signup`, `POST /auth/login`, `GET /auth/me`. Admin gating via `is_admin` on the `User` row.
+   - **First-user-admin bootstrap.** When `RECSYS_ADMIN_USERNAMES` is empty, the very first `POST /auth/signup` becomes admin. Otherwise only members of the allow-list are admins.
+   - **JWT-vs-anon translation.** All write endpoints (`/actions/*`, `/admin/*`) require `Authorization: Bearer <jwt>`. The `User` resolves to `user_key = "user:<id>"`. Catalog browse (`GET /items`, `GET /items/{id}`) and `POST /recommendations` accept either: a JWT (server picks it) **or** an opaque `user_key` body/query that starts with `anon:`. Mismatch (JWT + non-anon body) raises 401. Implemented in `routers/_user_key.py:resolve_user_key`.
+   - **JWT secret** defaults to `"dev-only-change-me"` for tests; **rotate before any production deployment** via `RECSYS_JWT_SECRET` env var. HS256 — no JWKS needed.
+   - **No email verification, password reset, or 2FA** — out of scope.
 2. ~~**Live user personalization** (`personalized_recommendations_from_history`, like / save / rate actions).~~ **In scope as of 2026-07-28.** Tables `likes` / `saved_items` / `ratings` / `interaction_logs` exist; the `/actions/*` endpoints persist writes; `cf_service` merges live history into the ItemKNN index; `recommendation_service` applies `apply_negative_penalty` for negative ratings.
 3. **Migration of existing PostgreSQL data.** The Django DB stays where it is; the new system reads CSVs and rebuilds artifacts from scratch. (Live-action tables are owned by Alembic; legacy `legacy_interactions` data is migrated once via `pipelines/migrate_sqlite_to_postgres.py`.)
 4. **CI/CD, Docker, deployment scripts.** Manual `uvicorn` and `npm run dev` only. (Docker compose for the local Postgres is the only exception.)
@@ -389,6 +414,12 @@ The following are explicitly **not** part of this refactor:
 6. **Cloud storage, cloud database.** Artifacts are local files; DB is local Postgres.
 7. **i18n / localization of API responses.** Backend uses Thai names directly from the catalog CSV.
 8. **Modifying or moving the legacy Django project.** It lives at `web_appRS/thai_arts_webapp/` and remains the reference implementation.
+9. **Admin-driven live item ingest + Layered Grounding.** ~~Out of scope~~ **In scope as of 2026-07-28.** Three endpoints:
+   - `POST /admin/items/draft` → Layer A (rule-based auto-ground via exact + token-set Jaccard ≥ 0.34 against the existing keyword vocabulary) + Layer B (Gemini suggestions via JSON-schema response). Returns a draft_id + proposals + warnings. Drafts cached in module-level `_drafts` (TTL 30 min).
+   - `POST /admin/items` → Layer C commit (admin refines the proposal set, server calls `services/ingestion.ingest_new_item` which embeds → DB insert → `ArtifactLoader.append_item` under `get_lock()`).
+   - `POST /admin/items/{id}/keywords` → Layer C re-edit on an existing item.
+
+   See `backend/app/services/grounding.py` and `backend/app/services/ingestion.py`. The thesis's Conclusion §4 ("adaptive semantic artifact updating") is implemented as in-process mutation under `threading.Lock`; a full reload of `ArtifactLoader` is not required for new items.
 
 ---
 
@@ -397,10 +428,11 @@ The following are explicitly **not** part of this refactor:
 The refactor is considered complete when:
 
 1. `pipelines/train_or_generate_artifacts.py` runs end-to-end against `web_appRS/source_data_2569/code for paper/4.recommendation/input/` and writes 7 artifacts.
-2. `backend/` boots with `uvicorn app.main:app --reload`, exposes `/health`, `/recommendations`, `/items`, `/items/{id}`, `/contexts`, `/keywords`, `/metrics`, `/docs`, `/openapi.json`, `/redoc`.
+2. `backend/` boots with `uvicorn app.main:app --reload`, exposes `/health`, `/db/health`, `/recommendations`, `/items`, `/items/{id}`, `/items/{id}/legacy-stats`, `/contexts`, `/keywords`, `/metrics`, `/auth/{signup,login,me}`, `/admin/items/{draft,…}`, `/actions/{like,save,rating}`, `/docs`, `/openapi.json`, `/redoc`.
 3. `pytest --cov=app --cov-report=term-missing --cov-fail-under=90` exits 0 with ≥ 90% coverage.
-4. `frontend/` runs with `npm run dev`; `/recommend` submits a recommendation request and renders the top-K results with explanations.
+4. `frontend/` runs with `npm run dev`; `/recommend` submits a recommendation request and renders the top-K results with explanations; `/login` + `/signup` + `/admin/items/new` + `/admin/items` work end-to-end.
 5. The legacy Django project at `web_appRS/thai_arts_webapp/` has zero modifications after the refactor (`git diff` clean against its own HEAD).
 6. Frontend never imports a Python file, never reads CSV, never reads `artifacts/*` directly. Only HTTP to backend.
-7. Backend never reads CSV at serving time. Only `artifacts/*` and static seed data inside the backend package.
+7. Backend never reads CSV at serving time **or at admin-ingest time**. Only `artifacts/*` (loader) + Postgres (live actions + admin ingest) + the E5 model runtime (admin ingest only).
 8. Swagger UI renders at `/docs` with summary + description on every endpoint.
+9. Live ingest: `POST /admin/items` returns the new item and the in-memory loader (`item_count`, recommendations, `/items` listing) reflects the new item without a backend restart.

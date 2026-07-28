@@ -59,6 +59,7 @@ artifacts/*.parquet
 artifacts/*.bin
 artifacts/*.pkl
 artifacts/*.joblib
+artifacts/*.txt
 !artifacts/.gitkeep
 
 # Backend coverage reports

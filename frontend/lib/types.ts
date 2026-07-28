@@ -37,6 +37,15 @@ export interface ItemOut {
   keywords: KeywordOut[];
   contexts: ContextOut[];
   user_state: UserState;
+  /**
+   * Display-only match percent in [82, 98] (legacy catalog heuristic).
+   * Populated by ``GET /items`` (browse + ranked modes), ``GET /items/{id}``,
+   * and every row of ``POST /recommendations``. Mirrors the legacy
+   * ``catalog.views.catalog_match_percent`` formula — it never affects the
+   * recommendation ranking itself.
+   */
+  match_percent: number | null;
+  suitability_label: string | null;
 }
 
 export interface ScoresOut {
@@ -52,6 +61,8 @@ export interface RecommendationResultOut {
   is_context_valid: boolean;
   matched_keywords: string[];
   explanation: string;
+  match_percent: number;
+  suitability_label: string;
 }
 
 export interface RecommendationRequestIn {
@@ -94,6 +105,23 @@ export interface HealthOut {
   embedding_dim: number;
 }
 
+// --- Live user actions ------------------------------------------------------
+
+export interface ActionRequestIn {
+  user_key: string;
+  item_id: number;
+  request_id?: string | null;
+  context_id?: number | null;
+  rating?: number | null;
+}
+
+export interface ItemActionOut {
+  item: ItemOut;
+  action: "liked" | "unliked" | "saved" | "unsaved" | "rated";
+  rating: number | null;
+  metadata: Record<string, unknown>;
+}
+
 export interface MetricsOut {
   item_count: number;
   context_count: number;
@@ -109,4 +137,85 @@ export interface ApiError {
   code: string;
   message: string;
   [key: string]: unknown;
+}
+
+// --- Auth + Admin ingest ----------------------------------------------------
+
+export interface UserOut {
+  id: number;
+  username: string;
+  display_name: string;
+  is_admin: boolean;
+  created_at: string | null;
+  last_login_at: string | null;
+}
+
+export interface UserSignup {
+  username: string;
+  password: string;
+  display_name?: string | null;
+}
+
+export interface UserLogin {
+  username: string;
+  password: string;
+}
+
+export interface TokenOut {
+  access_token: string;
+  token_type: "bearer" | string;
+  expires_in_seconds: number;
+  user: UserOut;
+}
+
+export interface KeywordProposal {
+  id: number;
+  name: string;
+  source: "auto" | "llm" | "human";
+  confidence: number;
+}
+
+export interface ItemDraft {
+  name: string;
+  description?: string;
+  category_group?: string;
+  performance_type?: string;
+  context_names: string[];
+  keyword_names: string[];
+}
+
+export interface ItemDraftOut {
+  draft_id: string;
+  proposals: KeywordProposal[];
+  context_ids: number[];
+  warnings: string[];
+}
+
+export interface ItemCreate {
+  name: string;
+  description?: string;
+  category_group?: string;
+  performance_type?: string;
+  context_names: string[];
+  keyword_ids: number[];
+}
+
+export interface ItemCommit {
+  draft_id: string;
+  additional_keyword_ids: number[];
+  removed_keyword_ids: number[];
+}
+
+export interface ItemCommitOut {
+  item: ItemOut;
+  warnings: string[];
+}
+
+export interface ItemKeywordReassign {
+  keyword_ids: number[];
+}
+
+export interface ItemReassignOut {
+  item: ItemOut;
+  warnings: string[];
 }

@@ -5,14 +5,30 @@
 // data comes from this client.
 
 import type {
+  ActionRequestIn,
   ContextListOut,
   HealthOut,
+  ItemActionOut,
+  ItemCommit,
+  ItemCommitOut,
+  ItemCreate,
+  ItemDraft,
+  ItemDraftOut,
+  ItemKeywordReassign,
   ItemListOut,
+  ItemOut,
+  ItemReassignOut,
   KeywordListOut,
   MetricsOut,
   RecommendationRequestIn,
   RecommendationResponseOut,
+  TokenOut,
+  UserLogin,
+  UserOut,
+  UserSignup,
 } from "./types";
+
+import { getAuthHeaders } from "./auth";
 
 const DEFAULT_BASE_URL = "http://localhost:8080";
 
@@ -83,14 +99,36 @@ export async function getItems(opts?: {
   search?: string;
   limit?: number;
   offset?: number;
+  contextId?: number;
+  userKey?: string;
+  extraHeaders?: Record<string, string>;
 }): Promise<ItemListOut> {
   const params = new URLSearchParams();
   if (opts?.search) params.set("search", opts.search);
   if (opts?.limit !== undefined) params.set("limit", String(opts.limit));
   if (opts?.offset !== undefined) params.set("offset", String(opts.offset));
+  if (opts?.contextId !== undefined) params.set("context", String(opts.contextId));
+  if (opts?.userKey) params.set("user_key", opts.userKey);
   const url = `${baseUrl()}/items${params.toString() ? `?${params.toString()}` : ""}`;
-  const res = await fetch(url, { cache: "no-store" });
+  const res = await fetch(url, {
+    headers: { ...(opts?.extraHeaders ?? {}) },
+    cache: "no-store",
+  });
   return handle<ItemListOut>(res);
+}
+
+export async function getItem(
+  itemId: number,
+  opts?: { userKey?: string; extraHeaders?: Record<string, string> },
+): Promise<ItemOut> {
+  const params = new URLSearchParams();
+  if (opts?.userKey) params.set("user_key", opts.userKey);
+  const url = `${baseUrl()}/items/${itemId}${params.toString() ? `?${params.toString()}` : ""}`;
+  const res = await fetch(url, {
+    headers: { ...(opts?.extraHeaders ?? {}) },
+    cache: "no-store",
+  });
+  return handle<ItemOut>(res);
 }
 
 export async function getMetrics(): Promise<MetricsOut> {
@@ -100,14 +138,156 @@ export async function getMetrics(): Promise<MetricsOut> {
 
 export async function postRecommendations(
   body: RecommendationRequestIn,
+  extraHeaders: Record<string, string> = {},
 ): Promise<RecommendationResponseOut> {
   const res = await fetch(`${baseUrl()}/recommendations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...extraHeaders },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  return handle<RecommendationResponseOut>(res);
+}
+
+// --- Live user actions ------------------------------------------------------
+
+function actionBody(body: ActionRequestIn): ActionRequestIn {
+  return {
+    user_key: body.user_key,
+    item_id: body.item_id,
+    request_id: body.request_id ?? null,
+    context_id: body.context_id ?? null,
+    rating: body.rating ?? null,
+  };
+}
+
+export async function postLike(
+  body: ActionRequestIn,
+  extraHeaders: Record<string, string> = {},
+): Promise<ItemActionOut> {
+  const res = await fetch(`${baseUrl()}/actions/like`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...extraHeaders },
+    body: JSON.stringify(actionBody(body)),
+    cache: "no-store",
+  });
+  return handle<ItemActionOut>(res);
+}
+
+export async function deleteLike(
+  body: ActionRequestIn,
+  extraHeaders: Record<string, string> = {},
+): Promise<ItemActionOut> {
+  const res = await fetch(`${baseUrl()}/actions/like`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json", ...extraHeaders },
+    body: JSON.stringify(actionBody(body)),
+    cache: "no-store",
+  });
+  return handle<ItemActionOut>(res);
+}
+
+export async function postSave(
+  body: ActionRequestIn,
+  extraHeaders: Record<string, string> = {},
+): Promise<ItemActionOut> {
+  const res = await fetch(`${baseUrl()}/actions/save`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...extraHeaders },
+    body: JSON.stringify(actionBody(body)),
+    cache: "no-store",
+  });
+  return handle<ItemActionOut>(res);
+}
+
+export async function deleteSave(
+  body: ActionRequestIn,
+  extraHeaders: Record<string, string> = {},
+): Promise<ItemActionOut> {
+  const res = await fetch(`${baseUrl()}/actions/save`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json", ...extraHeaders },
+    body: JSON.stringify(actionBody(body)),
+    cache: "no-store",
+  });
+  return handle<ItemActionOut>(res);
+}
+
+export async function putRating(
+  body: ActionRequestIn,
+  extraHeaders: Record<string, string> = {},
+): Promise<ItemActionOut> {
+  const res = await fetch(`${baseUrl()}/actions/rating`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...extraHeaders },
+    body: JSON.stringify(actionBody(body)),
+    cache: "no-store",
+  });
+  return handle<ItemActionOut>(res);
+}
+
+// --- Auth + Admin ingest ----------------------------------------------------
+
+export async function postSignup(body: UserSignup): Promise<TokenOut> {
+  const res = await fetch(`${baseUrl()}/auth/signup`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
     cache: "no-store",
   });
-  return handle<RecommendationResponseOut>(res);
+  return handle<TokenOut>(res);
+}
+
+export async function postLogin(body: UserLogin): Promise<TokenOut> {
+  const res = await fetch(`${baseUrl()}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  return handle<TokenOut>(res);
+}
+
+export async function getMe(): Promise<UserOut> {
+  const res = await fetch(`${baseUrl()}/auth/me`, {
+    method: "GET",
+    headers: { ...getAuthHeaders() },
+    cache: "no-store",
+  });
+  return handle<UserOut>(res);
+}
+
+export async function postItemDraft(body: ItemDraft): Promise<ItemDraftOut> {
+  const res = await fetch(`${baseUrl()}/admin/items/draft`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  return handle<ItemDraftOut>(res);
+}
+
+export async function postItemCommit(body: ItemCommit): Promise<ItemCommitOut> {
+  const res = await fetch(`${baseUrl()}/admin/items`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  return handle<ItemCommitOut>(res);
+}
+
+export async function putItemKeywords(
+  artifactId: number,
+  body: ItemKeywordReassign,
+): Promise<ItemReassignOut> {
+  const res = await fetch(`${baseUrl()}/admin/items/${artifactId}/keywords`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  return handle<ItemReassignOut>(res);
 }
 
 export function getBaseUrl(): string {

@@ -158,8 +158,21 @@ offline demos.
 ```bash
 cd backend
 pip install -r requirements.txt
+
+# Optional: copy the env template and edit it. The dev defaults
+# (DB off, no admin allow-list, default JWT secret) are fine for
+# reading the legacy catalog + recommendations, but the admin slice
+# (/admin/items/*, /actions/*) needs RECSYS_DB_ENABLED=1 plus a real
+# Postgres. See backend/.env.example for the full list.
+cp .env.example .env
+
 uvicorn app.main:app --reload --port 8080
 ```
+
+The `.env` file is gitignored. `.env.example` is tracked so devs
+know which keys to set; fill in your own secrets locally. Pytest
+runs against pure defaults regardless of `.env` (see
+`backend/app/core/config.py:_ENV_FILE`).
 
 Config (env vars, all prefixed `RECSYS_`):
 

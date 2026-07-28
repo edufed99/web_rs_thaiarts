@@ -1,0 +1,30 @@
+# docker-compose.yml — local development only.
+# Brings up a Postgres instance on port 5432 with no password for the
+# `postgres` superuser. The backend connects via DATABASE_URL.
+#
+# Usage:
+#   docker compose up -d postgres
+#   docker compose down
+#
+# The backend reads RECSYS_DATABASE_URL; defaults to:
+#   postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/thai_arts_recommender
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: thai_arts_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: thai_arts_recommender
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d thai_arts_recommender"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:

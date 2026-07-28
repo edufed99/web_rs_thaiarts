@@ -10,6 +10,21 @@ from __future__ import annotations
 # don't try to connect to a real DB.
 import os
 os.environ.setdefault("RECSYS_DB_ENABLED", "0")
+# Strip RECSYS_* env vars (excluding DB_ENABLED, just set) so unit tests
+# run against pure defaults — no admin allow-list, default JWT secret,
+# Layer B off, no Gemini key. The .env is also bypassed because Settings
+# is re-built with the cleared environ.
+for _key in (
+    "RECSYS_ADMIN_USERNAMES",
+    "RECSYS_JWT_SECRET",
+    "RECSYS_GROUNDING_USE_LLM",
+    "RECSYS_CORS_ORIGINS",
+    "RECSYS_E5_ENABLED",
+    "RECSYS_GEMINI_API_KEY",
+):
+    os.environ.pop(_key, None)
+from app.core.config import reset_settings_cache
+reset_settings_cache()
 
 import json
 from pathlib import Path

@@ -73,13 +73,13 @@ def test_create_user_then_find(db_session):
 def test_create_user_first_user_is_admin_when_allowlist_empty(db_session, monkeypatch):
     # Allowlist must be patched BEFORE the first user is created, since
     # first-user-bootstrap fires only when count==0.
-    monkeypatch.setattr(get_settings(), "admin_usernames", [], raising=False)
+    monkeypatch.setattr(get_settings(), "admin_usernames", "", raising=False)
     u = user_query.create_user("first", "$2b$12$xx", "First")
     assert u.is_admin is True
 
 
 def test_create_user_allowlist_promotes_only_members(db_session, monkeypatch):
-    monkeypatch.setattr(get_settings(), "admin_usernames", ["bob"], raising=False)
+    monkeypatch.setattr(get_settings(), "admin_usernames", "bob", raising=False)
     a = user_query.create_user("alice", "$2b$12$aa")
     b = user_query.create_user("bob", "$2b$12$bb")
     # Allow-list mode: alice is not in the list, bob is.

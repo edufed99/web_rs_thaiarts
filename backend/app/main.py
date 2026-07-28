@@ -76,7 +76,7 @@ def create_app() -> FastAPI:
     # CORS — frontend dev server runs on http://localhost:3000 by default
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.cors_origins,
+        allow_origins=settings.cors_origins_list,
         allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],

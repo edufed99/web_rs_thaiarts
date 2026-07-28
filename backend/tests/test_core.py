@@ -45,15 +45,16 @@ def test_settings_max_cands_env_parsing(monkeypatch):
 
 
 def test_settings_cors_split(monkeypatch):
-    # pydantic-settings parses list[str] from JSON-style env values like '["a","b"]'
-    monkeypatch.setenv("RECSYS_CORS_ORIGINS", '["http://a","http://b"]')
+    # Env values are comma-separated strings; the ``_split_cors`` validator
+    # parses them into a list. We assert on ``cors_origins_list``.
+    monkeypatch.setenv("RECSYS_CORS_ORIGINS", "http://a,http://b")
     s = Settings()
-    assert s.cors_origins == ["http://a", "http://b"]
+    assert s.cors_origins_list == ["http://a", "http://b"]
 
 
 def test_settings_cors_default():
     s = Settings()
-    assert s.cors_origins == ["http://localhost:3000", "http://127.0.0.1:3000"]
+    assert s.cors_origins_list == ["http://localhost:3000", "http://127.0.0.1:3000"]
 
 
 def test_get_settings_is_singleton(monkeypatch):

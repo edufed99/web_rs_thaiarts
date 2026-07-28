@@ -21,11 +21,18 @@ Env vars:
 """
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import List, Optional
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+# Skip the local ``.env`` file when pytest is running so unit tests get
+# pure defaults (no admin allow-list, default JWT secret, Layer B off).
+# Production / dev still load ``.env`` via pydantic-settings.
+_ENV_FILE = None if "pytest" in sys.modules else ".env"
 
 
 def _default_artifact_dir() -> Path:
@@ -43,7 +50,7 @@ def _default_artifact_dir() -> Path:
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="RECSYS_",
-        env_file=".env",
+        env_file=_ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -59,18 +66,13 @@ class Settings(BaseSettings):
     min_cands: int = 10
     max_cands: Optional[int] = None  # None = no cap
     default_top_k: int = 10
-    cors_origins: List[str] = Field(
-        default_factory=lambda: [
-            "http://localhost:3000",
-            "http://127.0.0.1:3000",
-        ]
-    )
+    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     app_version: str = "1.0.0"
 
     # Auth (admin slice — see ADR §11.1)
     jwt_secret: str = "dev-only-change-me"
     jwt_expiry_days: int = 7
-    admin_usernames: List[str] = Field(default_factory=list)
+    admin_usernames: str = ""
 
     # Live ingest (see ADR §3 — runtime embedding exception)
     e5_model_name: str = "intfloat/multilingual-e5-large-instruct"
@@ -91,19 +93,28 @@ class Settings(BaseSettings):
             return None
         return int(v)
 
-    @field_validator("cors_origins", mode="before")
+    @field_validator("cors_origins", "admin_usernames", mode="before")
     @classmethod
-    def _split_cors(cls, v):
+    def _normalize_csv(cls, v):
+        """Accept strings (preferred) and lists (legacy test fixtures).
+
+        Strings are normalized to comma-separated strings; lists are
+        comma-joined. Downstream callers should use the ``*_list`` properties
+        which re-split on demand.
+        """
         if isinstance(v, str):
-            return [origin.strip() for origin in v.split(",") if origin.strip()]
+            return ",".join(o.strip() for o in v.split(",") if o.strip())
+        if isinstance(v, list):
+            return ",".join(str(o).strip() for o in v if str(o).strip())
         return v
 
-    @field_validator("admin_usernames", mode="before")
-    @classmethod
-    def _split_admin_usernames(cls, v):
-        if isinstance(v, str):
-            return [name.strip() for name in v.split(",") if name.strip()]
-        return v
+    @property
+    def cors_origins_list(self) -> List[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def admin_usernames_list(self) -> List[str]:
+        return [n.strip() for n in self.admin_usernames.split(",") if n.strip()]
 
     @property
     def models_dir(self) -> Path:

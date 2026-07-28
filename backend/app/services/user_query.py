@@ -46,7 +46,7 @@ def _is_admin_username(username: str) -> bool:
     this with ``count == 0`` in ``create_user``. Kept for backwards
     compatibility with tests that probe the helper directly.
     """
-    allow = get_settings().admin_usernames
+    allow = get_settings().admin_usernames_list
     if allow:
         return username in allow
     # No explicit allow-list → first user is admin (applied in create_user).
@@ -91,7 +91,7 @@ def create_user(
         if _find_by_username(session, username) is not None:
             return None  # duplicate; caller should validate beforehand
         if is_admin is None:
-            allow = get_settings().admin_usernames
+            allow = get_settings().admin_usernames_list
             if allow:
                 # Allow-list mode: membership decides, regardless of user count.
                 is_admin = username in allow

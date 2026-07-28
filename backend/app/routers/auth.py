@@ -62,8 +62,8 @@ def signup(payload: UserSignup) -> TokenOut:
         )
     # Resolve is_admin from the settings allow-list, falling back to first-user.
     is_admin = None
-    if settings.admin_usernames:
-        is_admin = payload.username in settings.admin_usernames
+    if settings.admin_usernames_list:
+        is_admin = payload.username in settings.admin_usernames_list
     user = user_query.create_user(
         username=payload.username,
         password_hash=hash_password(payload.password),

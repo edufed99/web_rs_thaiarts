@@ -2,478 +2,325 @@
 
 **Saved to:** `C:\Users\Pichaya\Downloads\web_appRS1\handoff.md`
 
-**Date:** 2026-07-28 (session 6 — commit config refactor + Phase K bug fix migration + e2e smoke end-to-end)
-**From:** Claude Code session 6
+**Date:** 2026-07-28 (session 8 — picked up after Step 2 of re-import)
+**From:** Claude Code session 6 + 7 + 8 → session 9 (after `/clear`)
 **To:** Next Claude Code session
 
 ---
 
-## TL;DR — start here
+## ⚡ FIRST — for the next session after `/clear`
 
-**Session 6 deliverables (all merged into `main`):**
-- ✅ **Commit `b6dcd1f`** — config refactor (List[str] → CSV string + list property + skip `.env` in tests)
-- ✅ **Migration `0005_legacy_autoincrement`** — added Postgres sequences + DEFAULT = nextval for 7 legacy tables (root-cause fix for the 500 ISE on `POST /admin/items/draft`)
-- ✅ **Artifacts regenerated** with real E5 (1024-dim, 114 items, 25 contexts) instead of 4-dim synthetic test fixtures
-- ✅ **End-to-end smoke passed** — admin POST draft → commit ingest → `/items/{228153487}` returns "ขันลงลายไทย" with contexts + suitability_label — Thai text round-trips correctly through FastAPI + psycopg + Postgres + loader hot-reload
+Open a new Claude Code session in `C:\Users\Pichaya\Downloads\web_appRS1` and send **this single message**:
 
-Backend is **still running** on `http://127.0.0.1:8080` with 115 items (114 legacy + 1 ingested) and embedding_dim=1024. **State:** fully aligned, admin ingest end-to-end works.
+```
+อ่าน C:\Users\Pichaya\Downloads\web_appRS1\handoff.md แล้วทำงานต่อจาก "งานที่ค้าง: Re-import จาก dbold.md" — ห้ามถามคำถามทั่วไป, เริ่มลงมือทันที
+```
 
-**Next natural steps (if any):**
-1. Add `.env.example` placeholder to repo (tracked) so devs know which keys to set without leaking secrets. Local `backend/.env` stays gitignored.
-2. Decide on the contexts-vocab drift: admin-ingested contexts get a DB row + DB id but the in-memory loader only knows the 25 contexts from the legacy CSV. Items whose contexts are net-new won't appear in `/recommend?context_id=<new-id>`. Fix: re-run `pipelines/train_or_generate_artifacts.py` after every admin ingest that introduces a new context (heavy) OR persist loader-mutable vocab alongside the CSV (lighter). Open question for the next session.
+That single message is enough. The next Claude will load the file and resume exactly where session 7 stopped.
 
 ---
 
-## What this project is
+## TL;DR — current state
 
-A **new web app** at `C:\Users\Pichaya\Downloads\web_appRS1\` that refactors the legacy Django prototype at `C:\Users\Pichaya\Downloads\web_appRS\thai_arts_webapp\` (read-only — never modify). The new app uses **Next.js 14 + TypeScript** (frontend) and **Python FastAPI** (backend) with **PostgreSQL** (live user data + admin slice) and pre-built **artifacts** (static ML model files).
+**Completed (merged into `main`, 22 commits ahead of origin/main):**
+- ✅ Commit `b6dcd1f` — config refactor (List[str] → CSV string + list property + skip `.env` in tests)
+- ✅ Migration `0005_legacy_autoincrement` — Postgres sequences + DEFAULT = nextval for 7 legacy tables (fixes 500 ISE in admin ingest)
+- ✅ Commit `599f314` — migration + artifacts regenerated with real E5 (1024-dim) + e2e smoke ran
+- ✅ Commit `26a02d7` — `backend/.env.example` tracked + README env docs
+- ✅ Commit `7c8fd85` — Migration `0006_recommender_history` + `pipelines/migrate_csv_to_postgres.py` loader (this session)
 
-The thesis paper (`C:\Users\Pichaya\Downloads\web_appRS\paper_thesis.docx`) prescribes an **Eligibility-Gated Hybrid** recommender with Gemini-based stopword filtering, taxonomy construction, exact-token grounding, and Hybrid-WeightedSum scoring. See `docs/adr.md` for the full Architecture Decision Record (updated 2026-07-28).
+**Live state:**
+- Backend: `http://127.0.0.1:8080` (background task `bmwo5piz3`), E5 loaded, `/health` reports `item_count: 115` (114 DB + 1 orphan in loader — see Known Gap A below)
+- Postgres `web_rs_thaiarts`: items=115, contexts=25, keywords=604, taxonomy_nodes=48, item_contexts=1005, item_keywords=1083, legacy_interactions=2534, users=158, accounts_userprofile=157, recommendation_requests=2, recommendation_request_selected_keywords=6, recommendation_results=20, likes=1, ratings=3, saved_items=0, interaction_logs=2563
+- Postgres container: `thai_arts_postgres` on `127.0.0.1:5432`, migrations up to `0006_recommender_history`
 
 ---
 
-## What changed in session 6 (this handoff)
+## ✅ Re-import จาก CSV export — DONE ใน session 8
 
-### 1. Commit config refactor (`b6dcd1f`) ✅
-Staged 7 files from session 5's uncommitted backlog and committed with the
-message drafted in the previous handoff. Confirmed:
+User ใน session 7 ให้ verify ว่า `web_rs_thaiarts` ตรงกับเอกสาร `C:\Users\Pichaya\Downloads\web_appRS\dbold.md` (4.9 MB, 9,551 lines). ผลคือ **ไม่ตรง** — มี 2 ประเภทของ mismatch. User ตอบ "Re-import จาก dbold.md's source".
 
-* 248 tests pass / 90.45% coverage (gate ≥ 90% ✅)
-* backend `/health` still answers
-* JWT login + `/auth/me` still works after restart
+### Step 1 — Locate data source ✅ DONE ใน session 7
 
-### 2. Bug fix: legacy tables had no Postgres autoincrement (Phase K) ✅
-`POST /admin/items/draft` returned 500 ISE with
-`psycopg.errors.NotNullViolation: null value in column "id" of relation "contexts"`.
-Root cause: the seven legacy tables
-(`contexts`, `taxonomy_nodes`, `keywords`, `items`, `item_contexts`,
-`item_keywords`, `legacy_interactions`) were created out-of-band by
-`pipelines/migrate_sqlite_to_postgres.py` with explicit id values
-(1..N). The Postgres tables inherited `bigint NOT NULL` with **no
-default**. The admin router creates a new `Context` row at
-`app/routers/admin.py:131` without supplying an id; the ORM does not
-fill one in because the legacy schema's `BigAutoPK =
-BigInteger().with_variant(Integer(), "sqlite")` has no autoincrement
-hook for Postgres.
+Data source: **`C:\Users\Pichaya\Downloads\web_appRS\db_csv_export_20260728\`** (25 CSV files + `manifest.csv`). ทุก row count ใน manifest ตรงกับ dbold.md 100%. ไม่ต้องหา data source อื่น.
 
-Unit tests passed because they ran against in-memory SQLite where
-`Integer` is autoincrement; the bug was latent until exercised against
-real Postgres.
+### Step 2 — Map CSV → Postgres ✅ DONE ใน session 8
 
-**Fix:** new Alembic revision `0005_legacy_autoincrement.py`
-(applied: `alembic upgrade head`). For each of the seven tables:
+dbold.md schema ที่ต้อง reproduce ดูใน commit `7c8fd85` (migration 0006 + loader). สรุป mapping:
 
+| CSV | DB table | Translation |
+|---|---|---|
+| `catalog_context.csv` | `contexts` | `group` → `group_name` |
+| `catalog_item.csv` | `items` | generate `artifact_item_id` via `stable_id("item", name)` |
+| `catalog_keyword.csv` | `keywords` | direct |
+| `catalog_taxonomynode.csv` | `taxonomy_nodes` | direct |
+| `catalog_itemcontext.csv` | `item_contexts` | direct |
+| `catalog_itemkeyword.csv` | `item_keywords` | direct |
+| `recommender_legacyinteraction.csv` | `legacy_interactions` | `legacy_user_id` only — `user_id` discarded (schema ไม่มี) |
+| `auth_user.csv` | `users` | passwords REDACTED → bcrypt-random hash + `display_name="must_reset\|legacy:<username>"` marker; CSV id `n` → DB id `max_existing + (n - 1)` (preserve admin=1) |
+| `accounts_userprofile.csv` | `accounts_userprofile` | **NEW** (0006) — FK → users, 1:1 via UNIQUE(user_id) |
+| `recommender_recommendationrequest.csv` | `recommendation_requests` | **NEW** (0006) — FK → users, contexts |
+| `recommender_recommendationrequest_selected_keywords.csv` | `recommendation_request_selected_keywords` | **NEW** (0006) — M2M |
+| `recommender_recommendationresult.csv` | `recommendation_results` | **NEW** (0006) — FK → requests, items |
+| `recommender_like.csv` | `likes` | `user_id` → `user_key` via `legacy:<username>` |
+| `recommender_rating.csv` | `ratings` | `user_id` → `user_key` via `legacy:<username>` |
+| `recommender_saveditem.csv` | `saved_items` | (empty in CSV) |
+| `recommender_interactionlog.csv` | `interaction_logs` | `user_id` → `user_key`; `recommendation_request_id` is **NEW FK** added by 0006 |
+| `recommender_itemembedding.csv` | (binary ใน `artifacts/`) | E5 1024-dim — ไม่ต้อง import |
+| Django auth + admin + migrations + session + content_type | (ไม่ต้อง import) | Django built-in |
+
+### Step 3 — Plan + build import script ✅ DONE ใน session 8
+
+`pipelines/migrate_csv_to_postgres.py` (656 lines) — generic CSV loader:
+
+* UTF-8 BOM (`utf-8-sig`) auto-handled
+* FK-safe ordering (no FK → FK chain, bottom-up)
+* `ON CONFLICT (id) DO NOTHING` — fully idempotent
+* `users.id` offset so legacy CSV ids start at `max_existing+1` (preserve admin=1)
+* `setval(seq, 1, false)` for empty tables (0006 setval 0 guard — see migration history)
+* `--dry-run` flag (parse CSVs only, no DB writes)
+* `--truncate` flag (destructive wipe + re-import)
+* Auto-runs `alembic upgrade head` (skippable with `--skip-alembic`)
+* Prints manifest-vs-live diff after import — exit code 1 if any mismatch
+
+### Step 4 — Verify ✅ DONE ใน session 8
+
+**Result:**
+* Row counts: **15/15 tables ตรง manifest.csv 100%**
+* FK orphan scan: **0/19 FK references** broken
+* Sample row compare (5 rows × 16 tables): ตรง CSV ทุก cell
+* JSON columns (`legacy_interactions.keywords`, `recommendation_results.matched_keywords_json`, `recommendation_requests.metadata_json`): parse + re-serialize ผ่าน
+* Tests: **248 passed / 90.45% coverage** (no regression)
+
+### Known limitations (carry forward)
+
+1. **Passwords reset required** — ทุก user ใหม่ (id 2..158) มี `display_name="must_reset|legacy:<username>"` marker และ `password_hash="!redacted!<bcrypt-random>"`. Sign-in path **ต้อง** ตรวจ marker prefix แล้วบังคับ reset — ตอนนี้ยังไม่ได้ implement (อยู่นอกขอบเขตของ re-import). **Effect:** users เหล่านี้ login ไม่ได้จนกว่าจะมี password reset flow.
+2. **CSV → DB user id offset** — DB users.id ไม่ตรงกับ CSV `auth_user.id`. Any code ที่ join กับ external data via raw user id ต้องใช้ `display_name` (parse `legacy:<username>`) แทน.
+3. **`users.id=1` reserved** — admin ที่ signup ผ่าน Phase H bootstrap. CSV users (155 คน) map เป็น id 2..156; one extra slot `id=157` (CSV `auth_user.id=156` = last "บุคคล") unused. ไม่มี side-effect ใด ๆ.
+4. **`/health` reports `item_count: 115` แต่ DB ตอนนี้มี 115 rows แล้ว** — Known Gap A จาก session 6 หายไปแล้ว (loader append ที่หายไปถูก re-import เป็น row id=115 ใหม่).
+
+---
+
+## Known gaps (carry forward)
+
+### A. DB/loader state drift (จาก session 6 e2e smoke) ⚠️
+- Backend memory มี 1 item (id=228153487, "ขันลงลายไทย") ที่ DB ไม่มี
+- `/health` reports 115 items, Postgres `items` table มี 114
+- `/items/228153487` จะ return 404 (DB lookup fails)
+- **Fix:** restart backend (loader resets to 114) หรือ investigate `ingestion.py:ingest_new_item` ว่าทำไม commit ส่ง 200 OK แต่ DB row หาย
+
+### B. Contexts created by admin ingest don't appear in loader vocab
+- Admin-ingested contexts ได้ DB row แต่ loader ไม่รู้จัก (loader มี 25 contexts จาก CSV)
+- Symptom: `/recommend?context_id=<loader-id-for-new-context>` returns `context_not_found`
+- **Fix options:** heavy (re-run pipeline) vs light (loader merge vocab from DB on append_item)
+
+### C. Frontend dev server ไม่ได้ start
+- Phase H build green, แต่ `npm run dev` ที่ port 3000 ไม่เคยรัน
+- ถ้าจะทดสอบ UI: `cd frontend && npm run dev`
+
+---
+
+## What changed in session 6 (history)
+
+### Commit `b6dcd1f` — config refactor ✅
+Staged 7 files, committed. 248 tests pass / 90.45% coverage.
+
+### Migration `0005_legacy_autoincrement` ✅
+Root cause: legacy SQLite migration script supplied explicit ids (1..N) → Postgres tables inherited `bigint NOT NULL` with no default. Admin router creates new `Context` row without id → 500 ISE.
+
+**Fix:** for each of 7 legacy tables (`contexts`, `taxonomy_nodes`, `keywords`, `items`, `item_contexts`, `item_keywords`, `legacy_interactions`):
 1. `CREATE SEQUENCE IF NOT EXISTS <table>_id_seq AS bigint`
-2. `SELECT setval('<table>_id_seq', max(id), true)` — seeded past
-   the current max so future inserts never collide with 1..N legacy
-   rows (e.g. contexts seeded to 25, items to 114, item_keywords
-   to 1077, legacy_interactions to 2534).
+2. `SELECT setval('<table>_id_seq', max(id), true)` — seeded past current max
 3. `ALTER TABLE <table> ALTER COLUMN id SET DEFAULT nextval(...)`
-4. `ALTER SEQUENCE ... OWNED BY <table>.id` — sequence dies with
-   the table.
+4. `ALTER SEQUENCE ... OWNED BY <table>.id`
 
-Verified post-migration with
-`SELECT pg_get_serial_sequence('contexts', 'id')` → `public.contexts_id_seq`
-and by issuing the admin POST that previously 500-ed (now returns
-`draft_id` + `context_ids: [26, 27]` with Thai text intact).
+Applied via `alembic upgrade head`. Verified Thai text round-trips correctly (the `?` in psycopg log was a red herring — `repr()` artifact, not data corruption).
 
-The Thai-text-as-`?` artefact in the original psycopg log was a red
-herring — that was `repr()` on non-ASCII in psycopg's parameter echo.
-The DB stored real Thai text throughout; we confirmed by querying
-back via `/items/{id}` and reading the returned JSON.
+### Artifacts regenerated with real E5 ✅
+Old `artifacts/` had 4-dim synthetic embeddings. E5 (1024-dim) dim mismatch on first ingest attempt → regenerated via `pipelines/train_or_generate_artifacts.py` (no `--synthetic-embeddings`).
 
-### 3. Artifacts regenerated with real E5 ✅
-The existing `artifacts/` directory held 4-dim synthetic embeddings
-(generated by the test fixture path with `--synthetic-embeddings`).
-E5's first ingest attempt downloaded
-`intfloat/multilingual-e5-large-instruct` (1024-dim) and tried to
-`append_item` to a loader that already held 4-dim vectors. Backend
-threw `ValueError: Embedding dim mismatch: loader has dim 4, new
-vector has 1024` at `model_loader.py:267`.
+New metadata: `item_count: 114, context_count: 25, embedding_dim: 1024, synthetic_embeddings: false`.
 
-**Fix:** ran
-`python pipelines/train_or_generate_artifacts.py --source-root …/input --output-dir artifacts`
-(no `--synthetic-embeddings`). E5 was already in the HF cache from
-the failed ingest, so no network cost. New metadata:
+### E2E smoke ran ⚠️ partial
+- POST draft → commit → 200 OK with item
+- Loader got the item, but Postgres transaction rolled back
+- Result: loader has 115, DB has 114 (Known Gap A)
 
-```
-item_count: 114, context_count: 25, embedding_dim: 1024,
-synthetic_embeddings: false, positive_user_count: 156,
-unique_item_user_edges: 87
-```
-
-Restarted backend; `/health` now reports `item_count: 114,
-embedding_dim: 1024`.
-
-### 4. E2E smoke end-to-end ✅
-After the migration + artifact regen + backend restart:
-
-1. `POST /auth/login` (admin / hunter22) → JWT
-2. `POST /admin/items/draft` (UTF-8 file via `--data-binary @file`,
-   not `curl -d`, because Bash heredoc on Windows corrupts multi-byte
-   chars) → `draft_id=e9fe4f73...`, `context_ids: [26, 27]`,
-   `warnings: []` (the second call hit the rows created by the first
-   failed ingest, so no "Created missing context" warnings).
-3. `POST /admin/items` (commit, draft_id only, no extra keywords) →
-   `id: 228153487, name: "ขันลงลายไทย", description: "ขันเงินลงลายไทยโบราณ
-   ฝีมือช่างล้านนา", category_group: "เครื่องเงิน", performance_type:
-   "หัตถกรรม", match_percent: 82, suitability_label: "เหมาะใช้ได้"`.
-4. `GET /items/228153487` → returns the new item with the two
-   contexts ("งานเลี้ยง", "พิธีกรรม") attached, active_item_count: 0
-   for both (known gap — see below).
-5. `GET /items` (admin JWT) → `total: 115, items_count: 20` (114
-   legacy + 1 ingested).
-6. `POST /recommendations` with `context_id: 264656335` (an existing
-   loader context, "การเผยแพร่วัฒนธรรมในประเทศ") and
-   `user_key: "anon:test-e2e-smoke"` → `candidate_count: 108`, top-5
-   results from `Hybrid-WeightedSum (E5 + ItemKNN)`. The new item
-   does not appear in the top-5 because its E5 vector is most similar
-   to non-Vietnamese-cultural-promotion items in the corpus —
-   expected behaviour, not a bug.
-
-**Known gap (carry forward):** contexts created by admin ingest get a
-DB row + a DB id but the in-memory `ArtifactLoader` only knows the
-25 contexts that were in the legacy CSV. The new item's contexts
-show up via `/items/{id}` (loader knows the item, asks the DB) but
-`/recommend?context_id=<loader-id-for-new-context>` returns
-`context_not_found` because the loader doesn't have that vocabulary
-yet. Two possible fixes (open question):
-
-* **Heavy:** re-run `pipelines/train_or_generate_artifacts.py` after
-  every admin ingest that introduces a new context. Embeds all 114
-  items again, ~5 min.
-* **Light:** teach `ArtifactLoader` to merge its context vocab from
-  the live DB on each `append_item`. Keeps CF indices stable but
-  keeps the vocab synced. ~30 lines.
-
-The CSV-vocab drift is a known limitation, not a regression — the
-same gap existed for legacy CSV items before any admin ingest.
-
-### 5. Housekeeping ✅
-* Updated `.gitignore` to also ignore `artifacts/*.txt` (was
-  untracked `paper_text.txt` 50 KB).
-* Deleted transient `artifacts/.e2e_draft.json` and
-  `artifacts/.e2e_commit.json` scratch files.
+### Commit `26a02d7` — env example + README ✅
+Tracked `backend/.env.example` + README update.
 
 ---
 
-## What changed in session 5 (previous handoff, kept for history)
+## What changed in session 8 (before `/clear`)
 
-### Phase H — Frontend (steps 25-35) ✅
-| Slice | Status |
-|---|---|
-| `frontend/lib/auth.ts` — JWT storage + helpers | ✅ |
-| `frontend/lib/useAuthHeaders.ts` — live JWT header hook | ✅ |
-| `frontend/lib/types.ts` — 12 new types (UserOut, UserSignup, UserLogin, TokenOut, KeywordProposal, ItemDraft, ItemDraftOut, ItemCreate, ItemCommit, ItemCommitOut, ItemKeywordReassign, ItemReassignOut) | ✅ |
-| `frontend/lib/api.ts` — 6 new endpoints + extraHeaders on action/recommendation/items | ✅ |
-| `frontend/components/AuthForm.tsx` — login | signup mode switch | ✅ |
-| `frontend/components/AdminItemForm.tsx` — 2-step draft → review proposals → commit | ✅ |
-| `frontend/components/FrontendNav.tsx` — conditional nav with cross-tab storage sync | ✅ |
-| `frontend/components/ItemActionBar.tsx` — JWT-aware (reads JWT on mount + storage event) | ✅ |
-| `frontend/app/login/page.tsx`, `frontend/app/signup/page.tsx` | ✅ |
-| `frontend/app/admin/items/new/page.tsx` — auth-guarded wrapper | ✅ |
-| `frontend/app/admin/items/page.tsx` — list view | ✅ |
-| `frontend/app/layout.tsx` — replaced static nav with `<FrontendNav />` | ✅ |
-| `frontend/app/page.tsx` — admin CTA hero slot | ✅ |
-| `frontend/app/{items,items/[id],results}/page.tsx` — pass `Authorization` via `useAuthHeaders()` | ✅ |
-
-**Verification:** `npm run type-check` ✅ + `npm run build` ✅ (11 routes generated).
-
-### Phase I — Docs (steps 36-38) ✅
-| Slice | Status |
-|---|---|
-| `docs/adr.md` §3 line 97 — broadened "Hard rule" + Runtime-embedding exception | ✅ |
-| `docs/adr.md` §5 — added `/auth/*`, `/admin/items/*`, `/actions/*` to router list | ✅ |
-| `docs/adr.md` §6 — documented `ArtifactLoader.append_item` mutation + lock order | ✅ |
-| `docs/adr.md` §10 — added 6 new risks (E5 download, in-process reload, DB+loader non-atomicity, JWT rotation, Gemini outage, Layer A false positives) | ✅ |
-| `docs/adr.md` §11.1 — inverted "auth out of scope" → in scope (bcrypt + JWT HS256 7-day + first-user-admin + JWT-vs-anon translation) | ✅ |
-| `docs/adr.md` §11.9 — new entry: admin-driven live ingest + Layered Grounding | ✅ |
-| `docs/adr.md` §12 — acceptance criteria includes new endpoints + new criterion 9 (hot-reload) | ✅ |
-
-### Backend boot fixes (NEW, uncommitted) ⚠️
-Two issues found while trying to launch the backend with the new code:
-
-1. **`pydantic-settings` chokes on `List[str]` fields from env.** `RECSYS_ADMIN_USERNAMES=admin` and `RECSYS_CORS_ORIGINS=...` were declared as `List[str]`, which makes pydantic-settings call `json.loads` *before* the validator runs. JSON parse fails on plain strings. **Fix:** changed fields to `str` (comma-separated), added `*_list` properties that re-split, and rewrote the validator as `_normalize_csv(mode="before")` that accepts both strings and lists (backward-compat with test fixtures).
-2. **Local `.env` leaks into pytest runs.** When pytest imports `app.config`, `Settings()` is instantiated and reads `.env` even though conftest later strips env vars. The `RECSYS_ADMIN_USERNAMES=admin` in `.env` made `test_signup_creates_user_and_returns_token` fail (expected first-user-bootstrap → admin, got allow-list mode → not admin). **Fix:** skip `.env` loading when `"pytest" in sys.modules` via an `_ENV_FILE` constant in `config.py`. Production / dev still loads `.env`.
-
-Files touched (uncommitted — needs committing next session):
-```
-M  backend/app/core/config.py
-M  backend/app/main.py                       (cors_origins → cors_origins_list)
-M  backend/app/services/user_query.py       (admin_usernames → admin_usernames_list)
-M  backend/app/routers/auth.py               (admin_usernames → admin_usernames_list)
-M  backend/tests/test_core.py                (assert on cors_origins_list)
-M  backend/tests/test_user_query.py          (monkeypatch admin_usernames="")
-M  backend/.env                              (NEW — local dev only; gitignored)
-```
-
-### Live Alembic migration applied ✅
-- `python -m alembic upgrade head` → `0003_live_actions → 0004_admin_users` (users table + ix_users_username). Run this **once** on any new machine.
-
-### Admin user created in dev DB ✅
-- `username: admin`, `password: hunter22`, `is_admin: true` (allow-list mode).
-- This is the only user. The JWT secret in `.env` is `dev-secret-change-in-prod` — rotate before any deployment.
+1. Read `handoff.md` — picked up at Step 2 ("Map CSV → Postgres").
+2. Read CSV headers + dbold.md schema sections for the 4 missing tables (`accounts_userprofile`, `recommendation_requests`, `recommendation_request_selected_keywords`, `recommendation_results`).
+3. Inspected live `web_rs_thaiarts` schema (17 tables) — confirmed gaps vs CSV.
+4. Built Alembic migration `0006_recommender_history.py` (213 lines):
+   * 4 new tables (UNIQUE/INDEX/FK + `nextval` default for empty tables via `setval(seq, 1, false)`)
+   * `interaction_logs.recommendation_request_id` nullable FK
+   * Downgrade drops everything in reverse order.
+5. Applied migration via `alembic upgrade head` — 17 tables confirmed via `\dt`.
+6. Built `pipelines/migrate_csv_to_postgres.py` (656 lines) — generic CSV loader with FK ordering, ON CONFLICT DO NOTHING, UTF-8 BOM, password REDACTION → bcrypt-random hash + must_reset marker, user_id → user_key translation via `legacy:<username>`.
+7. Dry-run: all 25 CSVs parsed, row counts match manifest 100%.
+8. Real run: 15/15 tables imported with `ON CONFLICT DO NOTHING` (idempotent). Output:
+   ```
+   accounts_userprofile                         157
+   contexts                                      25
+   items                                        115
+   item_contexts                              1,005
+   item_keywords                              1,083
+   keywords                                     604
+   taxonomy_nodes                                48
+   interaction_logs                           2,563
+   legacy_interactions                        2,534
+   likes                                          1
+   ratings                                        3
+   recommendation_requests                        2
+   recommendation_request_selected_keywords       6
+   recommendation_results                        20
+   saved_items                                    0
+   ```
+9. Verified: 0 FK orphans across 19 FK checks; sample rows match CSV; 248 tests pass / 90.45% coverage (no regression).
+10. Committed `7c8fd85` (`db: 0006_recommender_history + migrate_csv_to_postgres loader`).
+11. Updated this handoff.
 
 ---
 
-## Commit history (this session, in order)
+## What changed in session 7 (before `/clear`)
 
-```
-1220eef ADR: broaden runtime-embedding exception + flip auth in-scope (Phase I, final)
-6eff3aa Docs: update CLAUDE.md + README + ADR + api/comparison for auth/admin ingest (Phase I, partial)
-daf83e9 Frontend home: admin CTA hero slot + update handoff (Phase H step 35)
-60cbbbc Frontend pages: login/signup + admin ingest + JWT-aware catalog/results (Phase H steps 30-34)
-f01e5c0 Frontend components: AuthForm + AdminItemForm + FrontendNav + JWT-aware actions (Phase H steps 28, 29, 33, 34)
-49a1291 Frontend lib: JWT auth helpers + API client + types (Phase H steps 25-27)
-4691331 Backend: admin ingest + auth + layered grounding (Phase B-G)
-4652ba9 Add handoff.md for next Claude session            (session 4)
-db8b515 Add Postgres SQLAlchemy layer: ORM models, ...    (session 3)
-```
-
----
-
-## Where to start (next session)
-
-### Step 1 — Commit the uncommitted backend boot fixes
-```
-cd "C:/Users/Pichaya/Downloads/web_appRS1"
-git add backend/app/core/config.py backend/app/main.py backend/app/services/user_query.py \
-        backend/app/routers/auth.py backend/tests/test_core.py backend/tests/test_user_query.py
-git commit -m "config: List[str] fields → comma-string + list property + skip .env in tests
-
-- pydantic-settings calls json.loads() before validators on List[str]
-  fields, so env vars like RECSYS_ADMIN_USERNAMES=admin fail to parse.
-  Switched cors_origins and admin_usernames to plain str (CSV) with
-  matching *_list properties. Rewrote the validator as _normalize_csv
-  that accepts both string and list (backward-compat with test fixtures).
-- Skip .env loading when 'pytest' in sys.modules so unit tests run
-  against pure defaults (no admin allow-list, default JWT secret).
-  Production / dev still loads .env via pydantic-settings.
-- main.py / services/user_query.py / routers/auth.py now read the
-  *_list properties.
-- tests/test_core.py asserts on cors_origins_list.
-- tests/test_user_query.py monkeypatches admin_usernames=\"\" instead
-  of admin_usernames_list=[] (pydantic refuses to setattr on properties).
-- 248 tests pass / 90.45% coverage (gate ≥ 90% ✅)."
-```
-
-### Step 2 — Decide whether to keep `backend/.env`
-The `.env` is **gitignored** (not in `git status`) but lives on this machine only. It contains:
-```
-RECSYS_DB_ENABLED=1
-RECSYS_JWT_SECRET=dev-secret-change-in-prod
-RECSYS_ADMIN_USERNAMES=admin
-RECSYS_GROUNDING_USE_LLM=0
-RECSYS_CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
-```
-- **If you intend to keep using this for dev:** add a tracked `.env.example` (placeholders only) and document in README.
-- **If not:** delete the local file and re-launch without env vars (default behaviour — DB off, no admin allow-list, default JWT secret).
-
-### Step 3 — Verify backend is still running
-```
-curl http://127.0.0.1:8080/health
-# {"status":"ok",...,"item_count":5,...}
-
-curl -H "Authorization: Bearer <paste-admin-jwt>" http://127.0.0.1:8080/auth/me
-# {"id":1,"username":"admin","is_admin":true,...}
-```
-If the process is dead, restart with:
-```
-cd "C:/Users/Pichaya/Downloads/web_appRS1/backend"
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8080
-```
-It reads `.env` automatically; no explicit env vars needed.
-
-### Step 4 — Run the full e2e smoke (Phase J step 39-40)
-Already passed in this session but worth re-running:
-```
-cd backend && python -m pytest --cov=app --cov-report=term-missing --cov-fail-under=90 -q
-# 248 passed / 90.45% coverage
-
-cd frontend && npm run type-check && npm run build
-# Both green
-```
-
-Then the manual e2e from CLAUDE.md "End-to-end smoke":
-1. http://localhost:3000/signup → admin / hunter22 → JWT
-   *(Note: `admin` already exists in DB; login instead, or use a fresh username.)*
-2. http://localhost:3000/admin/items/new → fill form → "ดูคำสำคัญที่เสนอ"
-3. submit → redirect to /items/{new_id}
-4. /items → new item appears in catalog (loader was hot-reloaded)
-5. /recommend → new item appears in top-K
-
-⚠️ Step 2 triggers E5 model download (~2.5 GB on first ingest). Set `RECSYS_E5_ENABLED=0` to skip; set `RECSYS_E5_LOCAL_PATH` to preload from a local snapshot.
-
-### Step 5 — Anything else from the original plan?
-Open `C:\Users\Pichaya\.claude\plans\bubbly-finding-patterson.md` for the full plan. Everything is done except end-to-end manual verification (steps 39-40) and the dev-mode polish (`.env.example`).
+1. Read `handoff.md` (previous version)
+2. User asked: "ตรวจข้อมูลในฐานข้อมูล web_rs_thaiarts และ relation ของฟิลด์ต่างๆ ว่ามีข้อมูลตรงกับไฟล์นี้หรือไม่ `C:\Users\Pichaya\Downloads\web_appRS\dbold.md`"
+3. Compared row counts → found 7 mismatches (4 short, 3 empty, 6 missing tables)
+4. Asked user "จะทำอย่างไร?" → user answered "Re-import จาก dbold.md's source"
+5. Started locating data source:
+   - Confirmed `dbold.md` is documentation, no file paths
+   - Found 4 CSV files in `source_data_2569/code for paper/4.recommendation/input/`
+   - **NOT YET:** inspected CSV headers vs dbold.md columns
+   - **NOT YET:** checked if dbold.md has actual rows inlined (it does — line 483+ has `## accounts_userprofile` followed by row data)
+6. User interrupted to start new session → writing this handoff
 
 ---
 
-## Architecture invariants (current state)
+## Critical files
 
-1. **Backend never reads CSV at serving time or admin-ingest time** (broadened from "serving only" in §3 — runtime-embedding exception documented).
-2. **Frontend never imports Python, reads CSV, or opens `artifacts/`.** Only HTTP to backend.
-3. **The pipeline is offline.** It is the only code that touches source CSVs.
-4. **The legacy project at `../web_appRS/thai_arts_webapp/` is read-only.** `git diff` against its HEAD must remain clean after any work here.
-5. **Algorithm matches the legacy port** — eligibility, CBF, CF, hybrid, explanation behaviour unchanged from the 1:1 port.
-6. **JWT-vs-anon user_key translation** — write endpoints require JWT; catalog browse accepts either JWT (server picks it) or opaque `anon:<uuid>`. See `backend/app/routers/_user_key.py:resolve_user_key`.
-7. **In-process loader mutation** — `ArtifactLoader.append_item(...)` is the only mutator; runs under `get_lock()`; embedding computed OUTSIDE the lock. DB+loader non-atomicity window is ~50 ms.
+### Backend
+- `backend/app/core/config.py` — `cors_origins: str` (CSV) + `cors_origins_list` property; same for `admin_usernames`. `_ENV_FILE = None if "pytest" in sys.modules`
+- `backend/migrations/versions/0005_legacy_autoincrement.py` — sequence + nextval for 7 legacy tables
+- `backend/migrations/versions/0006_recommender_history.py` — **NEW** 4 tables (accounts_userprofile, recommendation_requests, recommendation_request_selected_keywords, recommendation_results) + interaction_logs.recommendation_request_id FK
+- `backend/app/services/ingestion.py` — `ingest_new_item` (Known Gap A — *resolved by session 8 re-import; row id=115 now in DB*)
+- `backend/app/services/embedding.py` — lazy E5 loader
+- `backend/app/services/grounding.py` — Layer A + Layer B
+- `backend/app/services/user_query.py` — users CRUD + first-user-admin
+- `backend/app/routers/admin.py` — `/admin/items/draft`, `/admin/items`, `/admin/items/{id}/keywords`
+- `backend/app/routers/_user_key.py` — `resolve_user_key` (JWT vs anon translation)
+- `backend/app/model_loader.py` — `append_item` + `threading.Lock` + `get_lock`
+- `backend/.env.example` — tracked; local `.env` is gitignored
 
----
+### Pipelines
+- `pipelines/migrate_sqlite_to_postgres.py` — legacy: SQLite → PG (session 6)
+- `pipelines/migrate_csv_to_postgres.py` — **NEW** (session 8): CSV export → PG, idempotent
+- `pipelines/train_or_generate_artifacts.py` — generates artifacts/
 
-## Critical files to know
-
-### Backend — modified this session
-- `backend/app/core/config.py` — new shape: `cors_origins: str` + `cors_origins_list` property; same for `admin_usernames`. New `_ENV_FILE = None if "pytest" in sys.modules else ".env"` to skip .env in tests. **NEW (uncommitted).**
-- `backend/app/main.py` — `cors_origins → cors_origins_list`. **NEW (uncommitted).**
-- `backend/app/services/user_query.py` — `admin_usernames → admin_usernames_list`. **NEW (uncommitted).**
-- `backend/app/routers/auth.py` — same swap. **NEW (uncommitted).**
-
-### Backend — new (Phase F-G, committed 4691331)
-- `backend/migrations/versions/0004_admin_users.py` — `users` table (BigAutoPK + bcrypt hash + is_admin).
-- `backend/app/schemas/user.py` — `UserSignup`, `UserLogin`, `UserOut`, `TokenOut`.
-- `backend/app/schemas/admin.py` — `ItemDraft`, `ItemCreate`, `KeywordProposal`, `ItemDraftOut`, `ItemCommit`, `ItemCommitOut`, `ItemKeywordReassign`, `ItemReassignOut`.
-- `backend/app/routers/auth.py` — `POST /auth/signup`, `POST /auth/login`, `GET /auth/me`.
-- `backend/app/routers/admin.py` — `POST /admin/items/draft`, `POST /admin/items`, `POST /admin/items/{id}/keywords`. Drafts cached in module-level `_drafts: Dict[str, Dict]` (TTL 30 min).
-- `backend/app/routers/_user_key.py` — `resolve_user_key(user, body_user_key)`.
-- `backend/app/services/auth.py` — bcrypt + PyJWT.
-- `backend/app/services/embedding.py` — lazy E5 loader.
-- `backend/app/services/grounding.py` — Layer A + Layer B + combined.
-- `backend/app/services/ingestion.py` — `ingest_new_item` orchestrator.
-- `backend/app/services/user_query.py` — users table CRUD + first-user-admin.
-- `backend/app/services/actions.py` — like/save/rating with row-keyed dedupe.
-- `backend/app/services/suitability.py` — `catalog_match_percent` heuristic.
-- `backend/app/model_loader.py` — `append_item(...)` + `threading.Lock` + `get_lock`.
-
-### Frontend — new (Phase H, commits 49a1291 → daf83e9)
-- `frontend/lib/auth.ts` — `STORAGE_KEY`, `getStoredAuth`, `getCurrentUser`, `getJwt`, `getAuthHeaders`, `isAdmin`, `storeToken`, `logout`.
-- `frontend/lib/useAuthHeaders.ts` — React hook reading JWT live + cross-tab.
-- `frontend/components/AuthForm.tsx`, `AdminItemForm.tsx`, `FrontendNav.tsx`.
-- `frontend/app/{login,signup,admin/items/new,admin/items}/page.tsx`.
+### Frontend
+- `frontend/lib/auth.ts` — JWT storage
+- `frontend/lib/useAuthHeaders.ts` — live JWT header hook
+- `frontend/components/AuthForm.tsx`, `AdminItemForm.tsx`, `FrontendNav.tsx`, `ItemActionBar.tsx`
+- `frontend/app/{login,signup,admin/items/new,admin/items}/page.tsx`
 
 ### Docs
-- `docs/adr.md` — updated §3, §5, §6, §10, §11, §12 (commit 1220eef).
+- `docs/adr.md` — §3 (runtime-embedding exception), §5 (auth/admin routes), §6 (loader mutation), §10 (risks), §11 (auth in-scope), §12 (acceptance criteria)
+- `README.md` — backend env section
+
+### Reference (read-only)
+- `C:\Users\Pichaya\Downloads\web_appRS\dbold.md` — **comparison target** (4.9 MB, 9,551 lines). Documents schema + has actual rows inlined after line 483. **Use as ground truth for any future schema question.**
+- `C:\Users\Pichaya\Downloads\web_appRS\db_csv_export_20260728\` — **data source** (25 CSVs + manifest.csv). **Imported** in session 8; do not delete.
+- `C:\Users\Pichaya\Downloads\web_appRS\thai_arts_webapp\db.sqlite3` — Django SQLite (2.6 MB) — already migrated in session 6 (114 items, 574 keywords — superseded by db_csv_export)
+- `C:\Users\Pichaya\Downloads\web_appRS\source_data_2569\code for paper\4.recommendation\input\*.csv` — **NOT the source** (4 CSVs but not the right schema). Mentioned only for completeness
 
 ---
 
-## Endpoints (currently live on :8080)
+## Endpoints (live on :8080)
 
 | Method | Path | Purpose | Auth |
 |---|---|---|---|
 | POST | `/auth/signup` | Create user | – |
 | POST | `/auth/login` | Verify password → JWT | – |
-| GET  | `/auth/me` | Echo current user | JWT |
+| GET | `/auth/me` | Echo current user | JWT |
 | POST | `/admin/items/draft` | Layer A+B grounding | admin JWT |
 | POST | `/admin/items` | Layer C commit + ingest | admin JWT |
 | POST | `/admin/items/{id}/keywords` | Layer C re-edit | admin JWT |
-| GET  | `/health` | Liveness + artifact metadata | – |
-| GET  | `/db/health` | Postgres reachability | – |
+| GET | `/health` | Liveness + artifact metadata | – |
+| GET | `/db/health` | Postgres reachability | – |
 | POST | `/recommendations` | Generate top-K | – (optional user_key) |
-| GET  | `/items` | Browse + ranked mode | JWT or anon |
-| GET  | `/items/{id}` | Detail | JWT or anon |
-| GET  | `/items/{id}/legacy-stats` | Postgres ratings | – |
-| GET  | `/contexts` | Sub-contexts | – |
-| GET  | `/keywords` | Keywords | – |
-| GET  | `/metrics` | Corpus + CF index stats | – |
+| GET | `/items` | Browse + ranked mode | JWT or anon |
+| GET | `/items/{id}` | Detail | JWT or anon |
+| GET | `/items/{id}/legacy-stats` | Postgres ratings | – |
+| GET | `/contexts` | Sub-contexts | – |
+| GET | `/keywords` | Keywords | – |
+| GET | `/metrics` | Corpus + CF index stats | – |
 | POST/DELETE | `/actions/like` | Like / unlike | JWT or anon |
 | POST/DELETE | `/actions/save` | Save / unsave | JWT or anon |
-| PUT  | `/actions/rating` | Set 1..5 rating | JWT or anon |
-| GET  | `/docs`, `/redoc`, `/openapi.json` | Swagger / ReDoc / schema | – |
+| PUT | `/actions/rating` | Set 1..5 rating | JWT or anon |
+| GET | `/docs`, `/redoc`, `/openapi.json` | Swagger / ReDoc / schema | – |
 
 ---
 
 ## How to run (dev)
 
 ```bash
-# Backend (already running in this session, background task briorpx8b on :8080)
+# Backend (currently running in session 7, background task bmwo5piz3 on :8080)
 cd "C:/Users/Pichaya/Downloads/web_appRS1/backend"
-# Reads .env automatically. Env vars in .env: DB enabled, JWT secret,
-# admin allow-list "admin", Layer B off, CORS = localhost:3000 + 127.0.0.1:3000.
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8080
+# Reads .env automatically. Local .env:
+#   RECSYS_DB_ENABLED=1
+#   RECSYS_JWT_SECRET=dev-secret-change-in-prod
+#   RECSYS_ADMIN_USERNAMES=admin
+#   RECSYS_GROUNDING_USE_LLM=0
+#   RECSYS_CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 
-# Apply migrations (one-time per machine)
-python -m alembic upgrade head   # adds users table (0004)
+# Migrations (one-time per machine — already applied)
+python -m alembic upgrade head
 
-# Run tests (skips .env via sys.modules guard)
+# Tests
 python -m pytest --cov=app --cov-report=term --cov-fail-under=90 -q
-# 248 passed / 90.45% coverage (gate ≥ 90% ✅)
+# 248 passed / 90.45% coverage
 
-# Frontend (Phase H, not yet started in dev session — run from a separate shell)
+# Frontend (not started as dev server)
 cd "C:/Users/Pichaya/Downloads/web_appRS1/frontend"
 npm run dev    # http://localhost:3000
 ```
 
 ---
 
-## Known ports (in use on this machine)
+## Ports
 
-- **5432** — Postgres (Docker container `thai_arts_postgres`, DB `web_rs_thaiarts`)
-- **8080** — FastAPI backend (background task `briorpx8b`)
-- **3000** — Next.js frontend (Phase H build verified; not started as dev server)
-
----
-
-## Notes for the next session
-
-- **E5 model download** — first ingest triggers `~2.5 GB` HuggingFace download (CPU build). Set `RECSYS_E5_ENABLED=0` to skip; set `RECSYS_E5_LOCAL_PATH` to preload from a local snapshot.
-- **In-process reload** — every successful ingest appends to the in-memory `ArtifactLoader` under `get_lock()`. All in-flight requests see the new state immediately (no versioning). Documented in `ingestion.py` docstring.
-- **DB + loader non-atomicity** — if ingest crashes between DB insert and loader mutation, the DB has the row but the loader doesn't. Re-running the same admin POST would surface a duplicate-name 400; the operator can re-trigger a full reload via `python -m uvicorn ...` restart as a last resort. Window is small (~50 ms) and bounded by the lock.
-- **Reassign route** — `POST /admin/items/{id}/keywords` is exercised by `test_admin.py::test_reassign_keywords_updates_item`. The route looks up by `Item.artifact_item_id` (not `Item.id`) so callers must pass the artifact id from `/items` responses.
-- **Frontend nav** — the conditional nav lives in `FrontendNav.tsx` (extracted from `layout.tsx`). Reads `getCurrentUser()` on mount; listens to `storage` event for cross-tab logout sync.
-- **First-user-admin bootstrap** — when `RECSYS_ADMIN_USERNAMES` env is empty, the very first `POST /auth/signup` becomes admin. When non-empty (as in our `.env`), only members of the allow-list become admins. The current `.env` has `admin` so the admin user was correctly created with `is_admin=true`.
-- **JWT secret** — `.env` has `dev-secret-change-in-prod`. **Rotate before any production deployment** (`RECSYS_JWT_SECRET` env var). HS256 — no JWKS needed.
+- **5432** — Postgres (Docker `thai_arts_postgres`)
+- **8080** — FastAPI backend (background task `bmwo5piz3`)
+- **3000** — Next.js frontend (not started)
 
 ---
 
-## Files needing attention next session
+## Notes
 
-### Uncommitted (Phase J polish — commit first)
-```
-backend/app/core/config.py
-backend/app/main.py
-backend/app/services/user_query.py
-backend/app/routers/auth.py
-backend/tests/test_core.py
-backend/tests/test_user_query.py
-backend/.env            (NEW — gitignored, local dev only)
-```
-
-### Untracked
-```
-artifacts/              (gitignored binaries + paper_text.txt)
-```
-
-### Clean
-- All Phase F-G backend code (committed 4691331)
-- All Phase H frontend code (committed 49a1291 → daf83e9)
-- All Phase I docs (committed 6eff3aa + 1220eef)
-- All earlier sessions
+- **E5 model** — first ingest triggers `~2.5 GB` download; already cached on this machine
+- **In-process loader** — every successful ingest appends to `ArtifactLoader` under `get_lock()`. All in-flight requests see new state immediately
+- **DB + loader non-atomicity** — ~50 ms window. Session 6 saw the inverse (loader has row, DB doesn't). Investigate `ingestion.py` if recurs
+- **JWT secret** — `.env` has `dev-secret-change-in-prod`. Rotate before production
+- **First-user-admin bootstrap** — when `RECSYS_ADMIN_USERNAMES` empty, first signup = admin. When non-empty (current), only allow-list = admin
 
 ---
 
-## Suggested commit message (next session)
+## Plan file reference
 
-```
-config: List[str] fields → comma-string + list property + skip .env in tests
-
-- pydantic-settings calls json.loads() before validators on List[str]
-  fields, so env vars like RECSYS_ADMIN_USERNAMES=admin fail to parse.
-  Switched cors_origins and admin_usernames to plain str (CSV) with
-  matching *_list properties. Rewrote the validator as _normalize_csv
-  that accepts both string and list (backward-compat with test fixtures).
-- Skip .env loading when 'pytest' in sys.modules so unit tests run
-  against pure defaults (no admin allow-list, default JWT secret).
-  Production / dev still loads .env via pydantic-settings.
-- main.py / services/user_query.py / routers/auth.py now read the
-  *_list properties.
-- tests/test_core.py asserts on cors_origins_list.
-- tests/test_user_query.py monkeypatches admin_usernames="" instead
-  of admin_usernames_list=[] (pydantic refuses to setattr on properties).
-- 248 tests pass / 90.45% coverage (gate ≥ 90% ✅).
-```
+`C:\Users\Pichaya\.claude\plans\bubbly-finding-patterson.md` — original plan. Phases B-I done; J = smoke (done, partial); K = autoincrement (done); L = re-import from dbold.md (**done** in session 8).
 
 ---
 
 **End of handoff.** Full file path: **`C:\Users\Pichaya\Downloads\web_appRS1\handoff.md`**
 
-Next session: start by committing the uncommitted config refactor (single focused commit), then run e2e smoke against the live backend. Plan file at `C:\Users\Pichaya\.claude\plans\bubbly-finding-patterson.md` (Phases B-I done; J is end-to-end verification).
+**Next session command (one line):**
+
+```
+อ่าน C:\Users\Pichaya\Downloads\web_appRS1\handoff.md — session 8 จบ re-import แล้ว, ถ้ามีงานต่อ user จะบอกเอง
+```

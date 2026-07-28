@@ -1,15 +1,49 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 
-import type { RecommendationResultOut } from "@/lib/types";
+import { ItemActionBar } from "@/components/ItemActionBar";
+import type {
+  RecommendationResultOut,
+  UserState as UserStateType,
+} from "@/lib/types";
+
+// Suitability-pill background by Thai label. Centralised here so the
+// catalog card can reuse the same colour scheme.
+function suitabilityColor(label: string): string {
+  if (label === "เหมาะมาก") return "#e8f5e9"; // green-50
+  if (label === "เหมาะสม") return "#e3f2fd"; // blue-50
+  return "#f5f5f5"; // grey-100 (เหมาะใช้ได้)
+}
+
+function suitabilityBorder(label: string): string {
+  if (label === "เหมาะมาก") return "#43a047"; // green-600
+  if (label === "เหมาะสม") return "#1e88e5"; // blue-600
+  return "#9e9e9e"; // grey-500
+}
 
 export interface RecommendationCardProps {
   result: RecommendationResultOut;
+  userKey: string;
+  contextId?: number | null;
+  requestId?: string | null;
+  /** Called when the user toggles like/save/rating on this card. */
+  onUserStateChange?: (itemId: number, next: UserStateType) => void;
 }
 
-export function RecommendationCard({ result }: RecommendationCardProps) {
+export function RecommendationCard({
+  result,
+  userKey,
+  contextId,
+  requestId,
+  onUserStateChange,
+}: RecommendationCardProps) {
   const { rank, item, scores, matched_keywords, explanation } = result;
+
+  function handleStateChange(next: UserStateType) {
+    if (onUserStateChange) onUserStateChange(item.id, next);
+  }
 
   return (
     <article
@@ -21,21 +55,43 @@ export function RecommendationCard({ result }: RecommendationCardProps) {
         boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
       }}
     >
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "0.5rem" }}>
+      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "0.5rem", gap: "0.5rem" }}>
         <h3 style={{ margin: 0, fontSize: "1.1rem" }}>
-          #{rank} {item.name}
+          #{rank}{" "}
+          <Link
+            href={`/items/${item.id}`}
+            style={{ color: "#1e6fd9", textDecoration: "none" }}
+          >
+            {item.name}
+          </Link>
         </h3>
-        <span
-          style={{
-            fontSize: "0.8rem",
-            color: "#555",
-            padding: "0.2rem 0.5rem",
-            backgroundColor: "#f0f4ff",
-            borderRadius: "999px",
-          }}
-        >
-          hybrid {scores.hybrid.toFixed(3)}
-        </span>
+        <div style={{ display: "flex", gap: "0.4rem", flexShrink: 0 }}>
+          <span
+            style={{
+              fontSize: "0.78rem",
+              color: suitabilityBorder(result.suitability_label),
+              padding: "0.2rem 0.55rem",
+              backgroundColor: suitabilityColor(result.suitability_label),
+              borderRadius: "999px",
+              border: `1px solid ${suitabilityBorder(result.suitability_label)}`,
+              fontWeight: 600,
+            }}
+            title="Display-only match percent — does not affect ranking."
+          >
+            {result.suitability_label} · {result.match_percent}%
+          </span>
+          <span
+            style={{
+              fontSize: "0.8rem",
+              color: "#555",
+              padding: "0.2rem 0.5rem",
+              backgroundColor: "#f0f4ff",
+              borderRadius: "999px",
+            }}
+          >
+            hybrid {scores.hybrid.toFixed(3)}
+          </span>
+        </div>
       </header>
 
       {item.category_group || item.performance_type ? (
@@ -96,6 +152,17 @@ export function RecommendationCard({ result }: RecommendationCardProps) {
         >
           {explanation}
         </p>
+      ) : null}
+
+      {userKey ? (
+        <ItemActionBar
+          itemId={item.id}
+          userKey={userKey}
+          userState={item.user_state}
+          onChange={handleStateChange}
+          contextId={contextId}
+          requestId={requestId}
+        />
       ) : null}
     </article>
   );

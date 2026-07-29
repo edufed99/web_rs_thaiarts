@@ -9,6 +9,7 @@ import type { ContextOut, ItemOut } from "@/lib/types";
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingState } from "@/components/LoadingState";
 import { isAdmin } from "@/lib/auth";
+import { getUserKey } from "@/lib/user";
 
 export default function HomePage() {
   const [contexts, setContexts] = useState<ContextOut[]>([]);
@@ -30,7 +31,8 @@ export default function HomePage() {
   useEffect(() => {
     let cancelled = false;
     setError(null);
-    Promise.all([getContexts(), getItems({ limit: 8 })])
+    const userKey = getUserKey();
+    Promise.all([getContexts(), getItems({ limit: 8, userKey })])
       .then(([c, itemList]) => {
         if (cancelled) return;
         setContexts(c.contexts);

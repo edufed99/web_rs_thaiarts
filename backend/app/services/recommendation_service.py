@@ -128,10 +128,7 @@ def generate_profile_recommendations(
                 ),
                 is_context_valid=True,
                 matched_keywords=[],
-                explanation=(
-                    "แนะนำจากพฤติกรรมเดิมของคุณ เช่น รายการที่เคยถูกใจ "
-                    "หรือให้คะแนนสูง แล้วหารายการที่มีรูปแบบผู้ใช้ใกล้เคียงกัน"
-                ),
+                explanation=_profile_card_explanation(item, history_summary),
                 match_percent=mp,
                 suitability_label=suitability_label(mp),
             )
@@ -209,6 +206,35 @@ def _profile_history_summary(loader: ArtifactLoader, history_ids: set[int]) -> D
         "top_performance_types": top_types,
         "sentence": " ".join(parts) if parts else "ยังไม่มีประวัติความชอบมากพอให้สรุปรูปแบบเดิม",
     }
+
+
+def _profile_card_explanation(item: Dict, history_summary: Dict) -> str:
+    """Build a short card-level reason from a user's historical interests."""
+    history_items = [str(name) for name in history_summary.get("history_item_names", []) if name]
+    top_contexts = [str(name) for name in history_summary.get("top_contexts", []) if name]
+    top_keywords = [str(name) for name in history_summary.get("top_keywords", []) if name]
+    top_types = [str(name) for name in history_summary.get("top_performance_types", []) if name]
+
+    item_contexts = {str(name) for name in list(item.get("context_names") or []) if name}
+    item_keywords = {str(name) for name in list(item.get("keyword_names") or []) if name}
+    item_type = str(item.get("performance_type") or item.get("category_group") or "").strip()
+
+    context_overlap = [name for name in top_contexts if name in item_contexts][:1]
+    keyword_overlap = [name for name in top_keywords if name in item_keywords][:2]
+    type_overlap = [name for name in top_types if name and name == item_type][:1]
+
+    if history_items:
+        reason = f"แนะนำเพราะในอดีตคุณเคยชอบ {history_items[0]}"
+    else:
+        reason = "แนะนำจากรายการที่คุณเคยถูกใจหรือให้คะแนนสูง"
+
+    if keyword_overlap:
+        return f"{reason} และรายการนี้มีคุณลักษณะใกล้เคียง เช่น {', '.join(keyword_overlap)}"
+    if context_overlap:
+        return f"{reason} ในบริบทใกล้เคียง เช่น {context_overlap[0]}"
+    if type_overlap:
+        return f"{reason} ซึ่งอยู่ในกลุ่มการแสดงคล้ายกัน"
+    return f"{reason} แล้วพบว่ามีรูปแบบผู้ใช้ใกล้เคียงกัน"
 
 
 def _best_profile_key(loader: ArtifactLoader, user: User) -> tuple[str, int]:

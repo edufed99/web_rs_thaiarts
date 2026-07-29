@@ -89,14 +89,6 @@ export default function RecommendPage() {
   }
 
   const canSubmit = contextId !== null && !submitting;
-  const historySummary = profileData?.metadata?.history_summary;
-  const historySentence =
-    typeof historySummary === "object" &&
-    historySummary !== null &&
-    "sentence" in historySummary &&
-    typeof historySummary.sentence === "string"
-      ? historySummary.sentence
-      : "ยังไม่มีประวัติความชอบมากพอให้สรุปรูปแบบเดิม";
 
   if (!ready) {
     return <LoadingState message="กำลังตรวจสอบโปรไฟล์ผู้ใช้..." />;
@@ -121,10 +113,8 @@ export default function RecommendPage() {
             <p className="eyebrow">ส่วนที่ 1</p>
             <h2>การแสดงที่คาดว่าคุณจะชอบจากพฤติกรรมในอดีต</h2>
             <p>
-              <strong>ในอดีต:</strong> {historySentence}
-              <br />
-              <strong>ปัจจุบัน:</strong> ระบบคำนวณจากรายการที่คุณเคยชอบ กดบันทึก
-              กดถูกใจ กดให้คะแนน แล้วนำเสนอรายการที่มีรูปแบบผู้ใช้ใกล้เคียงกัน
+              ระบบคำนวณจากรายการที่คุณเคยชอบ กดบันทึก กดถูกใจ กดให้คะแนน
+              แล้วนำเสนอรายการที่มีรูปแบบผู้ใช้ใกล้เคียงกัน
             </p>
           </div>
           <span className="context-pill">{profileData?.results.length ?? topK} รายการ</span>

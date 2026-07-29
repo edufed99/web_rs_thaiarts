@@ -14,6 +14,7 @@ from app.schemas.recommendation import RecommendationRequestIn
 from app.services.recommendation_service import (
     _build_context_out,
     _build_item_out,
+    _profile_card_explanation,
     _profile_history_summary,
     _resolve_keywords,
     generate_recommendations,
@@ -111,6 +112,17 @@ def test_profile_history_summary_uses_real_history_items(loader):
     assert "งานบวช" in summary["top_contexts"]
     assert "ผู้หญิง" in summary["top_keywords"]
     assert "งานบวช" in summary["sentence"]
+
+
+def test_profile_card_explanation_is_short_and_history_grounded(loader):
+    history_ids = {item_id("ระบำพรหมาสตร์"), item_id("โขน")}
+    summary = _profile_history_summary(loader, history_ids)
+    row = loader.items[loader.items["name"] == "หุ่นกระบอก"].iloc[0].to_dict()
+    explanation = _profile_card_explanation(row, summary)
+
+    assert explanation.startswith("แนะนำเพราะในอดีตคุณเคยชอบ")
+    assert "ระบำพรหมาสตร์" in explanation
+    assert len(explanation) < 140
 
 
 # --- Negative penalty wiring (DB enabled) -----------------------------------

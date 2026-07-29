@@ -9,6 +9,7 @@ import type { ContextOut, ItemOut } from "@/lib/types";
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingState } from "@/components/LoadingState";
 import { isAdmin } from "@/lib/auth";
+import { groupContexts } from "@/lib/contextGroups";
 import { getUserKey } from "@/lib/user";
 
 export default function HomePage() {
@@ -68,6 +69,7 @@ export default function HomePage() {
 
   const popularItems = items.slice(0, 4);
   const seasonalItems = items.slice(4, 8).length > 0 ? items.slice(4, 8) : popularItems;
+  const contextGroups = groupContexts(contexts);
 
   return (
     <div className="section-stack">
@@ -77,7 +79,7 @@ export default function HomePage() {
             <p className="eyebrow hero-badge">Research prototype</p>
             <h1>ค้นหาชุดการแสดงไทยที่เหมาะกับงานของคุณ</h1>
             <p>
-              เลือกบริบทย่อยหรือคำสำคัญจาก taxonomy เพื่อให้ระบบ Context Gate,
+              เลือกโอกาสที่ใช้แสดงหรือคำสำคัญจาก taxonomy เพื่อให้ระบบ Context Gate,
               CBF, ItemKNN และ Hybrid Ranking ช่วยคัดรายการที่เหมาะสมที่สุด
             </p>
             <div className="portal-hero-actions">
@@ -90,15 +92,19 @@ export default function HomePage() {
         <form className="portal-search-card" action="/items">
           <div className="portal-search-intro">
             <strong>ค้นหาชุดการแสดง</strong>
-            <span>เลือกบริบทย่อยหรือพิมพ์คำค้นหา เช่น โขน ตารีบุหงา งานมงคล</span>
+            <span>เลือกโอกาสที่ใช้แสดงหรือพิมพ์คำค้นหา เช่น โขน ตารีบุหงา งานมงคล</span>
           </div>
           <div className="portal-search-fields">
             <label className="field">
-              <span>บริบทย่อยของงาน</span>
+              <span>โอกาสที่ใช้แสดง</span>
               <select name="context">
-                <option value="">เลือกบริบทย่อย</option>
-                {contexts.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
+                <option value="">เลือกโอกาสที่ใช้แสดง</option>
+                {contextGroups.map((group) => (
+                  <optgroup key={group.label} label={group.label}>
+                    {group.contexts.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </label>
@@ -183,7 +189,7 @@ export default function HomePage() {
         <div className="card-grid" style={{ marginTop: "14px" }}>
           <article>
             <strong>Context Gate</strong>
-            <p className="muted">กรอง candidate ด้วยบริบทย่อยก่อนจัดอันดับ</p>
+            <p className="muted">กรอง candidate ด้วยโอกาสที่ใช้แสดงก่อนจัดอันดับ</p>
           </article>
           <article>
             <strong>Keyword Taxonomy</strong>

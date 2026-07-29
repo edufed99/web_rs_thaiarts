@@ -9,6 +9,7 @@ import { ErrorState } from "@/components/ErrorState";
 import { LoadingState } from "@/components/LoadingState";
 
 import { ApiClientError, getContexts, getItems } from "@/lib/api";
+import { groupContexts } from "@/lib/contextGroups";
 import type { ContextOut, ItemListOut, UserState } from "@/lib/types";
 import { useAuthHeaders } from "@/lib/useAuthHeaders";
 import { getUserKey } from "@/lib/user";
@@ -120,6 +121,7 @@ function ItemsContent() {
     () => (contextId != null ? contexts.find((c) => c.id === contextId) ?? null : null),
     [contextId, contexts],
   );
+  const contextGroups = useMemo(() => groupContexts(contexts), [contexts]);
 
   if (error) {
     return (
@@ -140,7 +142,7 @@ function ItemsContent() {
         <div>
           <p className="eyebrow">Catalog browser</p>
           <h1>คลังชุดการแสดง</h1>
-          <p className="muted">ค้นหาจากชื่อ คำสำคัญ หรือเลือกบริบทย่อยเพื่อดูรายการที่เหมาะสมที่สุด</p>
+          <p className="muted">ค้นหาจากชื่อ คำสำคัญ หรือเลือกโอกาสที่ใช้แสดงเพื่อดูรายการที่เหมาะสมที่สุด</p>
         </div>
       </section>
 
@@ -164,11 +166,15 @@ function ItemsContent() {
           value={contextId ?? ""}
           onChange={onContextChange}
         >
-          <option value="">— ทุกบริบท —</option>
-          {contexts.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
+          <option value="">— ทุกโอกาส —</option>
+          {contextGroups.map((group) => (
+            <optgroup key={group.label} label={group.label}>
+              {group.contexts.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
         <button

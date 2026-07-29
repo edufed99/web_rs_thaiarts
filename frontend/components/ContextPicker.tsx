@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 
 import { ApiClientError, getContexts } from "@/lib/api";
+import { groupContexts } from "@/lib/contextGroups";
 import type { ContextOut } from "@/lib/types";
 
 import { ErrorState } from "./ErrorState";
@@ -57,9 +58,11 @@ export function ContextPicker({ value, onChange }: ContextPickerProps) {
     return <ErrorState title="ไม่มีบริบท" message="ยังไม่มีบริบทในระบบ" />;
   }
 
+  const contextGroups = groupContexts(contexts);
+
   return (
     <label className="field">
-      <span>เลือกบริบท</span>
+      <span>โอกาสที่ใช้แสดง</span>
       <select
         value={value ?? ""}
         onChange={(e) => {
@@ -67,11 +70,15 @@ export function ContextPicker({ value, onChange }: ContextPickerProps) {
           onChange(v === "" ? null : Number(v));
         }}
       >
-        <option value="">— เลือกบริบท —</option>
-        {contexts.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.name} ({c.active_item_count} รายการ)
-          </option>
+        <option value="">— เลือกโอกาสที่ใช้แสดง —</option>
+        {contextGroups.map((group) => (
+          <optgroup key={group.label} label={group.label}>
+            {group.contexts.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </optgroup>
         ))}
       </select>
     </label>

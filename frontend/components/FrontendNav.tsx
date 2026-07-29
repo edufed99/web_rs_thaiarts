@@ -12,9 +12,9 @@ interface NavLink {
 }
 
 const BASE_LINKS: NavLink[] = [
-  { href: "/", label: "Home" },
-  { href: "/items", label: "แคตตาล็อก" },
-  { href: "/recommend", label: "คำแนะนำ" },
+  { href: "/", label: "หน้าหลัก" },
+  { href: "/items", label: "คลังชุดการแสดง" },
+  { href: "/recommend", label: "ค้นหาชุดการแสดง" },
 ];
 
 export function FrontendNav() {
@@ -34,41 +34,21 @@ export function FrontendNav() {
 
   const links: NavLink[] = [...BASE_LINKS];
   if (isAdmin()) {
-    links.push({ href: "/admin/items", label: "ผู้ดูแล" });
+    links.push({ href: "/admin/items", label: "Dashboard ผู้วิจัย" });
   }
 
   return (
-    <nav style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+    <div className="topbar-nav" aria-label="เมนูหลักด้านบน">
       {links.map((l) => (
-        <Link
-          key={l.href}
-          href={l.href}
-          style={{
-            color: "#fff",
-            textDecoration: "none",
-            padding: "0.35rem 0.75rem",
-            borderRadius: "6px",
-            backgroundColor: "rgba(255,255,255,0.12)",
-            fontSize: "0.9rem",
-          }}
-        >
-          {l.label}
-        </Link>
+        <Link key={l.href} href={l.href}>{l.label}</Link>
       ))}
       {user === undefined ? null : user ? (
-        <div style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+        <nav className="utility-nav" aria-label="เมนูบัญชีผู้ใช้">
           <span
             title={user.is_admin ? "ผู้ดูแลระบบ" : user.username}
-            style={{
-              color: "#fff",
-              fontSize: "0.85rem",
-              opacity: 0.9,
-              padding: "0.25rem 0.5rem",
-              backgroundColor: "rgba(255,255,255,0.18)",
-              borderRadius: "4px",
-            }}
+            className="user-chip"
           >
-            {user.is_admin ? "🛡 " : ""}
+            {user.is_admin ? "Admin · " : ""}
             {user.display_name || user.username}
           </span>
           <button
@@ -77,50 +57,16 @@ export function FrontendNav() {
               logout();
               setUser(null);
             }}
-            style={{
-              padding: "0.35rem 0.75rem",
-              backgroundColor: "transparent",
-              color: "#fff",
-              border: "1px solid rgba(255,255,255,0.6)",
-              borderRadius: "6px",
-              fontSize: "0.85rem",
-              cursor: "pointer",
-            }}
           >
             ออกจากระบบ
           </button>
-        </div>
+        </nav>
       ) : (
-        <div style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem" }}>
-          <Link
-            href="/login"
-            style={{
-              color: "#fff",
-              textDecoration: "none",
-              padding: "0.35rem 0.75rem",
-              borderRadius: "6px",
-              backgroundColor: "rgba(255,255,255,0.18)",
-              fontSize: "0.9rem",
-            }}
-          >
-            เข้าสู่ระบบ
-          </Link>
-          <Link
-            href="/signup"
-            style={{
-              color: "#1e6fd9",
-              textDecoration: "none",
-              padding: "0.35rem 0.75rem",
-              borderRadius: "6px",
-              backgroundColor: "#fff",
-              fontSize: "0.9rem",
-              fontWeight: 600,
-            }}
-          >
-            สมัครสมาชิก
-          </Link>
-        </div>
+        <nav className="utility-nav" aria-label="เข้าสู่ระบบ">
+          <Link href="/login">เข้าสู่ระบบ</Link>
+          <Link className="button-link" href="/signup">สมัครสมาชิก</Link>
+        </nav>
       )}
-    </nav>
+    </div>
   );
 }

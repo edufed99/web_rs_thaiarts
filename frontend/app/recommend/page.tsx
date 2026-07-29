@@ -29,27 +29,22 @@ export default function RecommendPage() {
   const canSubmit = contextId !== null && !submitting;
 
   return (
-    <form onSubmit={handleSubmit} style={{ display: "grid", gap: "1.5rem" }}>
-      <section>
-        <h2 style={{ marginTop: 0 }}>ขอคำแนะนำ</h2>
-        <p style={{ color: "#555", marginTop: 0 }}>
-          เลือกบริบทและคำสำคัญที่สนใจ ระบบจะแนะนำรายการที่เหมาะสมที่สุด
-        </p>
+    <form onSubmit={handleSubmit} className="section-stack">
+      <section className="page-hero">
+        <div>
+          <p className="eyebrow">Recommendation workflow</p>
+          <h1>ค้นหาชุดการแสดง</h1>
+          <p className="muted">
+            เลือกบริบทและคำสำคัญที่สนใจ ระบบจะกรอง candidate และจัดอันดับด้วย hybrid recommender
+          </p>
+        </div>
       </section>
 
-      <section>
+      <section className="form-panel">
         <ContextPicker value={contextId} onChange={setContextId} />
-      </section>
-
-      <section>
         <KeywordPicker selectedIds={keywordIds} onChange={setKeywordIds} />
-      </section>
-
-      <section>
-        <label style={{ display: "block" }}>
-          <span style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600 }}>
-            จำนวนผลลัพธ์ (top-K)
-          </span>
+        <label className="field" style={{ maxWidth: "180px" }}>
+          <span>จำนวนผลลัพธ์ (top-K)</span>
           <input
             type="number"
             min={1}
@@ -59,35 +54,17 @@ export default function RecommendPage() {
               const n = parseInt(e.target.value, 10);
               if (!isNaN(n) && n >= 1 && n <= 50) setTopK(n);
             }}
-            style={{
-              padding: "0.5rem",
-              fontSize: "1rem",
-              border: "1px solid #ccc",
-              borderRadius: "4px",
-              width: "100px",
-            }}
           />
         </label>
-      </section>
 
-      <div>
         <button
           type="submit"
           disabled={!canSubmit}
-          style={{
-            padding: "0.75rem 1.5rem",
-            backgroundColor: canSubmit ? "#1e6fd9" : "#999",
-            color: "#fff",
-            border: "none",
-            borderRadius: "4px",
-            fontSize: "1rem",
-            fontWeight: 600,
-            cursor: canSubmit ? "pointer" : "not-allowed",
-          }}
+          style={{ justifySelf: "start", minWidth: "180px" }}
         >
           {submitting ? "กำลังส่งคำขอ..." : "ขอคำแนะนำ"}
         </button>
-      </div>
+      </section>
     </form>
   );
 }

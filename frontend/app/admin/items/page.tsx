@@ -47,111 +47,96 @@ export default function AdminItemsListPage() {
   }
 
   return (
-    <div>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: "0.5rem",
-          flexWrap: "wrap",
-        }}
-      >
-        <h1 style={{ margin: 0 }}>รายการแนะนำสำหรับผู้ดูแล</h1>
-        <div style={{ display: "flex", gap: "0.5rem" }}>
+    <div className="section-stack">
+      <section className="page-hero">
+        <div>
+          <p className="eyebrow">Researcher / Admin Dashboard</p>
+          <h1>ศูนย์บริหารข้อมูลการแสดง</h1>
+          <p className="muted">
+            ตรวจ catalog, เพิ่มชุดการแสดง และติดตามข้อมูลพื้นฐานที่ใช้กับ recommender
+          </p>
+        </div>
+        <div className="actions" style={{ marginTop: 0 }}>
           <button
             type="button"
             onClick={() => setReloadKey((k) => k + 1)}
-            style={{
-              padding: "0.4rem 0.75rem",
-              backgroundColor: "#fff",
-              color: "#1e6fd9",
-              border: "1px solid #1e6fd9",
-              borderRadius: "4px",
-              fontSize: "0.85rem",
-              cursor: "pointer",
-            }}
+            className="secondary"
           >
             รีเฟรช
           </button>
-          <Link
-            href="/admin/items/new"
-            style={{
-              padding: "0.4rem 0.75rem",
-              backgroundColor: "#1e6fd9",
-              color: "#fff",
-              border: "none",
-              borderRadius: "4px",
-              fontSize: "0.85rem",
-              textDecoration: "none",
-            }}
-          >
-            + เพิ่มการแสดงใหม่
-          </Link>
+          <Link href="/admin/items/new" className="primary">เพิ่มการแสดงใหม่</Link>
         </div>
-      </div>
+      </section>
 
-      <p style={{ color: "#555" }}>
-        รายการด้านล่างคือการแสดงทั้งหมดที่อยู่ในแคตตาล็อก (MVP — ระบบจะแยกรายการที่ผู้ดูแลเพิ่มในเวอร์ชันถัดไป)
-      </p>
+      <section className="research-kpi-grid" aria-label="ตัวชี้วัด catalog">
+        <article className="metric-card">
+          <span>Catalog rows</span>
+          <strong>{items?.length ?? "..."}</strong>
+          <small className="muted">โหลดล่าสุดจาก FastAPI</small>
+        </article>
+        <article className="metric-card">
+          <span>Admin flow</span>
+          <strong>Layer A+B</strong>
+          <small className="muted">grounding + keyword proposal</small>
+        </article>
+        <article className="metric-card">
+          <span>API contract</span>
+          <strong>Swagger</strong>
+          <small className="muted">FastAPI docs ที่ /docs</small>
+        </article>
+        <article className="metric-card">
+          <span>Storage</span>
+          <strong>Postgres</strong>
+          <small className="muted">persist admin ingest และ actions</small>
+        </article>
+      </section>
 
       {error ? (
-        <div
-          role="alert"
-          style={{
-            color: "#7a1f1f",
-            backgroundColor: "#fdecec",
-            border: "1px solid #f5c2c2",
-            borderRadius: "4px",
-            padding: "0.5rem 0.75rem",
-          }}
-        >
+        <div role="alert" className="error-panel">
           {error}
         </div>
       ) : null}
 
       {!items ? (
-        <div>กำลังโหลด...</div>
+        <div className="panel">กำลังโหลด...</div>
       ) : items.length === 0 ? (
-        <div>ยังไม่มีการแสดงในระบบ</div>
+        <div className="panel">ยังไม่มีการแสดงในระบบ</div>
       ) : (
-        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: "0.5rem" }}>
-          {items.map((it) => (
-            <li
-              key={it.id}
-              style={{
-                padding: "0.75rem 1rem",
-                backgroundColor: "#fff",
-                border: "1px solid #e3e3e3",
-                borderRadius: "6px",
-                display: "flex",
-                gap: "0.5rem",
-                alignItems: "center",
-                justifyContent: "space-between",
-              }}
-            >
-              <div>
-                <div style={{ fontWeight: 600 }}>{it.name}</div>
-                <div style={{ fontSize: "0.85rem", color: "#555" }}>
-                  {it.category_group} · {it.performance_type || "—"}
-                </div>
-              </div>
-              <Link
-                href={`/items/${it.id}`}
-                style={{
-                  padding: "0.3rem 0.6rem",
-                  backgroundColor: "#1e6fd9",
-                  color: "#fff",
-                  borderRadius: "4px",
-                  fontSize: "0.85rem",
-                  textDecoration: "none",
-                }}
-              >
-                ดูรายละเอียด
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <section className="research-panel">
+          <div className="research-section-head" style={{ marginTop: 0 }}>
+            <div>
+              <p className="eyebrow">Knowledge Base Management</p>
+              <h2>ตารางจัดการชุดการแสดง</h2>
+            </div>
+            <span>{items.length} รายการล่าสุด</span>
+          </div>
+          <div className="management-table-wrap">
+            <table className="management-table">
+              <thead>
+                <tr>
+                  <th>ชุดการแสดง</th>
+                  <th>หมวดหมู่</th>
+                  <th>ประเภท</th>
+                  <th>บริบท</th>
+                  <th>สถานะ</th>
+                  <th>เปิดดู</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((it) => (
+                  <tr key={it.id}>
+                    <td><strong>{it.name}</strong></td>
+                    <td>{it.category_group || "-"}</td>
+                    <td>{it.performance_type || "-"}</td>
+                    <td>{it.contexts.slice(0, 2).map((c) => c.name).join(", ") || "-"}</td>
+                    <td><span className="status-pill">{it.suitability_label || "Active"}</span></td>
+                    <td><Link className="secondary" href={`/items/${it.id}`}>รายละเอียด</Link></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
     </div>
   );

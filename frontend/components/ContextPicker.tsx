@@ -58,22 +58,13 @@ export function ContextPicker({ value, onChange }: ContextPickerProps) {
   }
 
   return (
-    <label style={{ display: "block" }}>
-      <span style={{ display: "block", marginBottom: "0.5rem", fontWeight: 600 }}>
-        เลือกบริบท
-      </span>
+    <label className="field">
+      <span>เลือกบริบท</span>
       <select
         value={value ?? ""}
         onChange={(e) => {
           const v = e.target.value;
           onChange(v === "" ? null : Number(v));
-        }}
-        style={{
-          padding: "0.5rem",
-          fontSize: "1rem",
-          border: "1px solid #ccc",
-          borderRadius: "4px",
-          minWidth: "260px",
         }}
       >
         <option value="">— เลือกบริบท —</option>

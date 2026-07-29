@@ -169,16 +169,12 @@ export function AdminItemForm() {
     return (
       <form
         onSubmit={handleDraft}
-        style={{
-          display: "grid",
-          gap: "1rem",
-          padding: "1.5rem",
-          backgroundColor: "#fff",
-          border: "1px solid #e3e3e3",
-          borderRadius: "8px",
-        }}
+        className="form-panel"
       >
-        <h2 style={{ margin: 0 }}>เพิ่มการแสดงใหม่ — ขั้นที่ 1: กรอกข้อมูล</h2>
+        <div>
+          <p className="eyebrow">Step 1</p>
+          <h2 style={{ margin: 0 }}>กรอกข้อมูลการแสดง</h2>
+        </div>
 
         <Field label="ชื่อการแสดง" required>
           <input
@@ -252,16 +248,6 @@ export function AdminItemForm() {
         <button
           type="submit"
           disabled={submitting}
-          style={{
-            padding: "0.75rem 1rem",
-            backgroundColor: submitting ? "#999" : "#1e6fd9",
-            color: "#fff",
-            border: "none",
-            borderRadius: "4px",
-            fontSize: "1rem",
-            fontWeight: 600,
-            cursor: submitting ? "not-allowed" : "pointer",
-          }}
         >
           {submitting ? "กำลังวิเคราะห์..." : "ดูคำสำคัญที่เสนอ"}
         </button>
@@ -274,17 +260,13 @@ export function AdminItemForm() {
   return (
     <form
       onSubmit={handleCommit}
-      style={{
-        display: "grid",
-        gap: "1rem",
-        padding: "1.5rem",
-        backgroundColor: "#fff",
-        border: "1px solid #e3e3e3",
-        borderRadius: "8px",
-      }}
+      className="form-panel"
     >
-      <h2 style={{ margin: 0 }}>เพิ่มการแสดงใหม่ — ขั้นที่ 2: เลือกคำสำคัญ</h2>
-      <p style={{ margin: 0, color: "#555", fontSize: "0.9rem" }}>
+      <div>
+        <p className="eyebrow">Step 2</p>
+        <h2 style={{ margin: 0 }}>เลือกคำสำคัญ</h2>
+      </div>
+      <p className="muted" style={{ margin: 0, fontSize: "0.9rem" }}>
         ระบบเสนอคำสำคัญจากกฎ (Layer A) และ LLM (Layer B) สำหรับ &quot;{fields.name}&quot;
         คุณสามารถเพิ่ม/ลดได้ตามต้องการก่อนกดยืนยัน
       </p>
@@ -306,10 +288,10 @@ export function AdminItemForm() {
                       gap: "0.5rem",
                       alignItems: "center",
                       padding: "0.4rem 0.6rem",
-                      border: `1px solid ${checked ? "#1e6fd9" : "#e3e3e3"}`,
-                      borderRadius: "6px",
+                      border: `1px solid ${checked ? "#c5913b" : "rgba(197, 145, 59, 0.28)"}`,
+                      borderRadius: "8px",
                       cursor: "pointer",
-                      backgroundColor: checked ? "#f0f6ff" : "#fafafa",
+                      backgroundColor: checked ? "#fff7e5" : "#fffaf0",
                     }}
                   >
                     <input
@@ -368,8 +350,8 @@ export function AdminItemForm() {
                   disabled={selectedIds.has(k.id)}
                   style={{
                     padding: "0.25rem 0.5rem",
-                    backgroundColor: selectedIds.has(k.id) ? "#e0e0e0" : "#1e6fd9",
-                    color: selectedIds.has(k.id) ? "#777" : "#fff",
+                    backgroundColor: selectedIds.has(k.id) ? "#e0e0e0" : "#102a4a",
+                    color: selectedIds.has(k.id) ? "#777" : "#fffaf0",
                     border: "none",
                     borderRadius: "3px",
                     fontSize: "0.85rem",
@@ -415,31 +397,13 @@ export function AdminItemForm() {
             setError(null);
           }}
           disabled={submitting}
-          style={{
-            padding: "0.75rem 1rem",
-            backgroundColor: "#fff",
-            color: "#1e6fd9",
-            border: "1px solid #1e6fd9",
-            borderRadius: "4px",
-            fontSize: "1rem",
-            cursor: submitting ? "not-allowed" : "pointer",
-          }}
+          className="secondary"
         >
           ย้อนกลับ
         </button>
         <button
           type="submit"
           disabled={submitting}
-          style={{
-            padding: "0.75rem 1rem",
-            backgroundColor: submitting ? "#999" : "#1e6fd9",
-            color: "#fff",
-            border: "none",
-            borderRadius: "4px",
-            fontSize: "1rem",
-            fontWeight: 600,
-            cursor: submitting ? "not-allowed" : "pointer",
-          }}
         >
           {submitting ? "กำลังบันทึก..." : "ยืนยันเพิ่มการแสดง"}
         </button>
@@ -449,10 +413,6 @@ export function AdminItemForm() {
 }
 
 const inputStyle: React.CSSProperties = {
-  padding: "0.5rem",
-  fontSize: "1rem",
-  border: "1px solid #ccc",
-  borderRadius: "4px",
   width: "100%",
 };
 
@@ -466,8 +426,8 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <label style={{ display: "grid", gap: "0.35rem" }}>
-      <span style={{ fontWeight: 600 }}>
+    <label className="field">
+      <span>
         {label}
         {required ? <span style={{ color: "#c00" }}> *</span> : null}
       </span>
@@ -478,17 +438,7 @@ function Field({
 
 function ErrorBlock({ message }: { message: string }) {
   return (
-    <div
-      role="alert"
-      style={{
-        color: "#7a1f1f",
-        backgroundColor: "#fdecec",
-        border: "1px solid #f5c2c2",
-        borderRadius: "4px",
-        padding: "0.5rem 0.75rem",
-        fontSize: "0.9rem",
-      }}
-    >
+    <div role="alert" className="error-panel">
       {message}
     </div>
   );

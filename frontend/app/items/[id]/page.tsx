@@ -73,27 +73,27 @@ function ItemDetailContent() {
   }
 
   return (
-    <article style={{ display: "grid", gap: "1rem" }}>
+    <article className="section-stack">
       <p style={{ margin: 0 }}>
         <Link
           href="/items"
-          style={{ color: "#1e6fd9", textDecoration: "none", fontSize: "0.9rem" }}
+          className="secondary"
+          style={{ minHeight: "34px", fontSize: "0.9rem" }}
         >
-          ← กลับไปแคตตาล็อก
+          กลับไปแคตตาล็อก
         </Link>
       </p>
 
-      <header
-        style={{
-          padding: "1.25rem",
-          border: "1px solid #e0e0e0",
-          borderRadius: "10px",
-          backgroundColor: "#fff",
-        }}
-      >
-        <h1 style={{ margin: "0 0 0.25rem 0", fontSize: "1.4rem" }}>{item.name}</h1>
+      <header className="panel" style={{ padding: 0, overflow: "hidden" }}>
+        <div
+          className="detail-media"
+          style={item.image_url ? { backgroundImage: `linear-gradient(90deg, rgba(6, 27, 60, 0.32), rgba(197, 145, 59, 0.08)), url("${item.image_url}")` } : undefined}
+        />
+        <div style={{ padding: "22px" }}>
+        <p className="eyebrow">Performance detail</p>
+        <h1 style={{ margin: "0 0 0.25rem 0", fontSize: "2rem", color: "#102044" }}>{item.name}</h1>
         {item.category_group || item.performance_type ? (
-          <p style={{ margin: 0, color: "#666" }}>
+          <p className="meta-line" style={{ margin: 0 }}>
             {[item.category_group, item.performance_type].filter(Boolean).join(" · ")}
           </p>
         ) : null}
@@ -115,27 +115,18 @@ function ItemDetailContent() {
             </span>
           </p>
         ) : null}
+        </div>
       </header>
 
       {item.description ? (
-        <section
-          style={{
-            padding: "1rem 1.25rem",
-            border: "1px solid #e0e0e0",
-            borderRadius: "10px",
-            backgroundColor: "#fff",
-          }}
-        >
-          <p style={{ margin: 0, lineHeight: 1.6 }}>{item.description}</p>
+        <section className="panel">
+          <p className="description" style={{ margin: 0 }}>{item.description}</p>
         </section>
       ) : null}
 
       <section
+        className="panel"
         style={{
-          padding: "1rem 1.25rem",
-          border: "1px solid #e0e0e0",
-          borderRadius: "10px",
-          backgroundColor: "#fff",
           display: "grid",
           gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
           gap: "0.5rem 1rem",
@@ -159,28 +150,15 @@ function ItemDetailContent() {
       </section>
 
       {item.contexts.length > 0 ? (
-        <section
-          style={{
-            padding: "1rem 1.25rem",
-            border: "1px solid #e0e0e0",
-            borderRadius: "10px",
-            backgroundColor: "#fff",
-          }}
-        >
+        <section className="panel">
           <h2 style={{ margin: "0 0 0.5rem 0", fontSize: "1.05rem" }}>บริบทที่เหมาะสม</h2>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
+          <div className="pill-row">
             {item.contexts.map((c) => (
               <Link
                 key={c.id}
                 href={`/items?context=${c.id}`}
-                style={{
-                  fontSize: "0.85rem",
-                  color: "#1e6fd9",
-                  textDecoration: "none",
-                  padding: "0.2rem 0.6rem",
-                  backgroundColor: "#f0f4ff",
-                  borderRadius: "4px",
-                }}
+                className="context-pill"
+                style={{ textDecoration: "none" }}
               >
                 {c.name}
               </Link>
@@ -190,28 +168,14 @@ function ItemDetailContent() {
       ) : null}
 
       {item.keywords.length > 0 ? (
-        <section
-          style={{
-            padding: "1rem 1.25rem",
-            border: "1px solid #e0e0e0",
-            borderRadius: "10px",
-            backgroundColor: "#fff",
-          }}
-        >
+        <section className="panel">
           <h2 style={{ margin: "0 0 0.5rem 0", fontSize: "1.05rem" }}>คำสำคัญ</h2>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
+          <div className="pill-row">
             {item.keywords.map((k) => (
               <span
                 key={k.id}
                 title={k.taxonomy_path || undefined}
-                style={{
-                  fontSize: "0.85rem",
-                  color: "#555",
-                  padding: "0.15rem 0.5rem",
-                  backgroundColor: "#fff8e1",
-                  border: "1px solid #ffe082",
-                  borderRadius: "4px",
-                }}
+                className="keyword-pill"
               >
                 {k.name}
               </span>
@@ -221,14 +185,7 @@ function ItemDetailContent() {
       ) : null}
 
       {userKey ? (
-        <section
-          style={{
-            padding: "1rem 1.25rem",
-            border: "1px solid #e0e0e0",
-            borderRadius: "10px",
-            backgroundColor: "#fff",
-          }}
-        >
+        <section className="panel">
           <ItemActionBar
             itemId={item.id}
             userKey={userKey}

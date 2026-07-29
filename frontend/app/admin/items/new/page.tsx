@@ -28,11 +28,16 @@ export default function NewItemPage() {
   }
 
   return (
-    <div>
-      <h1 style={{ marginTop: 0 }}>เพิ่มการแสดงใหม่</h1>
-      <p style={{ color: "#555", marginTop: 0 }}>
-        กรอกข้อมูลการแสดงและให้ระบบช่วยเลือกคำสำคัญที่เหมาะสม
-      </p>
+    <div className="section-stack">
+      <section className="page-hero">
+        <div>
+          <p className="eyebrow">AI / V&V Control</p>
+          <h1>เพิ่มการแสดงใหม่</h1>
+          <p className="muted">
+            กรอกข้อมูลการแสดง แล้วให้ระบบช่วยเสนอ keyword จากกฎและ LLM ก่อนบันทึกลงฐานข้อมูล
+          </p>
+        </div>
+      </section>
       <AdminItemForm />
     </div>
   );

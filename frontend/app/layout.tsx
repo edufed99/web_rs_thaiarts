@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import React from "react";
 
 import { FrontendNav } from "@/components/FrontendNav";
+import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Thai Arts Recommender",
-  description: "Eligibility-gated hybrid recommender for Thai performing arts",
+  title: "ThaiPerform AI",
+  description: "ระบบแนะนำชุดการแสดงไทยด้วย Next.js และ FastAPI",
 };
 
 export default function RootLayout({
@@ -15,45 +17,26 @@ export default function RootLayout({
 }) {
   return (
     <html lang="th">
-      <body
-        style={{
-          margin: 0,
-          fontFamily:
-            'system-ui, -apple-system, "Segoe UI", "Sarabun", "Noto Sans Thai", sans-serif',
-          backgroundColor: "#fafbfc",
-          color: "#1a1a1a",
-        }}
-      >
-        <header
-          style={{
-            padding: "1rem 1.5rem",
-            backgroundColor: "#1e6fd9",
-            color: "#fff",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              flexWrap: "wrap",
-              gap: "0.75rem",
-            }}
-          >
-            <div>
-              <h1 style={{ margin: 0, fontSize: "1.25rem" }}>
-                Thai Arts Recommender
-              </h1>
-              <p style={{ margin: "0.25rem 0 0 0", fontSize: "0.85rem", opacity: 0.85 }}>
-                ระบบแนะนำการแสดงงานศิลปะไทย (Eligibility-Gated Hybrid)
-              </p>
-            </div>
-            <FrontendNav />
-          </div>
+      <body>
+        <header className="app-topbar">
+          <Link className="brand" href="/">
+            <span className="brand-mark"><span>TP</span></span>
+            <span>ThaiPerform AI</span>
+          </Link>
+          <FrontendNav />
         </header>
-        <main style={{ maxWidth: "960px", margin: "0 auto", padding: "1.5rem" }}>
-          {children}
-        </main>
+        <div className="app-shell">
+          <aside className="side-menu" aria-label="เมนูหลักของระบบ">
+            <Link href="/"><span>01</span><b>หน้าหลัก</b></Link>
+            <Link href="/items"><span>02</span><b>คลังชุดการแสดง</b></Link>
+            <Link href="/recommend"><span>03</span><b>ค้นหาชุดการแสดง</b></Link>
+            <Link href="/#system-summary"><span>04</span><b>วิธีทำงานของระบบ</b></Link>
+            <div className="side-menu-title">Research tools</div>
+            <Link href="/admin/items"><span>05</span><b>Dashboard ผู้วิจัย</b></Link>
+            <Link href="http://127.0.0.1:8080/docs"><span>API</span><b>Swagger docs</b></Link>
+          </aside>
+          <main className="container">{children}</main>
+        </div>
       </body>
     </html>
   );

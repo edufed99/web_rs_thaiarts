@@ -79,7 +79,7 @@ export function KeywordPicker({ selectedIds, onChange, limit = 200 }: KeywordPic
 
   return (
     <div>
-      <div style={{ marginBottom: "0.5rem", fontWeight: 600 }}>
+      <div className="form-label" style={{ marginBottom: "0.5rem" }}>
         เลือกคำสำคัญ (เลือกได้หลายคำ)
       </div>
       <input
@@ -87,19 +87,12 @@ export function KeywordPicker({ selectedIds, onChange, limit = 200 }: KeywordPic
         placeholder="ค้นหาคำสำคัญ..."
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        style={{
-          width: "100%",
-          maxWidth: "320px",
-          padding: "0.5rem",
-          marginBottom: "0.75rem",
-          border: "1px solid #ccc",
-          borderRadius: "4px",
-        }}
+        style={{ maxWidth: "360px", marginBottom: "0.75rem" }}
       />
       {filtered.length === 0 ? (
         <p style={{ color: "#777" }}>ไม่พบคำสำคัญที่ตรงกับการค้นหา</p>
       ) : (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+        <div className="pill-row">
           {filtered.map((k) => {
             const active = selectedSet.has(k.id);
             return (
@@ -109,14 +102,15 @@ export function KeywordPicker({ selectedIds, onChange, limit = 200 }: KeywordPic
                 onClick={() => toggle(k.id)}
                 aria-pressed={active}
                 style={{
-                  padding: "0.4rem 0.8rem",
+                  padding: "0.45rem 0.85rem",
                   border: "1px solid",
-                  borderColor: active ? "#1e6fd9" : "#ccc",
-                  backgroundColor: active ? "#1e6fd9" : "#fff",
-                  color: active ? "#fff" : "#222",
-                  borderRadius: "999px",
+                  borderColor: active ? "#c5913b" : "rgba(197, 145, 59, 0.38)",
+                  backgroundColor: active ? "#102a4a" : "#fff7e5",
+                  color: active ? "#fffaf0" : "#8a5b17",
+                  borderRadius: "8px",
                   cursor: "pointer",
                   fontSize: "0.9rem",
+                  fontWeight: 800,
                 }}
               >
                 {k.name}

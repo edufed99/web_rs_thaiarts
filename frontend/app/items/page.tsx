@@ -135,41 +135,34 @@ function ItemsContent() {
   }
 
   return (
-    <div style={{ display: "grid", gap: "1rem" }}>
+    <div className="section-stack">
+      <section className="page-hero">
+        <div>
+          <p className="eyebrow">Catalog browser</p>
+          <h1>คลังชุดการแสดง</h1>
+          <p className="muted">ค้นหาจากชื่อ คำสำคัญ หรือเลือกบริบทย่อยเพื่อดูรายการที่เหมาะสมที่สุด</p>
+        </div>
+      </section>
+
       <form
         onSubmit={onSearchSubmit}
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr auto auto",
-          gap: "0.5rem",
-          alignItems: "center",
-          padding: "0.75rem 1rem",
-          border: "1px solid #e0e0e0",
-          borderRadius: "8px",
-          backgroundColor: "#fff",
-        }}
+        className="portal-search-card"
+        style={{ margin: 0, maxWidth: "none" }}
       >
+        <div className="portal-search-intro">
+          <strong>ค้นหาและกรอง catalog</strong>
+          <span>รองรับ search + ranked mode ตาม context</span>
+        </div>
+        <div className="portal-search-fields">
         <input
           type="search"
           value={searchDraft}
           onChange={(e) => setSearchDraft(e.target.value)}
           placeholder="ค้นหาชื่อหรือคำสำคัญ..."
-          style={{
-            padding: "0.5rem 0.75rem",
-            border: "1px solid #ccc",
-            borderRadius: "6px",
-            fontSize: "1rem",
-          }}
         />
         <select
           value={contextId ?? ""}
           onChange={onContextChange}
-          style={{
-            padding: "0.5rem 0.75rem",
-            border: "1px solid #ccc",
-            borderRadius: "6px",
-            fontSize: "1rem",
-          }}
         >
           <option value="">— ทุกบริบท —</option>
           {contexts.map((c) => (
@@ -180,26 +173,18 @@ function ItemsContent() {
         </select>
         <button
           type="submit"
-          style={{
-            padding: "0.5rem 1rem",
-            backgroundColor: "#1e6fd9",
-            color: "#fff",
-            border: "none",
-            borderRadius: "6px",
-            cursor: "pointer",
-            fontSize: "1rem",
-          }}
         >
           ค้นหา
         </button>
+        </div>
       </form>
 
       {selectedContext ? (
-        <p style={{ margin: 0, color: "#555" }}>
+        <p className="muted" style={{ margin: 0 }}>
           <strong>จัดอันดับตามบริบท:</strong> {selectedContext.name} · top {data.items.length} รายการ
         </p>
       ) : (
-        <p style={{ margin: 0, color: "#555" }}>
+        <p className="muted" style={{ margin: 0 }}>
           <strong>แคตตาล็อกทั้งหมด</strong> · {data.total} รายการ
         </p>
       )}
@@ -212,13 +197,7 @@ function ItemsContent() {
             : "ลองเปลี่ยนคำค้นหรือเลือกบริบทอื่น"}
         />
       ) : (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
-            gap: "1rem",
-          }}
-        >
+        <div className="card-grid">
           {data.items.map((item, idx) => (
             <CatalogItemCard
               key={item.id}

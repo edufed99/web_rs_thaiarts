@@ -48,18 +48,12 @@ export function CatalogItemCard({
   }
 
   return (
-    <article
-      style={{
-        padding: "1rem 1.25rem",
-        border: "1px solid #e0e0e0",
-        borderRadius: "10px",
-        backgroundColor: "#fff",
-        boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
-        display: "flex",
-        flexDirection: "column",
-        gap: "0.5rem",
-      }}
-    >
+    <article className="item-card" style={{ display: "flex", flexDirection: "column" }}>
+      <div
+        className="item-card-media"
+        style={item.image_url ? { backgroundImage: `linear-gradient(135deg, rgba(6, 27, 60, 0.12), rgba(197, 145, 59, 0.18)), url("${item.image_url}")` } : undefined}
+      />
+      <div className="item-card-body" style={{ display: "grid", gap: "0.55rem", flex: 1 }}>
       <header
         style={{
           display: "flex",
@@ -68,14 +62,9 @@ export function CatalogItemCard({
           gap: "0.5rem",
         }}
       >
-        <h3 style={{ margin: 0, fontSize: "1.05rem" }}>
+        <h3 style={{ fontSize: "1.05rem" }}>
           {rank ? `#${rank} ` : null}
-          <Link
-            href={`/items/${item.id}`}
-            style={{ color: "#1e6fd9", textDecoration: "none" }}
-          >
-            {item.name}
-          </Link>
+          <Link href={`/items/${item.id}`}>{item.name}</Link>
         </h3>
         {item.match_percent != null && item.suitability_label ? (
           <span
@@ -97,28 +86,19 @@ export function CatalogItemCard({
       </header>
 
       {item.category_group || item.performance_type ? (
-        <p style={{ margin: 0, color: "#666", fontSize: "0.85rem" }}>
+        <p className="meta-line" style={{ margin: 0 }}>
           {[item.category_group, item.performance_type].filter(Boolean).join(" · ")}
         </p>
       ) : null}
 
       {description ? (
-        <p style={{ margin: 0, color: "#333", fontSize: "0.95rem" }}>{description}</p>
+        <p className="description" style={{ margin: 0 }}>{description}</p>
       ) : null}
 
       {item.contexts.length > 0 ? (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.3rem" }}>
+        <div className="pill-row">
           {item.contexts.slice(0, 3).map((c) => (
-            <span
-              key={c.id}
-              style={{
-                fontSize: "0.75rem",
-                color: "#555",
-                padding: "0.15rem 0.5rem",
-                backgroundColor: "#f0f4ff",
-                borderRadius: "4px",
-              }}
-            >
+            <span key={c.id} className="context-pill">
               {c.name}
             </span>
           ))}
@@ -132,6 +112,7 @@ export function CatalogItemCard({
         onChange={handleStateChange}
         contextId={contextId ?? null}
       />
+      </div>
     </article>
   );
 }

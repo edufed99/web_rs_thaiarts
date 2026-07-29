@@ -94,20 +94,18 @@ function ResultsContent() {
     if (!data) return null;
     return (
       <section
+        className="panel"
         style={{
           padding: "1rem 1.25rem",
-          border: "1px solid #e0e0e0",
-          borderRadius: "8px",
-          backgroundColor: "#fff",
         }}
       >
-        <p style={{ margin: 0, color: "#555" }}>
+        <p className="muted" style={{ margin: 0 }}>
           บริบท: <strong>{data.selected_context.name}</strong> · คำสำคัญที่เลือก:{" "}
           <strong>{data.selected_keywords.length}</strong> · candidates:{" "}
           <strong>{data.candidate_count}</strong> · top-K: <strong>{data.top_k}</strong>
         </p>
         {data.selected_keywords.length > 0 ? (
-          <p style={{ margin: "0.5rem 0 0 0", color: "#555", fontSize: "0.9rem" }}>
+          <p className="muted" style={{ margin: "0.5rem 0 0 0", fontSize: "0.9rem" }}>
             {data.selected_keywords.map((k) => k.name).join(" · ")}
           </p>
         ) : null}
@@ -129,7 +127,14 @@ function ResultsContent() {
   }
 
   return (
-    <div style={{ display: "grid", gap: "1rem" }}>
+    <div className="section-stack">
+      <section className="page-hero">
+        <div>
+          <p className="eyebrow">Recommendation results</p>
+          <h1>ผลลัพธ์ที่ระบบแนะนำ</h1>
+          <p className="muted">เรียงลำดับด้วย hybrid score พร้อมเหตุผลประกอบเป็นภาษาไทย</p>
+        </div>
+      </section>
       {headerLabel}
       {data.results.length === 0 ? (
         <EmptyState
@@ -137,7 +142,7 @@ function ResultsContent() {
           message="บริบทนี้ไม่มี candidate ที่ผ่าน eligibility gate"
         />
       ) : (
-        <div style={{ display: "grid", gap: "0.75rem" }}>
+        <div className="section-stack">
           {data.results.map((r) => (
             <RecommendationCard
               key={r.item.id}

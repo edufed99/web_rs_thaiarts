@@ -18,6 +18,19 @@ from sqlalchemy.pool import StaticPool
 # Re-import inside test functions because we need to flip RECSYS_DB_ENABLED.
 # We use SQLite in-memory so the tests are hermetic.
 INMEM_URL = "sqlite:///:memory:"
+INMEM_THREAD_URL = "sqlite:///:memory:?check_same_thread=False"
+
+
+def _stable_artifact_id(name: str) -> int:
+    import hashlib
+
+    return int(hashlib.sha256(f"item::{name}".encode("utf-8")).hexdigest()[:7], 16)
+
+
+def _stable_context_id(name: str) -> int:
+    import hashlib
+
+    return int(hashlib.sha256(f"context::{name}".encode("utf-8")).hexdigest()[:7], 16)
 
 
 @pytest.fixture
@@ -201,6 +214,81 @@ def sqlite_db_with_live_actions(monkeypatch):
     eng.dispose()
 
 
+@pytest.fixture
+def db_catalog_client(monkeypatch, artifacts_dir):
+    """FastAPI client whose browse endpoints read from an in-memory DB."""
+    from app.core import config as config_module
+    from app import db as db_module
+    from app.main import create_app
+    from app.model_loader import reset_singleton
+    from app.models_db import (
+        Base, Context, Item, ItemContext, ItemKeyword, Keyword, TaxonomyNode,
+    )
+    from app.routers import catalog as catalog_module
+    from app.routers import metrics as metrics_module
+
+    monkeypatch.setenv("RECSYS_ARTIFACT_DIR", str(artifacts_dir))
+    monkeypatch.setenv("RECSYS_DB_ENABLED", "1")
+    config_module.reset_settings_cache()
+    reset_singleton()
+
+    eng = create_engine(
+        INMEM_THREAD_URL,
+        future=True,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(eng)
+    SessionLocal = sessionmaker(bind=eng, expire_on_commit=False, future=True)
+
+    dab_id = _stable_artifact_id("ดาบสองมือ")
+    rabam_id = _stable_artifact_id("ระบำพรหมาสตร์")
+    khon_id = _stable_artifact_id("โขน")
+    with SessionLocal() as s:
+        s.add_all([
+            Context(id=10, name="งานบวช", group_name="พิธีกรรม", description="พิธีงานบวช"),
+            Context(id=11, name="งานเลี้ยงสังสรรค์", group_name="งานเลี้ยง", description="งานสังสรรค์"),
+            TaxonomyNode(id=1, name="ผู้แสดง", level=1),
+            TaxonomyNode(id=2, name="เพศ", level=2, parent_id=1),
+            Keyword(id=100, name="ผู้หญิง", taxonomy_node_id=2),
+            Keyword(id=101, name="ดนตรี", taxonomy_node_id=None),
+            Keyword(id=102, name="อาวุธ", taxonomy_node_id=1),
+            Item(id=501, name="ระบำพรหมาสตร์", description="ระบำ", is_active=True, artifact_item_id=rabam_id),
+            Item(id=502, name="โขน", description="โขน", is_active=True, artifact_item_id=khon_id),
+            Item(id=503, name="ดาบสองมือ", description="การแสดงอาวุธ", is_active=True, artifact_item_id=dab_id),
+            Item(id=504, name="ซ่อนอยู่", description="", is_active=False, artifact_item_id=_stable_artifact_id("ซ่อนอยู่")),
+            ItemContext(id=1, item_id=501, context_id=10),
+            ItemContext(id=2, item_id=502, context_id=10),
+            ItemContext(id=3, item_id=503, context_id=11),
+            ItemContext(id=4, item_id=504, context_id=10),
+            ItemKeyword(id=1, item_id=501, keyword_id=100),
+            ItemKeyword(id=2, item_id=502, keyword_id=101),
+            ItemKeyword(id=3, item_id=503, keyword_id=102),
+        ])
+        s.commit()
+
+    @contextmanager
+    def fake_scope():
+        sess = SessionLocal()
+        try:
+            yield sess
+            sess.commit()
+        finally:
+            sess.close()
+
+    monkeypatch.setattr(db_module, "is_db_enabled", lambda: True)
+    monkeypatch.setattr(db_module, "session_scope", fake_scope)
+    monkeypatch.setattr(catalog_module, "session_scope", fake_scope)
+    monkeypatch.setattr(metrics_module, "session_scope", fake_scope)
+    monkeypatch.setattr(catalog_module, "live_user_state_for_items", lambda _user_key, _ids: {})
+    db_module.reset_engine()
+
+    app = create_app()
+    with TestClient(app) as client:
+        yield client, {"dab_id": dab_id, "rabam_id": rabam_id, "khon_id": khon_id}
+    eng.dispose()
+
+
 def test_orm_tables_include_live_action_tables():
     from app.models_db import Base
     table_names = set(Base.metadata.tables.keys())
@@ -313,3 +401,70 @@ def test_django_to_artifact_translation_round_trip(sqlite_db_with_live_actions):
     django_id = by_artifact[aid]
     assert artifact_id_to_django_id(aid) == django_id
     assert django_id_to_artifact_id(django_id) == aid
+
+
+# ---------------------------------------------------------------------------
+# DB-backed catalog/keyword API
+# ---------------------------------------------------------------------------
+
+
+def test_items_endpoint_prefers_db_catalog(db_catalog_client):
+    client, ids = db_catalog_client
+    r = client.get("/items", params={"limit": 200, "user_key": "anon:db"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["total"] == 3
+    names = {item["name"] for item in body["items"]}
+    assert "ดาบสองมือ" in names
+    assert "ซ่อนอยู่" not in names
+    dab = next(item for item in body["items"] if item["id"] == ids["dab_id"])
+    assert dab["contexts"][0]["group"] == "งานเลี้ยง"
+    assert dab["keywords"][0]["name"] == "อาวุธ"
+
+
+def test_items_endpoint_db_search_matches_keyword_and_detail(db_catalog_client):
+    client, ids = db_catalog_client
+    r = client.get("/items", params={"search": "อาวุธ", "user_key": "anon:db"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["total"] == 1
+    assert body["items"][0]["id"] == ids["dab_id"]
+
+    detail = client.get(f"/items/{ids['dab_id']}", params={"user_key": "anon:db"})
+    assert detail.status_code == 200, detail.text
+    data = detail.json()
+    assert data["name"] == "ดาบสองมือ"
+    assert data["contexts"][0]["active_item_count"] == 1
+
+
+def test_items_endpoint_db_ranked_context_mode(db_catalog_client):
+    client, ids = db_catalog_client
+    r = client.get(
+        "/items",
+        params={"context": _stable_context_id("งานบวช"), "user_key": "anon:db"},
+    )
+    assert r.status_code == 200, r.text
+    returned = {item["id"] for item in r.json()["items"]}
+    assert ids["rabam_id"] in returned
+    assert ids["khon_id"] in returned
+    assert ids["dab_id"] not in returned
+
+
+def test_keywords_and_metrics_prefer_db_counts(db_catalog_client):
+    client, _ = db_catalog_client
+    contexts = client.get("/contexts").json()["contexts"]
+    counts = {ctx["name"]: ctx["active_item_count"] for ctx in contexts}
+    assert counts["งานบวช"] == 2
+    assert counts["งานเลี้ยงสังสรรค์"] == 1
+
+    keywords = client.get("/keywords", params={"limit": 1000}).json()["keywords"]
+    assert {kw["name"] for kw in keywords} == {"ดนตรี", "ผู้หญิง", "อาวุธ"}
+    assert any(kw["taxonomy_path"] == "ผู้แสดง > เพศ" for kw in keywords)
+
+    filtered = client.get("/keywords", params={"search": "หญิง"}).json()["keywords"]
+    assert [kw["name"] for kw in filtered] == ["ผู้หญิง"]
+
+    metrics = client.get("/metrics").json()
+    assert metrics["item_count"] == 3
+    assert metrics["context_count"] == 2
+    assert metrics["keyword_count"] == 3

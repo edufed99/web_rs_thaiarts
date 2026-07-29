@@ -14,15 +14,16 @@ Two list modes:
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 import pandas as pd
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import func, select
 
-from ..core.config import get_settings
 from ..core.exceptions import ContextNotFoundError, ItemNotFoundError
+from ..db import session_scope
 from ..model_loader import ArtifactLoader, get_singleton
-from ..models_db import User
+from ..models_db import Context, Item, ItemContext, ItemKeyword, Keyword, TaxonomyNode, User
 from ..schemas.context import ContextOut
 from ..schemas.item import ItemListOut, ItemOut, UserState
 from ..schemas.keyword import KeywordOut
@@ -73,6 +74,33 @@ def list_items(
     loader: ArtifactLoader = Depends(get_singleton),
 ) -> ItemListOut:
     effective_user_key = resolve_user_key(user=user, body_user_key=user_key)
+
+    db_items = _db_item_rows()
+    if db_items is not None:
+        active_items = [row for row in db_items if row["is_active"]]
+        if context is not None:
+            return _ranked_by_context_db(active_items, context, effective_user_key, loader)
+        if search:
+            needle = search.lower()
+            active_items = [
+                row
+                for row in active_items
+                if needle in str(row["name"]).lower()
+                or needle in str(row["description"]).lower()
+                or any(needle in str(k["name"]).lower() for k in row["keywords"])
+            ]
+        total = len(active_items)
+        page = active_items[offset : offset + limit]
+        artifact_ids = [int(row["artifact_item_id"]) for row in page]
+        state_map = live_user_state_for_items(effective_user_key, artifact_ids)
+        return ItemListOut(
+            items=[
+                _db_row_to_item_out(row, user_state=state_map.get(int(row["artifact_item_id"])))
+                for row in page
+            ],
+            total=total,
+        )
+
     df = loader.items
     active = df[df["is_active"].astype(bool)]
 
@@ -121,6 +149,11 @@ def get_item(
     loader: ArtifactLoader = Depends(get_singleton),
 ) -> ItemOut:
     effective_user_key = resolve_user_key(user=user, body_user_key=user_key)
+    db_row = _db_item_row(int(item_id))
+    if db_row is not None:
+        state_map = live_user_state_for_items(effective_user_key, [int(item_id)])
+        return _db_row_to_item_out(db_row, user_state=state_map.get(int(item_id)))
+
     row = loader.item_row(int(item_id))
     if row is None:
         raise ItemNotFoundError(
@@ -129,6 +162,196 @@ def get_item(
         )
     state_map = live_user_state_for_items(effective_user_key, [int(item_id)])
     return _row_to_item_out(row, loader, user_state=state_map.get(int(item_id)))
+
+
+def _db_item_rows() -> Optional[list[dict[str, Any]]]:
+    """Return active-capable catalog rows from Postgres, or None on fallback."""
+    try:
+        with session_scope() as session:
+            if session is None:
+                return None
+            item_rows = session.execute(select(Item).order_by(Item.id)).scalars().all()
+            item_ids = [int(item.id) for item in item_rows]
+            contexts_by_item = _db_contexts_by_item(session, item_ids)
+            keywords_by_item = _db_keywords_by_item(session, item_ids)
+    except Exception:  # noqa: BLE001 - catalog must still work in artifact-only mode
+        return None
+
+    return [
+        _db_item_to_row(
+            item,
+            contexts=contexts_by_item.get(int(item.id), []),
+            keywords=keywords_by_item.get(int(item.id), []),
+        )
+        for item in item_rows
+    ]
+
+
+def _db_item_row(artifact_item_id: int) -> Optional[dict[str, Any]]:
+    try:
+        with session_scope() as session:
+            if session is None:
+                return None
+            item = session.execute(
+                select(Item).where(Item.artifact_item_id == int(artifact_item_id))
+            ).scalar_one_or_none()
+            if item is None:
+                return None
+            contexts = _db_contexts_by_item(session, [int(item.id)]).get(int(item.id), [])
+            keywords = _db_keywords_by_item(session, [int(item.id)]).get(int(item.id), [])
+    except Exception:  # noqa: BLE001 - fall back to artifacts
+        return None
+
+    return _db_item_to_row(item, contexts=contexts, keywords=keywords)
+
+
+def _db_item_to_row(
+    item: Item,
+    *,
+    contexts: list[dict[str, Any]],
+    keywords: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "artifact_item_id": int(item.artifact_item_id),
+        "name": str(item.name or ""),
+        "description": str(item.description or ""),
+        "category_group": str(item.category_group or ""),
+        "performance_type": str(item.performance_type or ""),
+        "performers_count": item.performers_count,
+        "duration_minutes": item.duration_minutes,
+        "price_text": str(item.price_text or ""),
+        "image_url": str(item.image_url or ""),
+        "video_url": str(item.video_url or ""),
+        "is_active": bool(item.is_active),
+        "contexts": contexts,
+        "keywords": keywords,
+    }
+
+
+def _db_contexts_by_item(session, item_ids: list[int]) -> dict[int, list[dict[str, Any]]]:
+    if not item_ids:
+        return {}
+    counts = dict(
+        session.execute(
+            select(ItemContext.context_id, func.count(ItemContext.item_id))
+            .join(Item, Item.id == ItemContext.item_id)
+            .where(Item.is_active.is_(True))
+            .group_by(ItemContext.context_id)
+        ).all()
+    )
+    rows = session.execute(
+        select(
+            ItemContext.item_id,
+            Context.name,
+            Context.group_name,
+            Context.description,
+            Context.id,
+        )
+        .join(Context, Context.id == ItemContext.context_id)
+        .where(ItemContext.item_id.in_(item_ids))
+        .order_by(Context.group_name, Context.name)
+    ).all()
+    out: dict[int, list[dict[str, Any]]] = {}
+    for item_id, name, group_name, description, context_pk in rows:
+        out.setdefault(int(item_id), []).append(
+            {
+                "id": stable_id("context", str(name)),
+                "db_id": int(context_pk),
+                "name": str(name or ""),
+                "group": str(group_name or ""),
+                "description": str(description or ""),
+                "active_item_count": int(counts.get(context_pk, 0)),
+            }
+        )
+    return out
+
+
+def _db_keywords_by_item(session, item_ids: list[int]) -> dict[int, list[dict[str, Any]]]:
+    if not item_ids:
+        return {}
+    taxonomy_paths = _taxonomy_paths_by_id(session)
+    rows = session.execute(
+        select(
+            ItemKeyword.item_id,
+            Keyword.id,
+            Keyword.name,
+            Keyword.taxonomy_node_id,
+        )
+        .join(Keyword, Keyword.id == ItemKeyword.keyword_id)
+        .where(ItemKeyword.item_id.in_(item_ids))
+        .order_by(Keyword.name)
+    ).all()
+    out: dict[int, list[dict[str, Any]]] = {}
+    for item_id, keyword_id, name, taxonomy_node_id in rows:
+        out.setdefault(int(item_id), []).append(
+            {
+                "id": int(keyword_id),
+                "name": str(name or ""),
+                "taxonomy_path": taxonomy_paths.get(int(taxonomy_node_id), "") if taxonomy_node_id else "",
+            }
+        )
+    return out
+
+
+def _taxonomy_paths_by_id(session) -> dict[int, str]:
+    nodes = {
+        int(node_id): {"name": str(name or ""), "parent_id": int(parent_id) if parent_id else None}
+        for node_id, name, parent_id in session.execute(
+            select(TaxonomyNode.id, TaxonomyNode.name, TaxonomyNode.parent_id)
+        ).all()
+    }
+    cache: dict[int, str] = {}
+
+    def path_for(node_id: int) -> str:
+        if node_id in cache:
+            return cache[node_id]
+        node = nodes.get(int(node_id))
+        if not node:
+            return ""
+        parent_id = node["parent_id"]
+        parent_path = path_for(parent_id) if parent_id else ""
+        path = f"{parent_path} > {node['name']}" if parent_path else node["name"]
+        cache[node_id] = path
+        return path
+
+    return {node_id: path_for(node_id) for node_id in nodes}
+
+
+def _db_row_to_item_out(row: dict[str, Any], user_state: Optional[UserState] = None) -> ItemOut:
+    kw_names = [str(k["name"]) for k in row["keywords"] if k.get("name")]
+    ctx_names = [str(c["name"]) for c in row["contexts"] if c.get("name")]
+    mp = catalog_match_percent(
+        keyword_count=len(kw_names),
+        context_count=len(ctx_names),
+        description_length=len(str(row.get("description") or "")),
+    )
+    return ItemOut(
+        id=int(row["artifact_item_id"]),
+        name=str(row.get("name") or ""),
+        description=str(row.get("description") or ""),
+        category_group=str(row.get("category_group") or ""),
+        performance_type=str(row.get("performance_type") or ""),
+        performers_count=row.get("performers_count"),
+        duration_minutes=row.get("duration_minutes"),
+        price_text=str(row.get("price_text") or ""),
+        image_url=str(row.get("image_url") or ""),
+        video_url=str(row.get("video_url") or ""),
+        keywords=[KeywordOut(**k) for k in row["keywords"] if k.get("name")],
+        contexts=[
+            ContextOut(
+                id=int(c["id"]),
+                name=str(c["name"]),
+                group=str(c.get("group", "") or ""),
+                description=str(c.get("description", "") or ""),
+                active_item_count=int(c.get("active_item_count", 0)),
+            )
+            for c in row["contexts"]
+            if c.get("name")
+        ],
+        user_state=user_state or UserState(),
+        match_percent=mp,
+        suitability_label=suitability_label(mp),
+    )
 
 
 def _row_to_item_out(row, loader: ArtifactLoader, user_state: Optional[UserState] = None) -> ItemOut:
@@ -215,3 +438,41 @@ def _ranked_by_context(
         item = _row_to_item_out(row, loader, user_state=state_map.get(int(row["item_id"])))
         items.append(item)
     return ItemListOut(items=items, total=len(items))
+
+
+def _ranked_by_context_db(
+    rows: list[dict[str, Any]],
+    context_id: int,
+    user_key: Optional[str],
+    loader: ArtifactLoader,
+) -> ItemListOut:
+    ctx_name = context_name_for_id(loader, int(context_id))
+    if not ctx_name:
+        raise ContextNotFoundError(
+            f"Context id {context_id} is not known.",
+            extra={"context_id": context_id},
+        )
+    eligible = [
+        row
+        for row in rows
+        if any(str(c.get("name") or "") == ctx_name for c in row["contexts"])
+    ]
+    scored = []
+    for row in eligible:
+        mp = catalog_match_percent(
+            keyword_count=len(row["keywords"]),
+            context_count=len(row["contexts"]),
+            description_length=len(str(row.get("description") or "")),
+        )
+        scored.append((mp, str(row.get("name") or ""), row))
+    scored.sort(key=lambda t: (-t[0], t[1]))
+    top = scored[:RANKED_MODE_LIMIT]
+    artifact_ids = [int(r["artifact_item_id"]) for _, _, r in top]
+    state_map = live_user_state_for_items(user_key or "", artifact_ids)
+    return ItemListOut(
+        items=[
+            _db_row_to_item_out(row, user_state=state_map.get(int(row["artifact_item_id"])))
+            for _, _, row in top
+        ],
+        total=len(top),
+    )

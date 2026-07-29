@@ -191,9 +191,9 @@ button {
 
 .container {
   width: 100%;
-  max-width: 1352px;
+  max-width: none;
   margin: 0 auto;
-  padding: 28px 28px 56px;
+  padding: 28px 16px 56px;
 }
 
 .section-stack {
@@ -203,8 +203,8 @@ button {
 
 .portal-hero {
   position: relative;
-  max-width: 1304px;
-  margin: -4px auto 20px;
+  width: 100%;
+  margin: -4px 0 20px;
 }
 
 .portal-hero-media {
@@ -223,7 +223,7 @@ button {
 
 .portal-hero-copy {
   max-width: 720px;
-  padding: 64px 36px 86px 58px;
+  padding: 64px 36px 86px 64px;
   color: #fffaf0;
 }
 
@@ -300,7 +300,7 @@ button {
 .portal-search-card {
   position: relative;
   z-index: 2;
-  max-width: 1040px;
+  max-width: 1170px;
   margin: -90px auto 0;
   padding: 26px 24px 22px;
   display: grid;

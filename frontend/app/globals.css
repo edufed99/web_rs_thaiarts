@@ -890,9 +890,9 @@ button:disabled {
 }
 
 .profile-card-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
   gap: 12px;
   margin-top: 8px;
   padding-top: 12px;
@@ -901,7 +901,21 @@ button:disabled {
 
 .profile-card-footer [data-testid="item-action-bar"] {
   margin-top: 0 !important;
-  gap: 7px !important;
+  gap: 8px !important;
+}
+
+.item-action-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.item-rating-row {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  justify-self: start;
 }
 
 .profile-card-footer [data-testid="item-action-bar"] button {
@@ -909,8 +923,8 @@ button:disabled {
 }
 
 .profile-detail-link {
-  margin-left: auto;
   white-space: nowrap;
+  align-self: start;
 }
 
 .popular-card {
@@ -1357,18 +1371,17 @@ button:disabled {
   }
 
   .profile-card-footer {
+    grid-template-columns: 1fr;
     align-items: stretch;
-    flex-direction: column;
   }
 
   .profile-card-footer [data-testid="item-action-bar"] {
-    justify-content: flex-start;
+    justify-items: start;
   }
 
   .profile-detail-link {
     width: 100%;
     justify-content: center;
-    margin-left: 0;
   }
 
   .taxonomy-browse-button {

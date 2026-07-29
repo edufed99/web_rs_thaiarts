@@ -150,42 +150,67 @@ export function ItemActionBar({
   return (
     <div
       data-testid="item-action-bar"
+      className="item-action-bar"
       style={{
-        display: "flex",
-        alignItems: "center",
+        display: "grid",
         gap: "0.75rem",
         marginTop: "0.5rem",
-        flexWrap: "wrap",
       }}
     >
-      <button
-        type="button"
-        aria-label={liked ? "เลิกถูกใจ" : "ถูกใจ"}
-        aria-pressed={liked}
-        onClick={toggleLike}
-        disabled={disabled}
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: "0.35rem",
-          padding: "0.4rem 0.75rem",
-          backgroundColor: "#fff",
-          border: `1px solid ${likeColor}`,
-          color: likeColor,
-          borderRadius: "999px",
-          cursor: disabled ? "not-allowed" : "pointer",
-          fontSize: "0.9rem",
-          opacity: disabled ? 0.6 : 1,
-        }}
-      >
-        <span style={{ fontSize: "1.1rem" }}>{liked ? "♥" : "♡"}</span>
-        <span>{liked ? "ถูกใจแล้ว" : "ถูกใจ"}</span>
-      </button>
+      <div className="item-action-buttons">
+        <button
+          type="button"
+          aria-label={liked ? "เลิกถูกใจ" : "ถูกใจ"}
+          aria-pressed={liked}
+          onClick={toggleLike}
+          disabled={disabled}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.35rem",
+            padding: "0.4rem 0.75rem",
+            backgroundColor: "#fff",
+            border: `1px solid ${likeColor}`,
+            color: likeColor,
+            borderRadius: "999px",
+            cursor: disabled ? "not-allowed" : "pointer",
+            fontSize: "0.9rem",
+            opacity: disabled ? 0.6 : 1,
+          }}
+        >
+          <span style={{ fontSize: "1.1rem" }}>{liked ? "♥" : "♡"}</span>
+          <span>{liked ? "ถูกใจแล้ว" : "ถูกใจ"}</span>
+        </button>
+
+        <button
+          type="button"
+          aria-label={saved ? "เลิกบันทึก" : "บันทึก"}
+          aria-pressed={saved}
+          onClick={toggleSave}
+          disabled={disabled}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.35rem",
+            padding: "0.4rem 0.75rem",
+            backgroundColor: "#fff",
+            border: `1px solid ${saveColor}`,
+            color: saveColor,
+            borderRadius: "999px",
+            cursor: disabled ? "not-allowed" : "pointer",
+            fontSize: "0.9rem",
+            opacity: disabled ? 0.6 : 1,
+          }}
+        >
+          <span style={{ fontSize: "1.1rem" }}>{saved ? "🔖" : "📑"}</span>
+          <span>{saved ? "บันทึกแล้ว" : "บันทึก"}</span>
+        </button>
+      </div>
 
       <div
+        className="item-rating-row"
         role="radiogroup"
         aria-label="ให้คะแนน 1 ถึง 5 ดาว"
-        style={{ display: "inline-flex", gap: "0.15rem" }}
       >
         {[1, 2, 3, 4, 5].map((v) => {
           const active = rating >= v;
@@ -214,30 +239,6 @@ export function ItemActionBar({
           );
         })}
       </div>
-
-      <button
-        type="button"
-        aria-label={saved ? "เลิกบันทึก" : "บันทึก"}
-        aria-pressed={saved}
-        onClick={toggleSave}
-        disabled={disabled}
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: "0.35rem",
-          padding: "0.4rem 0.75rem",
-          backgroundColor: "#fff",
-          border: `1px solid ${saveColor}`,
-          color: saveColor,
-          borderRadius: "999px",
-          cursor: disabled ? "not-allowed" : "pointer",
-          fontSize: "0.9rem",
-          opacity: disabled ? 0.6 : 1,
-        }}
-      >
-        <span style={{ fontSize: "1.1rem" }}>{saved ? "🔖" : "📑"}</span>
-        <span>{saved ? "บันทึกแล้ว" : "บันทึก"}</span>
-      </button>
 
       {error ? (
         <span

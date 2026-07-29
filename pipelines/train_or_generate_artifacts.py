@@ -22,6 +22,7 @@ Outputs (split into two subdirs under --output-dir):
     artifacts/outputs/                        (processed data + metadata)
         catalog.parquet                       Item + Context + Keyword + TaxonomyNode
         metadata.json                         build timestamp, counts, schema version
+        best_model_config.json                optional best serving config selected from experiment outputs
 """
 from __future__ import annotations
 
@@ -37,6 +38,8 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+
+from select_best_experiment_config import select_best_experiment_config
 
 SCHEMA_VERSION = "1.0.0"
 POSITIVE_THRESHOLD = 4  # mirror of recommender/settings.RECOMMENDER_POSITIVE_THRESHOLD
@@ -95,6 +98,15 @@ def parse_args() -> argparse.Namespace:
             "If set, generate deterministic synthetic embeddings instead of loading "
             "intfloat/multilingual-e5-large-instruct. Useful for tests and offline demos "
             "where the 2.5 GB model is unavailable. Production should omit this flag."
+        ),
+    )
+    p.add_argument(
+        "--experiment-output-dir",
+        default=None,
+        help=(
+            "Optional path to old code/4.recommendation/output. When provided, "
+            "the pipeline writes outputs/best_model_config.json and embeds the "
+            "selected serving config into outputs/metadata.json."
         ),
     )
     return p.parse_args()
@@ -465,6 +477,16 @@ def main() -> int:
 
     # --- artifacts/outputs/  (processed data + metadata) ---
     items_df.to_parquet(outputs_dir / "catalog.parquet", index=False)
+    best_model_config = None
+    if args.experiment_output_dir:
+        experiment_output_dir = Path(args.experiment_output_dir).expanduser().resolve()
+        print(f"      selecting best model config from {experiment_output_dir}")
+        best_model_config = select_best_experiment_config(experiment_output_dir)
+        (outputs_dir / "best_model_config.json").write_text(
+            json.dumps(best_model_config, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
     metadata = {
         "schema_version": SCHEMA_VERSION,
         "build_timestamp": dt.datetime.now(dt.timezone.utc).isoformat(),
@@ -492,6 +514,9 @@ def main() -> int:
             "outputs_dir": "artifacts/outputs/",
         },
     }
+    if best_model_config:
+        metadata["best_model_config_path"] = "artifacts/outputs/best_model_config.json"
+        metadata["best_model_config"] = best_model_config
     (outputs_dir / "metadata.json").write_text(
         json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8"
     )

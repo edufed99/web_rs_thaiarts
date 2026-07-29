@@ -104,17 +104,16 @@ def build_item_text(item: Dict, kw_names: List[str], ctx_names: List[str]) -> st
 def encode_text(text: str) -> np.ndarray:
     """Embed a single text string. Returns a 1-D float32 vector.
 
-    Prepends ``passage: `` per the E5-instruct convention. The offline
-    pipeline uses raw text (no prefix); we therefore prepend the prefix
-    here and rely on the test corpus having been built with the same
-    prefix convention. (Paper's E5 path: ``passage: …`` for items,
-    ``query: …`` for queries.)
+    The prefix convention mirrors ``old code/4.recommendation/cbf.py``:
+    E5-instruct passages use raw text, non-instruct E5 passages use
+    ``passage: ``.
     """
     if not isinstance(text, str) or not text.strip():
         raise ValueError("encode_text requires a non-empty str")
+    settings = get_settings()
     model = _ensure_model()
     vec = model.encode(
-        [f"passage: {text.strip()}"],
+        [f"{_passage_prefix(settings.e5_model_name)}{text.strip()}"],
         normalize_embeddings=True,
         convert_to_numpy=True,
         show_progress_bar=False,
@@ -123,12 +122,13 @@ def encode_text(text: str) -> np.ndarray:
 
 
 def encode_query(text: str) -> np.ndarray:
-    """Embed a query string (uses the ``query: `` prefix)."""
+    """Embed a query string using the same E5 query prefix as the experiment."""
     if not isinstance(text, str) or not text.strip():
         raise ValueError("encode_query requires a non-empty str")
+    settings = get_settings()
     model = _ensure_model()
     vec = model.encode(
-        [f"query: {text.strip()}"],
+        [f"{_query_prefix(settings.e5_model_name)}{text.strip()}"],
         normalize_embeddings=True,
         convert_to_numpy=True,
         show_progress_bar=False,
@@ -147,3 +147,22 @@ def encode_item_text(
     """
     text = build_item_text(item, list(kw_names or []), list(ctx_names or []))
     return encode_text(text)
+
+
+def _query_prefix(model_name: str) -> str:
+    name = str(model_name or "").lower()
+    if "e5" in name and "instruct" in name:
+        return (
+            "Instruct: Given a Thai performing arts query, "
+            "retrieve relevant items.\nQuery: "
+        )
+    if "e5" in name:
+        return "query: "
+    return ""
+
+
+def _passage_prefix(model_name: str) -> str:
+    name = str(model_name or "").lower()
+    if "e5" in name and "instruct" not in name:
+        return "passage: "
+    return ""

@@ -5,7 +5,12 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.core.config import Settings, get_settings, reset_settings_cache
+from app.core.config import (
+    Settings,
+    get_settings,
+    reset_settings_cache,
+    settings_with_artifact_config,
+)
 from app.core.exceptions import (
     ArtifactsNotLoadedError,
     ContextNotFoundError,
@@ -42,6 +47,36 @@ def test_settings_max_cands_env_parsing(monkeypatch):
     monkeypatch.setenv("RECSYS_MAX_CANDS", "20")
     s = Settings()
     assert s.max_cands == 20
+
+
+def test_settings_with_artifact_config_overrides_serving_fields():
+    base = Settings()
+    out = settings_with_artifact_config(
+        base,
+        {
+            "selected_model": {
+                "max_cands": 20,
+                "top_k": 10,
+                "cbf_model": "intfloat/multilingual-e5-large-instruct",
+                "cbf_keyword_boost": 0.05,
+                "itemknn_k": 10,
+                "itemknn_shrink": 50.0,
+                "hybrid_alpha": 0.8,
+                "method": "Hybrid-WeightedSum",
+            }
+        },
+    )
+    assert out.max_cands == 20
+    assert out.default_top_k == 10
+    assert out.hybrid_alpha == 0.8
+    assert out.e5_model_name == "intfloat/multilingual-e5-large-instruct"
+    assert out.recommendation_method == "Hybrid-WeightedSum"
+
+
+def test_settings_with_artifact_config_ignores_bad_manifest():
+    base = Settings()
+    out = settings_with_artifact_config(base, {"selected_model": {"hybrid_alpha": "bad"}})
+    assert out.hybrid_alpha == base.hybrid_alpha
 
 
 def test_settings_cors_split(monkeypatch):

@@ -14,10 +14,13 @@ from __future__ import annotations
 import uuid
 from typing import Dict, List, Optional
 
-from ..core.config import Settings
+from sqlalchemy import select
+
+from ..core.config import Settings, settings_with_artifact_config
 from ..core.exceptions import ContextNotFoundError, InvalidRequestError
-from ..db import is_db_enabled
+from ..db import is_db_enabled, session_scope
 from ..model_loader import ArtifactLoader
+from ..models_db import Keyword, TaxonomyNode, User
 from ..schemas.context import ContextOut
 from ..schemas.item import ItemOut, UserState
 from ..schemas.keyword import KeywordOut
@@ -25,12 +28,14 @@ from ..schemas.recommendation import (
     RecommendationRequestIn,
     RecommendationResponseOut,
     RecommendationResultOut,
+    ProfileRecommendationResponseOut,
     ScoresOut,
 )
 from ..explanations import build_explanation
 from .cbf_service import score_items_by_content
 from .cf_service import score_items_by_itemknn
 from .db_query import (
+    live_user_positive_items,
     live_user_negative_ratings,
     live_user_state_for_items,
 )
@@ -42,12 +47,137 @@ from .hybrid_service import apply_negative_penalty, weighted_sum
 from .suitability import catalog_match_percent, suitability_label
 
 
+def generate_profile_recommendations(
+    loader: ArtifactLoader,
+    user: User,
+    top_k: int = 10,
+    settings: Optional[Settings] = None,
+) -> ProfileRecommendationResponseOut:
+    """Recommend items from the authenticated user's past behavior only.
+
+    This powers the "คาดว่าคุณจะชอบจากพฤติกรรมในอดีต" section before the
+    user selects a context. Imported legacy users have static CF keys such
+    as ``user:บุคคล2`` while JWT users resolve to ``user:<id>`` for new
+    live actions, so we pick the richest available profile key.
+    """
+    settings = _effective_settings(loader, settings)
+    top_k = max(1, min(50, int(top_k)))
+    profile_key, history_count = _best_profile_key(loader, user)
+    current_user_key = f"user:{int(user.id)}"
+
+    if history_count == 0:
+        return ProfileRecommendationResponseOut(
+            request_id=str(uuid.uuid4()),
+            top_k=top_k,
+            history_count=0,
+            metadata={
+                "profile_key": profile_key,
+                "note": "no positive history for this user",
+            },
+            results=[],
+        )
+
+    active_items = [
+        row.to_dict()
+        for _, row in loader.items.iterrows()
+        if bool(row.get("is_active", True))
+    ]
+    scores = score_items_by_itemknn(loader, profile_key, active_items, settings=settings)
+    history_ids = set(loader.cf_user_item.get(profile_key, [])) | live_user_positive_items(profile_key)
+
+    ranked = sorted(
+        active_items,
+        key=lambda item: (
+            float(scores.get(int(item["item_id"]), 0.0)),
+            str(item.get("name") or ""),
+        ),
+        reverse=True,
+    )
+    ranked = [
+        item
+        for item in ranked
+        if int(item["item_id"]) not in history_ids
+        and float(scores.get(int(item["item_id"]), 0.0)) > 0
+    ][:top_k]
+
+    ranked_ids = [int(item["item_id"]) for item in ranked]
+    state_map = live_user_state_for_items(current_user_key, ranked_ids)
+
+    results: List[RecommendationResultOut] = []
+    for rank, item in enumerate(ranked, start=1):
+        iid = int(item["item_id"])
+        item_keywords = list(item.get("keyword_names") or [])
+        item_contexts = list(item.get("context_names") or [])
+        mp = catalog_match_percent(
+            keyword_count=len(item_keywords),
+            context_count=len(item_contexts),
+            description_length=len(str(item.get("description") or "")),
+            rating_average=0.66,
+        )
+        results.append(
+            RecommendationResultOut(
+                rank=rank,
+                item=_build_item_out(loader, item, iid, user_state=state_map.get(iid)),
+                scores=ScoresOut(
+                    cbf=0.0,
+                    cf=float(scores.get(iid, 0.0)),
+                    hybrid=float(scores.get(iid, 0.0)),
+                ),
+                is_context_valid=True,
+                matched_keywords=[],
+                explanation=(
+                    "แนะนำจากพฤติกรรมเดิมของคุณ เช่น รายการที่เคยถูกใจ "
+                    "หรือให้คะแนนสูง แล้วหารายการที่มีรูปแบบผู้ใช้ใกล้เคียงกัน"
+                ),
+                match_percent=mp,
+                suitability_label=suitability_label(mp),
+            )
+        )
+
+    return ProfileRecommendationResponseOut(
+        request_id=str(uuid.uuid4()),
+        top_k=top_k,
+        history_count=history_count,
+        metadata={
+            "profile_key": profile_key,
+            "current_user_key": current_user_key,
+            "candidate_count": len(active_items),
+        },
+        results=results,
+    )
+
+
+def _best_profile_key(loader: ArtifactLoader, user: User) -> tuple[str, int]:
+    keys = [f"user:{int(user.id)}"]
+    if user.username:
+        keys.append(f"user:{user.username}")
+    display = str(user.display_name or "")
+    marker = "legacy:"
+    if marker in display:
+        legacy_name = display.split(marker, 1)[1].strip()
+        if legacy_name:
+            keys.append(f"user:{legacy_name}")
+
+    seen = set()
+    best_key = keys[0]
+    best_count = -1
+    for key in keys:
+        if key in seen:
+            continue
+        seen.add(key)
+        count = len(set(loader.cf_user_item.get(key, [])) | live_user_positive_items(key))
+        if count > best_count:
+            best_key = key
+            best_count = count
+    return best_key, max(best_count, 0)
+
+
 def generate_recommendations(
     loader: ArtifactLoader,
     request: RecommendationRequestIn,
     settings: Optional[Settings] = None,
 ) -> RecommendationResponseOut:
-    settings = settings or Settings()
+    settings = _effective_settings(loader, settings)
 
     # 1. Validate context
     ctx_name = context_name_for_id(loader, int(request.context_id))
@@ -164,14 +294,16 @@ def generate_recommendations(
         selected_keywords=selected_keyword_objs,
         candidate_count=len(candidates),
         top_k=request.top_k,
-        method="Hybrid-WeightedSum",
+        method=settings.recommendation_method,
         metadata={
-            "cbf_model": "precomputed-E5",
+            "cbf_model": str(settings.e5_model_name),
             "cf_model": "ItemKNN",
             "hybrid_alpha": float(settings.hybrid_alpha),
             "cbf_keyword_boost": float(settings.cbf_keyword_boost),
             "itemknn_k": int(settings.itemknn_k),
             "itemknn_shrink": float(settings.itemknn_shrink),
+            "max_cands": settings.max_cands,
+            "best_model_config_loaded": bool(loader.best_model_config),
             "negative_penalty_alpha": float(settings.negative_penalty_alpha),
             "user_key_provided": bool(request.user_key),
             "db_enabled": bool(is_db_enabled()),
@@ -182,34 +314,119 @@ def generate_recommendations(
     )
 
 
+def _effective_settings(loader: ArtifactLoader, settings: Optional[Settings]) -> Settings:
+    return settings_with_artifact_config(settings or Settings(), loader.best_model_config)
+
+
 def _resolve_keywords(loader: ArtifactLoader, keyword_ids: List[int]) -> List[Dict]:
     if not keyword_ids:
         return []
     out: List[Dict] = []
     name_by_id = loader.metadata.get("keyword_id_to_name", {})
+    seen_ids = set()
     for kid in keyword_ids:
-        name = name_by_id.get(str(int(kid)))
-        if not name:
-            # Best-effort: build mapping by scanning item keywords (slow path).
-            name = _lookup_keyword_name(loader, int(kid))
-            if name is None:
-                continue
-        out.append({"id": int(kid), "name": str(name), "taxonomy_path": ""})
+        kid_int = int(kid)
+        if kid_int in seen_ids:
+            continue
+        seen_ids.add(kid_int)
+
+        name = name_by_id.get(str(kid_int))
+        if name:
+            out.append({
+                "id": kid_int,
+                "name": str(name),
+                "taxonomy_path": _taxonomy_path_for_keyword(loader, str(name)),
+            })
+            continue
+
+        # The frontend may receive ids from the live DB (/keywords prefers
+        # Postgres when available), while artifacts use stable hash ids.
+        # Accept both id spaces so selected keywords survive the recommend
+        # request and can still drive CBF scoring.
+        db_keyword = _lookup_db_keyword(kid_int)
+        if db_keyword is not None:
+            out.append(db_keyword)
+            continue
+
+        # Best-effort: build mapping by scanning artifact keywords (slow path).
+        artifact_keyword = _lookup_artifact_keyword(loader, kid_int)
+        if artifact_keyword is not None:
+            out.append(artifact_keyword)
     return out
 
 
-def _lookup_keyword_name(loader: ArtifactLoader, kid: int) -> Optional[str]:
+def _lookup_artifact_keyword(loader: ArtifactLoader, kid: int) -> Optional[Dict]:
     from ._ids import stable_id
     seen = set()
-    for names in loader.items["keyword_names"]:
-        for n in (names or []):
+    for idx, names in enumerate(loader.items["keyword_names"]):
+        paths = loader.items["taxonomy_paths"].iloc[idx] if "taxonomy_paths" in loader.items.columns else []
+        for j, n in enumerate(names or []):
             if n in seen:
                 continue
             seen.add(n)
             if stable_id("keyword", n) == int(kid):
-                loader.metadata.setdefault("keyword_id_to_name", {})[str(int(kid))] = n
-                return n
+                return {
+                    "id": int(kid),
+                    "name": str(n),
+                    "taxonomy_path": str(paths[j]) if j < len(paths) else "",
+                }
     return None
+
+
+def _lookup_db_keyword(kid: int) -> Optional[Dict]:
+    try:
+        with session_scope() as session:
+            if session is None:
+                return None
+            row = session.execute(
+                select(Keyword.id, Keyword.name, Keyword.taxonomy_node_id).where(
+                    Keyword.id == int(kid)
+                )
+            ).one_or_none()
+            if row is None:
+                return None
+            keyword_id, name, taxonomy_node_id = row
+            taxonomy_path = ""
+            if taxonomy_node_id:
+                taxonomy_path = _db_taxonomy_path(session, int(taxonomy_node_id))
+            return {
+                "id": int(keyword_id),
+                "name": str(name or ""),
+                "taxonomy_path": taxonomy_path,
+            }
+    except Exception:  # noqa: BLE001 - artifact-only serving must keep working
+        return None
+
+
+def _db_taxonomy_path(session, node_id: int) -> str:
+    nodes = {
+        int(row_id): {
+            "name": str(name or ""),
+            "parent_id": int(parent_id) if parent_id else None,
+        }
+        for row_id, name, parent_id in session.execute(
+            select(TaxonomyNode.id, TaxonomyNode.name, TaxonomyNode.parent_id)
+        ).all()
+    }
+    parts: List[str] = []
+    current: Optional[int] = int(node_id)
+    while current:
+        node = nodes.get(current)
+        if not node:
+            break
+        if node["name"]:
+            parts.append(str(node["name"]))
+        current = node["parent_id"]
+    return " > ".join(reversed(parts))
+
+
+def _taxonomy_path_for_keyword(loader: ArtifactLoader, keyword_name: str) -> str:
+    for idx, names in enumerate(loader.items["keyword_names"]):
+        paths = loader.items["taxonomy_paths"].iloc[idx] if "taxonomy_paths" in loader.items.columns else []
+        for j, name in enumerate(names or []):
+            if str(name) == str(keyword_name):
+                return str(paths[j]) if j < len(paths) else ""
+    return ""
 
 
 def _build_context_out(loader: ArtifactLoader, context_id: int, ctx_name: str) -> ContextOut:
@@ -287,8 +504,9 @@ def _empty_response(
     request: RecommendationRequestIn,
     ctx_name: str,
     selected_keyword_objs: List[KeywordOut],
-    settings: Settings,
+    settings: Optional[Settings],
 ) -> RecommendationResponseOut:
+    settings = settings or Settings()
     return RecommendationResponseOut(
         request_id=str(uuid.uuid4()),
         selected_context=ContextOut(
@@ -301,7 +519,7 @@ def _empty_response(
         selected_keywords=selected_keyword_objs,
         candidate_count=0,
         top_k=request.top_k,
-        method="Hybrid-WeightedSum",
+        method=settings.recommendation_method,
         metadata={"note": "no candidates in this context"},
         results=[],
     )

@@ -23,8 +23,10 @@ class _FakeModel:
 
     def __init__(self, dim: int = 4):
         self.dim = dim
+        self.calls: List[str] = []
 
     def encode(self, texts: List[str], **_):
+        self.calls.extend(texts)
         return np.eye(self.dim, dtype=np.float32)[: len(texts)]
 
 
@@ -49,12 +51,13 @@ def no_autouse_reset(request):
 @pytest.fixture
 def fake_model(monkeypatch):
     """Inject a deterministic stand-in for SentenceTransformer."""
+    model = _FakeModel()
     monkeypatch.setattr(
         embedding,
         "_ensure_model",
-        lambda: _FakeModel(),
+        lambda: model,
     )
-    return _FakeModel()
+    return model
 
 
 def test_encode_text_returns_correct_shape(fake_model):
@@ -73,6 +76,12 @@ def test_encode_text_normalizes_embeddings(fake_model):
 def test_encode_query_uses_query_prefix(fake_model):
     v = embedding.encode_query("hello")
     assert v.shape == (4,)
+    assert fake_model.calls[-1].startswith("Instruct: Given a Thai performing arts query")
+
+
+def test_encode_text_uses_raw_passage_for_e5_instruct(fake_model):
+    embedding.encode_text("hello")
+    assert fake_model.calls[-1] == "hello"
 
 
 def test_encode_text_empty_raises(fake_model):

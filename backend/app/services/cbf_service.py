@@ -14,12 +14,14 @@ import numpy as np
 
 from ..core.config import Settings
 from ..model_loader import ArtifactLoader
+from .embedding import encode_query
 
 
 def build_query_text(keyword_names: Iterable[str], context_name: Optional[str] = None) -> str:
-    parts = [k for k in keyword_names if k]
+    parts = []
     if context_name:
         parts.append(context_name)
+    parts.extend(k for k in keyword_names if k)
     return " ".join(parts).strip()
 
 
@@ -47,9 +49,10 @@ def score_items_by_content(
     if not query_text.strip():
         return {int(item["item_id"]): 0.0 for item in candidates}
 
-    # Mean of the selected items' embeddings as a proxy query (no live model).
     candidate_ids = [int(item["item_id"]) for item in candidates]
-    query_vec = _proxy_query_vector(loader, candidate_ids, keyword_list, context_name)
+    query_vec = _encode_query_vector(loader, query_text, settings)
+    if query_vec is None:
+        query_vec = _proxy_query_vector(loader, candidate_ids, keyword_list, context_name)
     if query_vec is None:
         return {iid: 0.0 for iid in candidate_ids}
 
@@ -68,6 +71,29 @@ def score_items_by_content(
         scores[iid] = cosine + (boost if hit else 0.0)
 
     return scores
+
+
+def _encode_query_vector(
+    loader: ArtifactLoader,
+    query_text: str,
+    settings: Settings,
+) -> Optional[np.ndarray]:
+    """Encode the live query with E5 when the artifact space supports it.
+
+    Unit-test and demo artifacts use tiny synthetic vectors, so they cannot be
+    compared with a 1024-D E5 query. In those cases, or if the model is not
+    available at runtime, callers fall back to the deterministic proxy vector.
+    """
+    expected_dim = int(loader.embeddings.shape[1])
+    if not settings.e5_enabled or expected_dim != 1024:
+        return None
+    try:
+        vec = encode_query(query_text)
+    except Exception:  # noqa: BLE001 - keep recommender available offline
+        return None
+    if vec.ndim != 1 or int(vec.shape[0]) != expected_dim:
+        return None
+    return vec.astype(np.float32, copy=False)
 
 
 def _proxy_query_vector(

@@ -23,26 +23,26 @@ def build_explanation(
 
     if context_name:
         sentences.append(
-            f'รายการนี้ผ่านเงื่อนไขบริบท "{context_name}" '
-            "จึงอยู่ในกลุ่มการแสดงที่เหมาะกับงานนี้ก่อนเข้าสู่การจัดอันดับ"
+            f'รายการนี้เหมาะกับบริบท "{context_name}" '
+            "และผ่านการคัดกรองเบื้องต้นก่อนนำไปจัดอันดับ"
         )
 
     if matched_keywords:
         shown = ", ".join(f'"{w}"' for w in matched_keywords[:5])
         sentences.append(
-            f"จุดที่ตรงกับความต้องการของผู้ใช้คือคำสำคัญ {shown}"
+            f"คุณลักษณะที่ตรงกับสิ่งที่เลือกคือ {shown}"
         )
         # Taxonomy summary if available
         taxonomy_labels = _taxonomy_summaries(item, matched_keywords)
         if taxonomy_labels:
             labels = ", ".join(f'"{l}"' for l in taxonomy_labels[:3])
             sentences.append(
-                f"คำสำคัญเหล่านี้เชื่อมโยงกับหมวดความหมาย {labels}"
+                f"คุณลักษณะเหล่านี้อยู่ในหมวดความหมาย {labels}"
             )
     elif cbf_score > 0:
         sentences.append(
-            "แม้ไม่มีคำสำคัญที่ตรงแบบคำต่อคำ แต่ข้อความอธิบายและ keyword "
-            "ของรายการนี้ใกล้เคียงกับสิ่งที่ผู้ใช้เลือก"
+            "แม้ไม่มีคุณลักษณะที่ตรงแบบคำต่อคำ แต่คำอธิบายและข้อมูลประกอบ "
+            "ของรายการนี้ยังใกล้เคียงกับสิ่งที่เลือก"
         )
 
     content_phrase = _content_signal_phrase(cbf_score)
@@ -69,17 +69,17 @@ def _taxonomy_summaries(item: dict, matched_keywords: List[str]) -> List[str]:
 
 def _content_signal_phrase(score: float) -> str:
     if score >= 0.75:
-        return "ด้านเนื้อหา ระบบพบความใกล้เคียงเชิงความหมายในระดับสูง"
+        return "ในด้านเนื้อหา รายการนี้มีความใกล้เคียงเชิงความหมายกับคำค้นในระดับสูง"
     if score >= 0.45:
-        return "ด้านเนื้อหา ระบบพบความใกล้เคียงเชิงความหมายในระดับปานกลาง"
+        return "ในด้านเนื้อหา รายการนี้มีความใกล้เคียงเชิงความหมายกับคำค้นในระดับปานกลาง"
     if score > 0:
-        return "ด้านเนื้อหา รายการนี้ยังมีสัญญาณความเกี่ยวข้องกับคำที่เลือก"
+        return "ในด้านเนื้อหา รายการนี้ยังมีสัญญาณความเกี่ยวข้องกับคำที่เลือก"
     return ""
 
 
 def _collaborative_signal_phrase(score: float) -> str:
     if score >= 0.65:
-        return "ด้านพฤติกรรมผู้ใช้เดิม รายการนี้มีสัญญาณสนับสนุนค่อนข้างชัดเจน"
+        return "จากพฤติกรรมผู้ใช้เดิม รายการนี้ได้รับสัญญาณสนับสนุนค่อนข้างชัดเจน"
     if score > 0:
-        return "ด้านพฤติกรรมผู้ใช้เดิม รายการนี้มีสัญญาณสนับสนุนบางส่วน"
+        return "จากพฤติกรรมผู้ใช้เดิม รายการนี้ได้รับสัญญาณสนับสนุนบางส่วน"
     return ""

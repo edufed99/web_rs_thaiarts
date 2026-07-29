@@ -59,6 +59,7 @@ class ArtifactLoader:
     _cf_item_users: Dict[int, List[str]] = field(default_factory=dict, init=False)
     _cf_rating_weight: Dict[str, float] = field(default_factory=dict, init=False)
     _metadata: Dict[str, Any] = field(default_factory=dict, init=False)
+    _best_model_config: Dict[str, Any] = field(default_factory=dict, init=False)
     _loaded_at: Optional[str] = field(default=None, init=False)
 
     # ---- public state ----
@@ -104,6 +105,10 @@ class ArtifactLoader:
     @property
     def metadata(self) -> Dict[str, Any]:
         return dict(self._metadata)
+
+    @property
+    def best_model_config(self) -> Dict[str, Any]:
+        return dict(self._best_model_config)
 
     @property
     def loaded_at(self) -> Optional[str]:
@@ -169,6 +174,9 @@ class ArtifactLoader:
             # --- outputs/metadata.json ---
             with (outputs_dir / "metadata.json").open("r", encoding="utf-8") as fh:
                 self._metadata = json.load(fh)
+            self._best_model_config = _load_best_model_config(outputs_dir, self._metadata)
+            if self._best_model_config:
+                self._metadata.setdefault("best_model_config", self._best_model_config)
 
             # --- models/item_embeddings.npz ---
             with np.load(models_dir / "item_embeddings.npz") as data:
@@ -347,6 +355,31 @@ def _ensure_list(value):
         return list(value)
     except TypeError:
         return [value]
+
+
+def _load_best_model_config(outputs_dir: Path, metadata: Dict[str, Any]) -> Dict[str, Any]:
+    """Load optional serving config manifest without making artifacts fail.
+
+    ``best_model_config.json`` is intentionally optional so older artifacts
+    and local test fixtures keep loading. Corrupt manifests are ignored and
+    surfaced through metadata flags; runtime settings still fall back to env
+    and code defaults.
+    """
+    embedded = metadata.get("best_model_config")
+    if isinstance(embedded, dict):
+        return embedded
+
+    path = outputs_dir / "best_model_config.json"
+    if not path.exists():
+        return {}
+
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            loaded = json.load(fh)
+        return loaded if isinstance(loaded, dict) else {}
+    except Exception as exc:  # noqa: BLE001
+        metadata["best_model_config_error"] = str(exc)
+        return {}
 
 
 # Module-level singleton placeholder. Real instance is created in app.main.

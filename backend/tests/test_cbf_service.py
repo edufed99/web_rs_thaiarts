@@ -68,6 +68,28 @@ def test_custom_boost(loader, candidates):
     assert diff <= s.cbf_keyword_boost + 1e-6
 
 
+def test_e5_query_encoder_used_for_1024d_artifacts(loader, candidates, monkeypatch):
+    from app.services import cbf_service
+
+    vecs = np.zeros((len(loader.item_ids), 1024), dtype=np.float32)
+    vecs[:, 0] = 1.0
+    loader._embeddings = vecs
+    called = {}
+
+    def fake_encode_query(text: str):
+        called["text"] = text
+        q = np.zeros(1024, dtype=np.float32)
+        q[0] = 1.0
+        return q
+
+    monkeypatch.setattr(cbf_service, "encode_query", fake_encode_query)
+    scores = score_items_by_content(
+        loader, candidates, ["ผู้หญิง"], context_name="งานบวช", settings=Settings()
+    )
+    assert called["text"].startswith("งานบวช")
+    assert set(scores.keys()) == {c["item_id"] for c in candidates}
+
+
 def test_no_candidates_returns_empty(loader):
     scores = score_items_by_content(loader, [], ["x"], context_name=None)
     assert scores == {}

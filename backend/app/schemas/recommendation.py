@@ -105,3 +105,16 @@ class RecommendationResponseOut(BaseModel):
     method: str = Field(default="Hybrid-WeightedSum", description="Method tag.")
     metadata: dict = Field(default_factory=dict)
     results: List[RecommendationResultOut] = Field(default_factory=list)
+
+
+class ProfileRecommendationResponseOut(BaseModel):
+    """Recommendations derived from the authenticated user's past behavior."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    request_id: str = Field(..., description="Opaque request identifier (uuid).")
+    top_k: int = Field(..., ge=1, le=50)
+    method: str = Field(default="Profile-ItemKNN", description="Method tag.")
+    history_count: int = Field(..., ge=0, description="Positive items found in the user's profile.")
+    metadata: dict = Field(default_factory=dict)
+    results: List[RecommendationResultOut] = Field(default_factory=list)

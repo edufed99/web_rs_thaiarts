@@ -33,6 +33,52 @@ def test_resolve_keywords_filters_unknown(loader):
     assert kws[0]["name"] == "ผู้หญิง"
 
 
+def test_resolve_keywords_accepts_db_keyword_ids(loader, monkeypatch):
+    """The frontend can receive live DB keyword ids from /keywords.
+
+    Recommendation resolution must accept those ids too; otherwise selected
+    keywords disappear and the results header reports 0 selected keywords.
+    """
+    from app.models_db import Base, Keyword, TaxonomyNode
+    from app.services import recommendation_service as rec_module
+
+    eng = create_engine(
+        "sqlite:///:memory:?check_same_thread=False",
+        future=True,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(eng)
+    SessionLocal = sessionmaker(bind=eng, expire_on_commit=False, future=True)
+    with SessionLocal() as s:
+        s.add(TaxonomyNode(id=1, name="ผู้แสดง", level=1, parent_id=None))
+        s.add(TaxonomyNode(id=2, name="เพศ", level=2, parent_id=1))
+        s.add(Keyword(id=213, name="ผู้หญิง", taxonomy_node_id=2))
+        s.commit()
+
+    @contextmanager
+    def fake_scope():
+        sess = SessionLocal()
+        try:
+            yield sess
+            sess.commit()
+        finally:
+            sess.close()
+
+    monkeypatch.setattr(rec_module, "session_scope", fake_scope)
+    try:
+        kws = _resolve_keywords(loader, [213])
+        assert kws == [
+            {
+                "id": 213,
+                "name": "ผู้หญิง",
+                "taxonomy_path": "ผู้แสดง > เพศ",
+            }
+        ]
+    finally:
+        eng.dispose()
+
+
 def test_resolve_keywords_empty(loader):
     assert _resolve_keywords(loader, []) == []
 
@@ -215,7 +261,33 @@ def test_generate_returns_request_id_and_method(loader):
     assert resp.request_id
     assert resp.method == "Hybrid-WeightedSum"
     assert resp.top_k == 3
-    assert resp.metadata["cbf_model"] == "precomputed-E5"
+    assert resp.metadata["cbf_model"] == "intfloat/multilingual-e5-large-instruct"
+
+
+def test_generate_uses_best_model_config_from_loader(loader):
+    loader._best_model_config = {
+        "selected_model": {
+            "method": "Hybrid-WeightedSum",
+            "max_cands": 20,
+            "hybrid_alpha": 0.8,
+            "cbf_keyword_boost": 0.05,
+            "itemknn_k": 10,
+            "itemknn_shrink": 50.0,
+            "cbf_model": "intfloat/multilingual-e5-large-instruct",
+        }
+    }
+    resp = generate_recommendations(
+        loader,
+        RecommendationRequestIn(
+            context_id=context_id("งานบวช"),
+            keyword_ids=[],
+            top_k=3,
+        ),
+    )
+    assert resp.method == "Hybrid-WeightedSum"
+    assert resp.metadata["hybrid_alpha"] == 0.8
+    assert resp.metadata["max_cands"] == 20
+    assert resp.metadata["best_model_config_loaded"] is True
 
 
 def test_generate_empty_candidate_set(loader):

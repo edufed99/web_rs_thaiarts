@@ -27,6 +27,33 @@ def test_load_succeeds(artifacts_dir: Path):
     assert md["embedding_dim"] == 4
 
 
+def test_load_optional_best_model_config(artifacts_dir: Path):
+    payload = {
+        "selected_model": {
+            "method": "Hybrid-WeightedSum",
+            "max_cands": 20,
+            "hybrid_alpha": 0.8,
+        }
+    }
+    (artifacts_dir / "outputs" / "best_model_config.json").write_text(
+        json.dumps(payload), encoding="utf-8"
+    )
+    loader = ArtifactLoader()
+    loader.load(artifacts_dir)
+    assert loader.best_model_config == payload
+    assert loader.metadata["best_model_config"] == payload
+
+
+def test_load_corrupt_best_model_config_falls_back(artifacts_dir: Path):
+    (artifacts_dir / "outputs" / "best_model_config.json").write_text(
+        "{not json", encoding="utf-8"
+    )
+    loader = ArtifactLoader()
+    loader.load(artifacts_dir)
+    assert loader.best_model_config == {}
+    assert "best_model_config_error" in loader.metadata
+
+
 def test_load_missing_directory(tmp_path: Path):
     loader = ArtifactLoader()
     with pytest.raises(ArtifactsNotLoadedError, match="Artifact directory not found"):

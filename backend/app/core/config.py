@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -66,6 +66,7 @@ class Settings(BaseSettings):
     min_cands: int = 10
     max_cands: Optional[int] = None  # None = no cap
     default_top_k: int = 10
+    recommendation_method: str = "Hybrid-WeightedSum"
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     app_version: str = "1.0.0"
 
@@ -123,6 +124,69 @@ class Settings(BaseSettings):
     @property
     def outputs_dir(self) -> Path:
         return self.artifact_dir / "outputs"
+
+
+def settings_with_artifact_config(settings: Settings, manifest: dict[str, Any]) -> Settings:
+    """Return settings overridden by an optional best-model artifact manifest.
+
+    Environment/default settings remain the fallback. Only recognized serving
+    fields from ``selected_model`` are copied, so malformed or incomplete
+    manifests cannot break startup.
+    """
+    selected = manifest.get("selected_model") if isinstance(manifest, dict) else None
+    if not isinstance(selected, dict):
+        return settings
+
+    overrides: dict[str, Any] = {}
+    _copy_float(selected, overrides, "hybrid_alpha", "hybrid_alpha")
+    _copy_float(selected, overrides, "cbf_keyword_boost", "cbf_keyword_boost")
+    _copy_float(selected, overrides, "itemknn_shrink", "itemknn_shrink")
+    _copy_int(selected, overrides, "itemknn_k", "itemknn_k")
+    _copy_int(selected, overrides, "max_cands", "max_cands", allow_none=True)
+    _copy_int(selected, overrides, "top_k", "default_top_k")
+
+    cbf_model = selected.get("cbf_model")
+    if isinstance(cbf_model, str) and cbf_model.strip():
+        overrides["e5_model_name"] = cbf_model.strip()
+
+    method = selected.get("method")
+    if isinstance(method, str) and method.strip():
+        overrides["recommendation_method"] = method.strip()
+    else:
+        hybrid_method = selected.get("hybrid_method")
+        if isinstance(hybrid_method, str) and hybrid_method.strip():
+            overrides["recommendation_method"] = f"Hybrid-{hybrid_method.strip()}"
+
+    return settings.model_copy(update=overrides) if overrides else settings
+
+
+def _copy_float(source: dict[str, Any], target: dict[str, Any], key: str, field: str) -> None:
+    if key not in source or source[key] is None:
+        return
+    try:
+        target[field] = float(source[key])
+    except (TypeError, ValueError):
+        return
+
+
+def _copy_int(
+    source: dict[str, Any],
+    target: dict[str, Any],
+    key: str,
+    field: str,
+    *,
+    allow_none: bool = False,
+) -> None:
+    if key not in source:
+        return
+    value = source[key]
+    if value is None and allow_none:
+        target[field] = None
+        return
+    try:
+        target[field] = int(value)
+    except (TypeError, ValueError):
+        return
 
 
 _settings: Optional[Settings] = None

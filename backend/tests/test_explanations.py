@@ -70,7 +70,7 @@ def test_build_explanation_no_match_path():
         cbf_score=0.1, cf_score=0.0,
         matched_keywords=[],
     )
-    assert "แม้ไม่มีคำสำคัญที่ตรง" in text
+    assert "แม้ไม่มีคุณลักษณะที่ตรง" in text
 
 
 def test_build_explanation_empty_context():

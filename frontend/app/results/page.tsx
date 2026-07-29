@@ -1,7 +1,7 @@
 "use client";
 
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
@@ -14,10 +14,12 @@ import type {
   RecommendationResponseOut,
   UserState,
 } from "@/lib/types";
+import { getCurrentUser } from "@/lib/auth";
 import { useAuthHeaders } from "@/lib/useAuthHeaders";
 import { getUserKey } from "@/lib/user";
 
 function ResultsContent() {
+  const router = useRouter();
   const params = useSearchParams();
 
   const contextIdStr = params.get("context_id");
@@ -35,15 +37,27 @@ function ResultsContent() {
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | undefined>(undefined);
   const [reloadKey, setReloadKey] = useState(0);
+  const [ready, setReady] = useState(false);
   // SSR-safe user key. Initialized to "" on the server, replaced on mount.
   const [userKey, setUserKey] = useState<string>("");
   const authHeaders = useAuthHeaders();
 
   useEffect(() => {
+    const u = getCurrentUser();
+    if (!u) {
+      const next =
+        typeof window !== "undefined"
+          ? `${window.location.pathname}${window.location.search}`
+          : "/recommend";
+      router.replace(`/login?next=${encodeURIComponent(next)}`);
+      return;
+    }
     setUserKey(getUserKey());
-  }, []);
+    setReady(true);
+  }, [router]);
 
   useEffect(() => {
+    if (!ready) return;
     if (!contextId || isNaN(contextId)) {
       setError("ไม่พบ context_id ใน URL — กรุณากลับไปเลือกบริบท");
       setErrorCode("missing_context_id");
@@ -74,7 +88,7 @@ function ResultsContent() {
     return () => {
       cancelled = true;
     };
-  }, [contextId, topK, keywordsCsv, reloadKey, userKey, authHeaders]);
+  }, [ready, contextId, topK, keywordsCsv, reloadKey, userKey, authHeaders]);
 
   const handleUserStateChange = useCallback((itemId: number, next: UserState) => {
     setData((prev) => {
@@ -100,7 +114,7 @@ function ResultsContent() {
         }}
       >
         <p className="muted" style={{ margin: 0 }}>
-          บริบท: <strong>{data.selected_context.name}</strong> · คำสำคัญที่เลือก:{" "}
+          บริบท: <strong>{data.selected_context.name}</strong> · คุณลักษณะที่เลือก:{" "}
           <strong>{data.selected_keywords.length}</strong> · candidates:{" "}
           <strong>{data.candidate_count}</strong> · top-K: <strong>{data.top_k}</strong>
         </p>
@@ -122,6 +136,9 @@ function ResultsContent() {
       />
     );
   }
+  if (!ready) {
+    return <LoadingState message="กำลังตรวจสอบโปรไฟล์ผู้ใช้..." />;
+  }
   if (!data) {
     return <LoadingState message="กำลังคำนวณคำแนะนำ..." />;
   }
@@ -130,9 +147,12 @@ function ResultsContent() {
     <div className="section-stack">
       <section className="page-hero">
         <div>
-          <p className="eyebrow">Recommendation results</p>
-          <h1>ผลลัพธ์ที่ระบบแนะนำ</h1>
-          <p className="muted">เรียงลำดับด้วย hybrid score พร้อมเหตุผลประกอบเป็นภาษาไทย</p>
+          <p className="eyebrow">Personalized recommendation results</p>
+          <h1>ผลคำแนะนำเฉพาะคุณ</h1>
+          <p className="muted">
+            ระบบเรียงลำดับจากบริบท คำสำคัญ และสัญญาณความสนใจของผู้ใช้
+            พร้อมเหตุผลประกอบเป็นภาษาไทย
+          </p>
         </div>
       </section>
       {headerLabel}

@@ -11,7 +11,9 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, Query
 
 from ..core.config import get_settings
+from ..db import session_scope
 from ..model_loader import ArtifactLoader, get_singleton
+from ..models_db import Context
 from ..schemas.context import ContextListOut, ContextOut
 from ..schemas.keyword import KeywordListOut, KeywordOut
 from ..schemas.metrics import MetricsOut
@@ -35,6 +37,7 @@ def list_contexts(
     loader: ArtifactLoader = Depends(get_singleton),
 ) -> ContextListOut:
     id_to_name = build_context_id_map(loader)
+    context_meta = _context_metadata_by_name()
     # Count active items per context
     counts: dict = {}
     for names in loader.items["context_names"]:
@@ -44,16 +47,41 @@ def list_contexts(
             counts[n] = counts.get(n, 0) + 1
     out: List[ContextOut] = []
     for cid, name in sorted(id_to_name.items(), key=lambda kv: (kv[1], kv[0])):
+        meta = context_meta.get(str(name), {})
         out.append(
             ContextOut(
                 id=int(cid),
                 name=str(name),
-                group="",
-                description="",
+                group=str(meta.get("group", "") or ""),
+                description=str(meta.get("description", "") or ""),
                 active_item_count=int(counts.get(name, 0)),
             )
         )
     return ContextListOut(contexts=out)
+
+
+def _context_metadata_by_name() -> dict[str, dict[str, str]]:
+    """Read main-context groups from Postgres when available.
+
+    Artifact context ids are stable hash ids used by the recommendation API,
+    while the live ``contexts`` table stores the legacy DB ids plus
+    ``group_name``. We join the two spaces by context display name.
+    """
+    try:
+        with session_scope() as session:
+            if session is None:
+                return {}
+            rows = session.query(Context.name, Context.group_name, Context.description).all()
+    except Exception:  # noqa: BLE001 - /contexts should still work without DB
+        return {}
+
+    return {
+        str(name): {
+            "group": str(group_name or ""),
+            "description": str(description or ""),
+        }
+        for name, group_name, description in rows
+    }
 
 
 @router.get(

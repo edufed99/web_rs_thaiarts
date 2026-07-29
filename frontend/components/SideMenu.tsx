@@ -37,6 +37,7 @@ export function SideMenu() {
       <Link href="/"><span>01</span><b>หน้าหลัก</b></Link>
       <Link href="/items"><span>02</span><b>คลังชุดการแสดง</b></Link>
       <Link href={recommendHref}><span>03</span><b>คำแนะนำเฉพาะคุณ</b></Link>
+      {user ? <Link href="/profile"><span>04</span><b>ข้อมูลผู้ใช้</b></Link> : null}
       {admin ? (
         <>
           <div className="side-menu-title">Research tools</div>

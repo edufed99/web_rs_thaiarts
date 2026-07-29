@@ -53,6 +53,9 @@ export function FrontendNav() {
 
   const isLoggedIn = Boolean(user);
   const links: NavLink[] = baseLinks(isLoggedIn);
+  if (isLoggedIn) {
+    links.push({ href: "/profile", label: "ข้อมูลผู้ใช้" });
+  }
   if (user?.is_admin || isAdmin()) {
     links.push({ href: "/admin/items", label: "Dashboard ผู้วิจัย" });
   }

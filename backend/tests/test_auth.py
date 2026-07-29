@@ -200,3 +200,43 @@ def test_me_without_token_returns_401(client):
 def test_me_with_bad_token_returns_401(client):
     r = client.get("/auth/me", headers={"Authorization": "Bearer not-a-real-token"})
     assert r.status_code == 401
+
+
+def test_update_me_changes_display_name(client):
+    sig = client.post("/auth/signup", json={"username": "alice", "password": "hunter22"}).json()
+    token = sig["access_token"]
+    r = client.patch(
+        "/auth/me",
+        json={"display_name": "อลิซ"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200
+    assert r.json()["display_name"] == "อลิซ"
+
+
+def test_update_me_changes_password_with_current_password(client):
+    sig = client.post("/auth/signup", json={"username": "alice", "password": "hunter22"}).json()
+    token = sig["access_token"]
+    r = client.patch(
+        "/auth/me",
+        json={"current_password": "hunter22", "new_password": "newpass123"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200
+
+    old_login = client.post("/auth/login", json={"username": "alice", "password": "hunter22"})
+    assert old_login.status_code == 401
+    new_login = client.post("/auth/login", json={"username": "alice", "password": "newpass123"})
+    assert new_login.status_code == 200
+
+
+def test_update_me_rejects_wrong_current_password(client):
+    sig = client.post("/auth/signup", json={"username": "alice", "password": "hunter22"}).json()
+    token = sig["access_token"]
+    r = client.patch(
+        "/auth/me",
+        json={"current_password": "wrong", "new_password": "newpass123"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 401
+    assert r.json()["error"]["code"] == "invalid_current_password"

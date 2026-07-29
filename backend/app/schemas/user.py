@@ -40,6 +40,17 @@ class UserLogin(BaseModel):
         return _strip(v) if isinstance(v, str) else v
 
 
+class UserProfileUpdate(BaseModel):
+    display_name: Optional[str] = Field(default=None, max_length=120)
+    current_password: Optional[str] = Field(default=None, min_length=1, max_length=128)
+    new_password: Optional[str] = Field(default=None, min_length=8, max_length=128)
+
+    @field_validator("display_name")
+    @classmethod
+    def _trim_display_name(cls, v):
+        return _strip(v) if isinstance(v, str) else v
+
+
 class UserOut(BaseModel):
     id: int
     username: str

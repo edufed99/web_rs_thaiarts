@@ -83,6 +83,15 @@ export interface RecommendationResponseOut {
   results: RecommendationResultOut[];
 }
 
+export interface ProfileRecommendationResponseOut {
+  request_id: string;
+  top_k: number;
+  method: string;
+  history_count: number;
+  metadata: Record<string, unknown>;
+  results: RecommendationResultOut[];
+}
+
 export interface ItemListOut {
   items: ItemOut[];
   total: number;
@@ -154,6 +163,12 @@ export interface UserSignup {
   username: string;
   password: string;
   display_name?: string | null;
+}
+
+export interface UserProfileUpdate {
+  display_name?: string | null;
+  current_password?: string | null;
+  new_password?: string | null;
 }
 
 export interface UserLogin {

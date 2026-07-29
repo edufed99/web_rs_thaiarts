@@ -20,11 +20,13 @@ import type {
   ItemReassignOut,
   KeywordListOut,
   MetricsOut,
+  ProfileRecommendationResponseOut,
   RecommendationRequestIn,
   RecommendationResponseOut,
   TokenOut,
   UserLogin,
   UserOut,
+  UserProfileUpdate,
   UserSignup,
 } from "./types";
 
@@ -85,11 +87,12 @@ export async function getContexts(): Promise<ContextListOut> {
   return handle<ContextListOut>(res);
 }
 
-export async function getKeywords(search?: string): Promise<KeywordListOut> {
+export async function getKeywords(search?: string, limit?: number): Promise<KeywordListOut> {
   const params = new URLSearchParams();
   if (search && search.trim().length > 0) {
     params.set("search", search.trim());
   }
+  if (limit !== undefined) params.set("limit", String(limit));
   const url = `${baseUrl()}/keywords${params.toString() ? `?${params.toString()}` : ""}`;
   const res = await fetch(url, { cache: "no-store" });
   return handle<KeywordListOut>(res);
@@ -147,6 +150,19 @@ export async function postRecommendations(
     cache: "no-store",
   });
   return handle<RecommendationResponseOut>(res);
+}
+
+export async function getProfileRecommendations(
+  opts?: { topK?: number; extraHeaders?: Record<string, string> },
+): Promise<ProfileRecommendationResponseOut> {
+  const params = new URLSearchParams();
+  if (opts?.topK !== undefined) params.set("top_k", String(opts.topK));
+  const url = `${baseUrl()}/recommendations/profile${params.toString() ? `?${params.toString()}` : ""}`;
+  const res = await fetch(url, {
+    headers: { ...(opts?.extraHeaders ?? {}) },
+    cache: "no-store",
+  });
+  return handle<ProfileRecommendationResponseOut>(res);
 }
 
 // --- Live user actions ------------------------------------------------------
@@ -252,6 +268,16 @@ export async function getMe(): Promise<UserOut> {
   const res = await fetch(`${baseUrl()}/auth/me`, {
     method: "GET",
     headers: { ...getAuthHeaders() },
+    cache: "no-store",
+  });
+  return handle<UserOut>(res);
+}
+
+export async function patchMe(body: UserProfileUpdate): Promise<UserOut> {
+  const res = await fetch(`${baseUrl()}/auth/me`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    body: JSON.stringify(body),
     cache: "no-store",
   });
   return handle<UserOut>(res);

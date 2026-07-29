@@ -123,6 +123,29 @@ def set_last_login(user_id: int, when: Optional[datetime] = None) -> None:
             session.flush()
 
 
+def update_user_profile(
+    user_id: int,
+    *,
+    display_name: Optional[str] = None,
+    password_hash: Optional[str] = None,
+) -> Optional[User]:
+    """Update editable profile fields for a persisted user."""
+    if not is_db_enabled():
+        return None
+    with session_scope() as session:
+        stmt = select(User).where(User.id == user_id)
+        user = session.execute(stmt).scalar_one_or_none()
+        if user is None:
+            return None
+        if display_name is not None:
+            user.display_name = display_name
+        if password_hash is not None:
+            user.password_hash = password_hash
+        session.flush()
+        session.refresh(user)
+        return user
+
+
 def find_user_by_id(user_id: int) -> Optional[User]:
     if not is_db_enabled():
         return None

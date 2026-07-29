@@ -20,7 +20,7 @@ from ..core.config import get_settings
 from ..core.exceptions import AuthError, DbDisabledError, InvalidRequestError
 from ..db import is_db_enabled
 from ..models_db import User
-from ..schemas.user import TokenOut, UserLogin, UserOut, UserSignup
+from ..schemas.user import TokenOut, UserLogin, UserOut, UserProfileUpdate, UserSignup
 from ..services import user_query
 from ..services.auth import (
     create_token,
@@ -105,3 +105,36 @@ def me(user: User = Depends(get_current_user)) -> UserOut:
     if user is None:
         raise AuthError("Authentication required", extra={"code": "unauthorized"})
     return _user_to_out(user)
+
+
+@router.patch("/me", response_model=UserOut)
+def update_me(
+    payload: UserProfileUpdate,
+    user: User = Depends(get_current_user),
+) -> UserOut:
+    """Update the current user's editable profile fields."""
+    if user is None:
+        raise AuthError("Authentication required", extra={"code": "unauthorized"})
+
+    password_hash = None
+    if payload.new_password:
+        if not payload.current_password:
+            raise InvalidRequestError(
+                "Current password is required",
+                extra={"code": "current_password_required"},
+            )
+        if not verify_password(payload.current_password, user.password_hash):
+            raise AuthError(
+                "Current password is incorrect",
+                extra={"code": "invalid_current_password"},
+            )
+        password_hash = hash_password(payload.new_password)
+
+    updated = user_query.update_user_profile(
+        user.id,
+        display_name=payload.display_name,
+        password_hash=password_hash,
+    )
+    if updated is None:
+        raise DbDisabledError("User not persisted")
+    return _user_to_out(updated)

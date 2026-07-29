@@ -61,6 +61,12 @@ export function setStoredAuth(payload: StoredAuth): void {
   }
 }
 
+export function updateStoredUser(user: UserOut): void {
+  const auth = getStoredAuth();
+  if (!auth) return;
+  setStoredAuth({ ...auth, user });
+}
+
 export function clearStoredAuth(): void {
   if (typeof window === "undefined") return;
   try {

@@ -8,6 +8,7 @@
 import type { UserOut } from "./types";
 
 export const STORAGE_KEY = "thai_arts_jwt";
+export const AUTH_CHANGED_EVENT = "thai_arts_auth_changed";
 
 export interface StoredAuth {
   access_token: string;
@@ -54,6 +55,7 @@ export function setStoredAuth(payload: StoredAuth): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    window.dispatchEvent(new Event(AUTH_CHANGED_EVENT));
   } catch {
     // localStorage may throw in private-mode browsers; degrade gracefully.
   }
@@ -63,6 +65,7 @@ export function clearStoredAuth(): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.removeItem(STORAGE_KEY);
+    window.dispatchEvent(new Event(AUTH_CHANGED_EVENT));
   } catch {
     // ignore
   }
@@ -75,6 +78,17 @@ export function clearStoredAuth(): void {
 export function getCurrentUser(): UserOut | null {
   const auth = getStoredAuth();
   return auth ? auth.user : null;
+}
+
+export function getReadableUserName(user: UserOut): string {
+  const displayName = (user.display_name || "").trim();
+  const legacyMarker = "legacy:";
+  if (displayName.includes(legacyMarker)) {
+    const legacyName = displayName.split(legacyMarker, 2)[1]?.trim();
+    if (legacyName) return legacyName;
+  }
+  if (displayName && !displayName.startsWith("must_reset|")) return displayName;
+  return user.username;
 }
 
 export function getJwt(): string | null {

@@ -3,7 +3,13 @@
 import Link from "next/link";
 import React, { useEffect, useState } from "react";
 
-import { AUTH_CHANGED_EVENT, getCurrentUser, logout, isAdmin } from "@/lib/auth";
+import {
+  AUTH_CHANGED_EVENT,
+  getCurrentUser,
+  getReadableUserName,
+  logout,
+  isAdmin,
+} from "@/lib/auth";
 import type { UserOut } from "@/lib/types";
 
 interface NavLink {
@@ -50,6 +56,7 @@ export function FrontendNav() {
   if (user?.is_admin || isAdmin()) {
     links.push({ href: "/admin/items", label: "Dashboard ผู้วิจัย" });
   }
+  const readableUserName = user ? getReadableUserName(user) : "";
 
   return (
     <div className="topbar-nav" aria-label="เมนูหลักด้านบน">
@@ -63,7 +70,7 @@ export function FrontendNav() {
             className="user-chip"
           >
             {user.is_admin ? "Admin · " : ""}
-            {user.display_name || user.username}
+            {readableUserName}
           </span>
           <button
             type="button"

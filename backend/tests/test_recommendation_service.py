@@ -14,6 +14,7 @@ from app.schemas.recommendation import RecommendationRequestIn
 from app.services.recommendation_service import (
     _build_context_out,
     _build_item_out,
+    _profile_history_summary,
     _resolve_keywords,
     generate_recommendations,
 )
@@ -100,6 +101,16 @@ def test_build_item_out_with_known_item(loader):
     assert out.id == rid
     assert out.name == "X"
     assert len(out.keywords) == 1
+
+
+def test_profile_history_summary_uses_real_history_items(loader):
+    history_ids = {item_id("ระบำพรหมาสตร์"), item_id("โขน")}
+    summary = _profile_history_summary(loader, history_ids)
+
+    assert "ระบำพรหมาสตร์" in summary["history_item_names"]
+    assert "งานบวช" in summary["top_contexts"]
+    assert "ผู้หญิง" in summary["top_keywords"]
+    assert "งานบวช" in summary["sentence"]
 
 
 # --- Negative penalty wiring (DB enabled) -----------------------------------

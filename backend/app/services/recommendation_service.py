@@ -12,6 +12,7 @@ once and applied to both the scoring pipeline (negative penalty,
 from __future__ import annotations
 
 import uuid
+from collections import Counter
 from typing import Dict, List, Optional
 
 from sqlalchemy import select
@@ -73,6 +74,7 @@ def generate_profile_recommendations(
             metadata={
                 "profile_key": profile_key,
                 "note": "no positive history for this user",
+                "history_summary": _profile_history_summary(loader, set()),
             },
             results=[],
         )
@@ -84,6 +86,7 @@ def generate_profile_recommendations(
     ]
     scores = score_items_by_itemknn(loader, profile_key, active_items, settings=settings)
     history_ids = set(loader.cf_user_item.get(profile_key, [])) | live_user_positive_items(profile_key)
+    history_summary = _profile_history_summary(loader, history_ids)
 
     ranked = sorted(
         active_items,
@@ -138,13 +141,74 @@ def generate_profile_recommendations(
         request_id=str(uuid.uuid4()),
         top_k=top_k,
         history_count=history_count,
-        metadata={
-            "profile_key": profile_key,
-            "current_user_key": current_user_key,
-            "candidate_count": len(active_items),
-        },
-        results=results,
-    )
+            metadata={
+                "profile_key": profile_key,
+                "current_user_key": current_user_key,
+                "candidate_count": len(active_items),
+                "history_summary": history_summary,
+            },
+            results=results,
+        )
+
+
+def _profile_history_summary(loader: ArtifactLoader, history_ids: set[int]) -> Dict:
+    """Summarise what the user previously liked, grounded in history items."""
+    if not history_ids:
+        return {
+            "history_item_names": [],
+            "top_contexts": [],
+            "top_keywords": [],
+            "top_performance_types": [],
+            "sentence": "ยังไม่มีประวัติความชอบมากพอให้สรุปรูปแบบเดิม",
+        }
+
+    item_names: List[str] = []
+    context_counter: Counter[str] = Counter()
+    keyword_counter: Counter[str] = Counter()
+    type_counter: Counter[str] = Counter()
+
+    for _, row in loader.items.iterrows():
+        iid = int(row.get("item_id"))
+        if iid not in history_ids:
+            continue
+        name = str(row.get("name") or "").strip()
+        if name:
+            item_names.append(name)
+        for context_name in list(row.get("context_names") or []):
+            if context_name:
+                context_counter[str(context_name)] += 1
+        for keyword_name in list(row.get("keyword_names") or []):
+            if keyword_name:
+                keyword_counter[str(keyword_name)] += 1
+        performance_type = str(row.get("performance_type") or "").strip()
+        category_group = str(row.get("category_group") or "").strip()
+        if performance_type:
+            type_counter[performance_type] += 1
+        elif category_group:
+            type_counter[category_group] += 1
+
+    top_contexts = [name for name, _ in context_counter.most_common(3)]
+    top_keywords = [name for name, _ in keyword_counter.most_common(4)]
+    top_types = [name for name, _ in type_counter.most_common(3)]
+    item_examples = item_names[:3]
+
+    parts: List[str] = []
+    if item_examples:
+        parts.append(f"คุณเคยสนใจรายการ เช่น {', '.join(item_examples)}")
+    if top_types:
+        parts.append(f"โดยมักเป็นกลุ่ม {', '.join(top_types)}")
+    if top_contexts:
+        parts.append(f"ในบริบท {', '.join(top_contexts)}")
+    if top_keywords:
+        parts.append(f"มีคุณลักษณะเด่น เช่น {', '.join(top_keywords)}")
+
+    return {
+        "history_item_names": item_names,
+        "top_contexts": top_contexts,
+        "top_keywords": top_keywords,
+        "top_performance_types": top_types,
+        "sentence": " ".join(parts) if parts else "ยังไม่มีประวัติความชอบมากพอให้สรุปรูปแบบเดิม",
+    }
 
 
 def _best_profile_key(loader: ArtifactLoader, user: User) -> tuple[str, int]:

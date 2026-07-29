@@ -3,7 +3,7 @@
 import Link from "next/link";
 import React, { useEffect, useState } from "react";
 
-import { getCurrentUser, logout, isAdmin } from "@/lib/auth";
+import { AUTH_CHANGED_EVENT, getCurrentUser, logout, isAdmin } from "@/lib/auth";
 import type { UserOut } from "@/lib/types";
 
 interface NavLink {
@@ -11,29 +11,43 @@ interface NavLink {
   label: string;
 }
 
-const BASE_LINKS: NavLink[] = [
-  { href: "/", label: "หน้าหลัก" },
-  { href: "/items", label: "คลังชุดการแสดง" },
-  { href: "/recommend", label: "ค้นหาชุดการแสดง" },
-];
+function baseLinks(isLoggedIn: boolean): NavLink[] {
+  return [
+    { href: "/", label: "หน้าหลัก" },
+    { href: "/items", label: "คลังชุดการแสดง" },
+    {
+      href: isLoggedIn ? "/recommend" : "/login?next=/recommend",
+      label: "คำแนะนำเฉพาะคุณ",
+    },
+  ];
+}
 
 export function FrontendNav() {
   const [user, setUser] = useState<UserOut | null | undefined>(undefined);
 
   useEffect(() => {
-    setUser(getCurrentUser());
+    function refreshUser() {
+      setUser(getCurrentUser());
+    }
+
+    refreshUser();
     // Cross-tab logout sync.
     function onStorage(e: StorageEvent) {
       if (e.key === "thai_arts_jwt") {
-        setUser(getCurrentUser());
+        refreshUser();
       }
     }
+    window.addEventListener(AUTH_CHANGED_EVENT, refreshUser);
     window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(AUTH_CHANGED_EVENT, refreshUser);
+      window.removeEventListener("storage", onStorage);
+    };
   }, []);
 
-  const links: NavLink[] = [...BASE_LINKS];
-  if (isAdmin()) {
+  const isLoggedIn = Boolean(user);
+  const links: NavLink[] = baseLinks(isLoggedIn);
+  if (user?.is_admin || isAdmin()) {
     links.push({ href: "/admin/items", label: "Dashboard ผู้วิจัย" });
   }
 

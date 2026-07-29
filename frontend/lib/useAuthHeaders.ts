@@ -8,7 +8,7 @@
 
 import { useEffect, useState } from "react";
 
-import { getJwt } from "./auth";
+import { AUTH_CHANGED_EVENT, STORAGE_KEY, getJwt } from "./auth";
 
 export function useAuthHeaders(): Record<string, string> {
   const [headers, setHeaders] = useState<Record<string, string>>({});
@@ -18,16 +18,15 @@ export function useAuthHeaders(): Record<string, string> {
       const token = getJwt();
       setHeaders(token ? { Authorization: `Bearer ${token}` } : {});
     }
+    function handleStorage(e: StorageEvent) {
+      if (e.key === STORAGE_KEY) refresh();
+    }
     refresh();
-    window.addEventListener("storage", (e) => {
-      if (e.key === "thai_arts_jwt") refresh();
-    });
+    window.addEventListener(AUTH_CHANGED_EVENT, refresh);
+    window.addEventListener("storage", handleStorage);
     return () => {
-      window.removeEventListener("storage", () => {
-        // noop — the listener reference is the same function so we
-        // deliberately skip removeEventListener; React cleans up on
-        // unmount regardless.
-      });
+      window.removeEventListener(AUTH_CHANGED_EVENT, refresh);
+      window.removeEventListener("storage", handleStorage);
     };
   }, []);
 

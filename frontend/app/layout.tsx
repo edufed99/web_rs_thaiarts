@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import React from "react";
 
 import { FrontendNav } from "@/components/FrontendNav";
+import { SideMenu } from "@/components/SideMenu";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -18,15 +18,14 @@ export default function RootLayout({
   return (
     <html lang="th">
       <body>
-        <header className="app-topbar">
-          <Link className="brand" href="/">
-            <span className="brand-mark"><span>TP</span></span>
-            <span>ThaiPerform AI</span>
-          </Link>
-          <FrontendNav />
-        </header>
         <div className="app-shell">
-          <main className="container">{children}</main>
+          <SideMenu />
+          <div className="app-main">
+            <header className="app-topbar">
+              <FrontendNav />
+            </header>
+            <main className="container">{children}</main>
+          </div>
         </div>
       </body>
     </html>

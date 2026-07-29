@@ -8,25 +8,8 @@ import {
   getCurrentUser,
   getReadableUserName,
   logout,
-  isAdmin,
 } from "@/lib/auth";
 import type { UserOut } from "@/lib/types";
-
-interface NavLink {
-  href: string;
-  label: string;
-}
-
-function baseLinks(isLoggedIn: boolean): NavLink[] {
-  return [
-    { href: "/", label: "หน้าหลัก" },
-    { href: "/items", label: "คลังชุดการแสดง" },
-    {
-      href: isLoggedIn ? "/recommend" : "/login?next=/recommend",
-      label: "คำแนะนำเฉพาะคุณ",
-    },
-  ];
-}
 
 export function FrontendNav() {
   const [user, setUser] = useState<UserOut | null | undefined>(undefined);
@@ -51,23 +34,21 @@ export function FrontendNav() {
     };
   }, []);
 
-  const isLoggedIn = Boolean(user);
-  const links: NavLink[] = baseLinks(isLoggedIn);
-  if (isLoggedIn) {
-    links.push({ href: "/profile", label: "ข้อมูลผู้ใช้" });
-  }
-  if (user?.is_admin || isAdmin()) {
-    links.push({ href: "/admin/items", label: "Dashboard ผู้วิจัย" });
-  }
   const readableUserName = user ? getReadableUserName(user) : "";
 
   return (
-    <div className="topbar-nav" aria-label="เมนูหลักด้านบน">
-      {links.map((l) => (
-        <Link key={l.href} href={l.href}>{l.label}</Link>
-      ))}
+    <div className="topbar-nav" aria-label="เมนูบัญชีผู้ใช้ด้านบน">
       {user === undefined ? null : user ? (
         <nav className="utility-nav" aria-label="เมนูบัญชีผู้ใช้">
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="การแจ้งเตือน"
+            title="การแจ้งเตือน"
+          >
+            <span aria-hidden="true">🔔</span>
+            <span className="notification-dot">3</span>
+          </button>
           <span
             title={user.is_admin ? "ผู้ดูแลระบบ" : user.username}
             className="user-chip"

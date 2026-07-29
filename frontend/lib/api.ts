@@ -87,12 +87,17 @@ export async function getContexts(): Promise<ContextListOut> {
   return handle<ContextListOut>(res);
 }
 
-export async function getKeywords(search?: string, limit?: number): Promise<KeywordListOut> {
+export async function getKeywords(
+  search?: string,
+  limit?: number,
+  contextId?: number,
+): Promise<KeywordListOut> {
   const params = new URLSearchParams();
   if (search && search.trim().length > 0) {
     params.set("search", search.trim());
   }
   if (limit !== undefined) params.set("limit", String(limit));
+  if (contextId !== undefined) params.set("context_id", String(contextId));
   const url = `${baseUrl()}/keywords${params.toString() ? `?${params.toString()}` : ""}`;
   const res = await fetch(url, { cache: "no-store" });
   return handle<KeywordListOut>(res);

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from app.services._ids import stable_id
+
 
 def test_list_contexts(client: TestClient):
     r = client.get("/contexts")
@@ -35,6 +37,25 @@ def test_list_keywords_search(client: TestClient):
     kws = r.json()["keywords"]
     assert len(kws) >= 1
     assert all("หญิง" in k["name"] for k in kws)
+
+
+def test_list_keywords_context_filter(client: TestClient):
+    context_id = stable_id("context", "งานเลี้ยงสังสรรค์")
+
+    r = client.get("/keywords", params={"context_id": context_id, "limit": 1000})
+    assert r.status_code == 200
+    kws = r.json()["keywords"]
+    names = {k["name"] for k in kws}
+
+    assert "ผู้หญิง" in names
+    assert "ดนตรี" in names
+    assert "ชุดไทย" not in names
+
+
+def test_list_keywords_unknown_context_returns_empty(client: TestClient):
+    r = client.get("/keywords", params={"context_id": 999999999, "limit": 1000})
+    assert r.status_code == 200
+    assert r.json()["keywords"] == []
 
 
 def test_metrics_shape(client: TestClient):

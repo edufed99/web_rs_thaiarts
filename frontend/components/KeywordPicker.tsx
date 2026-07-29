@@ -11,11 +11,13 @@ import { LoadingState } from "./LoadingState";
 export interface KeywordPickerProps {
   selectedIds: number[];
   onChange: (ids: number[]) => void;
+  /** Selected context narrows the vocabulary to keywords found in matching items. */
+  contextId?: number | null;
   /** Max number of search suggestions shown. */
   limit?: number;
 }
 
-export function KeywordPicker({ selectedIds, onChange, limit = 12 }: KeywordPickerProps) {
+export function KeywordPicker({ selectedIds, onChange, contextId, limit = 12 }: KeywordPickerProps) {
   const [keywords, setKeywords] = useState<KeywordOut[] | null>(null);
   const [search, setSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -25,11 +27,18 @@ export function KeywordPicker({ selectedIds, onChange, limit = 12 }: KeywordPick
   const [selectedKeywordLevel1, setSelectedKeywordLevel1] = useState("");
   const [selectedKeywordLevel2, setSelectedKeywordLevel2] = useState("");
   const [selectedKeywordLevel3, setSelectedKeywordLevel3] = useState("");
+  const waitsForContext = contextId === null;
 
   useEffect(() => {
     let cancelled = false;
     setError(null);
-    getKeywords()
+    if (waitsForContext) {
+      setKeywords([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+    getKeywords(undefined, 1000, contextId)
       .then((data) => {
         if (!cancelled) setKeywords(data.keywords);
       })
@@ -45,7 +54,16 @@ export function KeywordPicker({ selectedIds, onChange, limit = 12 }: KeywordPick
     return () => {
       cancelled = true;
     };
-  }, [reloadKey]);
+  }, [reloadKey, contextId, waitsForContext]);
+
+  useEffect(() => {
+    if (!keywords) return;
+    const availableIds = new Set(keywords.map((keyword) => keyword.id));
+    const nextIds = selectedIds.filter((id) => availableIds.has(id));
+    if (nextIds.length !== selectedIds.length) {
+      onChange(nextIds);
+    }
+  }, [keywords, selectedIds, onChange]);
 
   const filtered = (() => {
     if (!keywords) return [];
@@ -100,9 +118,14 @@ export function KeywordPicker({ selectedIds, onChange, limit = 12 }: KeywordPick
       <div className="taxonomy-search-row" style={{ maxWidth: "760px", marginBottom: "0.75rem" }}>
         <input
           type="text"
-          placeholder="พิมพ์เพื่อค้นหาคำสำคัญ เช่น ราช โขน พิธี ภาคใต้"
+          placeholder={
+            waitsForContext
+              ? "เลือกโอกาสที่ใช้แสดงก่อน แล้วระบบจะแสดงคำสำคัญที่มีจริงในบริบทนั้น"
+              : "พิมพ์เพื่อค้นหาคำสำคัญ เช่น ราช โขน พิธี ภาคใต้"
+          }
           value={search}
           onChange={(e) => setSearch(e.target.value)}
+          disabled={waitsForContext}
           style={{ width: "100%" }}
         />
         <button
@@ -176,7 +199,9 @@ export function KeywordPicker({ selectedIds, onChange, limit = 12 }: KeywordPick
         )
       ) : (
         <p className="muted" style={{ margin: 0, fontSize: "0.9rem" }}>
-          พิมพ์คำที่สนใจหรือเลือกจากหมวดหมู่ ระบบจะแสดงเฉพาะคำที่ตรง ไม่แสดงรายการทั้งหมดในครั้งเดียว
+          {waitsForContext
+            ? "เลือกโอกาสที่ใช้แสดงก่อน ระบบจะแสดงเฉพาะคำสำคัญที่พบในชุดการแสดงของบริบทนั้น"
+            : "พิมพ์คำที่สนใจหรือเลือกจากหมวดหมู่ ระบบจะแสดงเฉพาะคำที่ตรง ไม่แสดงรายการทั้งหมดในครั้งเดียว"}
         </p>
       )}
       {taxonomyModalOpen ? (

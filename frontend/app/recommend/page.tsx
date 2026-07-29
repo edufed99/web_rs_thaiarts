@@ -90,6 +90,11 @@ export default function RecommendPage() {
 
   const canSubmit = contextId !== null && !submitting;
 
+  function handleContextChange(nextContextId: number | null) {
+    setContextId(nextContextId);
+    setKeywordIds([]);
+  }
+
   if (!ready) {
     return <LoadingState message="กำลังตรวจสอบโปรไฟล์ผู้ใช้..." />;
   }
@@ -150,9 +155,13 @@ export default function RecommendPage() {
           <h2 style={{ margin: 0, color: "#102044" }}>ปรับคำแนะนำด้วยโอกาสและคุณลักษณะ</h2>
         </div>
         <div className="recommend-config-grid">
-          <ContextPicker value={contextId} onChange={setContextId} />
+          <ContextPicker value={contextId} onChange={handleContextChange} />
           <div className="recommend-keyword-field">
-            <KeywordPicker selectedIds={keywordIds} onChange={setKeywordIds} />
+            <KeywordPicker
+              selectedIds={keywordIds}
+              onChange={setKeywordIds}
+              contextId={contextId}
+            />
           </div>
           <label className="field recommend-topk-field">
             <span>จำนวนผลลัพธ์ (top-K)</span>

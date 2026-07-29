@@ -18,7 +18,7 @@ from ..schemas.context import ContextListOut, ContextOut
 from ..schemas.keyword import KeywordListOut, KeywordOut
 from ..schemas.metrics import MetricsOut
 from ..services._ids import stable_id
-from ..services.eligibility import build_context_id_map
+from ..services.eligibility import build_context_id_map, context_name_for_id
 
 
 router = APIRouter(tags=["metrics"])
@@ -117,9 +117,24 @@ def _db_context_counts_by_name() -> Optional[dict[str, int]]:
 def list_keywords(
     search: Optional[str] = Query(None, description="Substring filter on keyword name."),
     limit: int = Query(200, ge=1, le=1000),
+    context_id: Optional[int] = Query(
+        None,
+        description="When provided, only return keywords attached to items in this context.",
+    ),
     loader: ArtifactLoader = Depends(get_singleton),
 ) -> KeywordListOut:
     artifact_paths_by_name = _artifact_keyword_paths_by_name(loader)
+    if context_id is not None:
+        return KeywordListOut(
+            keywords=_artifact_keywords(
+                loader=loader,
+                search=search,
+                limit=limit,
+                paths_by_name=artifact_paths_by_name,
+                context_id=context_id,
+            )
+        )
+
     db_keywords = _db_keywords(
         search=search,
         limit=limit,
@@ -128,13 +143,38 @@ def list_keywords(
     if db_keywords is not None:
         return KeywordListOut(keywords=db_keywords)
 
-    seen = set()
-    rows = []
-    for names in loader.items["keyword_names"]:
-        for n in names or []:
-            if not n or n in seen:
+    return KeywordListOut(
+        keywords=_artifact_keywords(
+            loader=loader,
+            search=search,
+            limit=limit,
+            paths_by_name=artifact_paths_by_name,
+        )
+    )
+
+
+def _artifact_keywords(
+    loader: ArtifactLoader,
+    search: Optional[str],
+    limit: int,
+    paths_by_name: dict[str, str],
+    context_id: Optional[int] = None,
+) -> list[KeywordOut]:
+    context_name = context_name_for_id(loader, int(context_id)) if context_id is not None else None
+    if context_id is not None and not context_name:
+        return []
+
+    seen: set[str] = set()
+    rows: list[KeywordOut] = []
+    for _, item in loader.items.iterrows():
+        context_names = list(item.get("context_names") or [])
+        if context_name and context_name not in context_names:
+            continue
+        for n in list(item.get("keyword_names") or []):
+            name = str(n or "").strip()
+            if not name or name in seen:
                 continue
-            seen.add(n)
+            seen.add(name)
     for name in sorted(seen):
         if search and search.lower() not in name.lower():
             continue
@@ -142,12 +182,12 @@ def list_keywords(
             KeywordOut(
                 id=stable_id("keyword", name),
                 name=name,
-                taxonomy_path=str(artifact_paths_by_name.get(name, "") or ""),
+                taxonomy_path=str(paths_by_name.get(name, "") or ""),
             )
         )
         if len(rows) >= limit:
             break
-    return KeywordListOut(keywords=rows)
+    return rows
 
 
 @router.get(

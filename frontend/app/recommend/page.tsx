@@ -95,7 +95,7 @@ export default function RecommendPage() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="section-stack">
+    <form onSubmit={handleSubmit} className="section-stack recommend-page">
       <section className="page-hero">
         <div>
           <p className="eyebrow">Personalized recommendation</p>
@@ -144,31 +144,35 @@ export default function RecommendPage() {
         )}
       </section>
 
-      <section className="form-panel">
+      <section className="form-panel recommend-config-panel">
         <div>
           <p className="eyebrow">ส่วนที่ 2</p>
           <h2 style={{ margin: 0, color: "#102044" }}>ปรับคำแนะนำด้วยโอกาสและคุณลักษณะ</h2>
         </div>
-        <ContextPicker value={contextId} onChange={setContextId} />
-        <KeywordPicker selectedIds={keywordIds} onChange={setKeywordIds} />
-        <label className="field" style={{ maxWidth: "180px" }}>
-          <span>จำนวนผลลัพธ์ (top-K)</span>
-          <input
-            type="number"
-            min={1}
-            max={50}
-            value={topK}
-            onChange={(e) => {
-              const n = parseInt(e.target.value, 10);
-              if (!isNaN(n) && n >= 1 && n <= 50) setTopK(n);
-            }}
-          />
-        </label>
+        <div className="recommend-config-grid">
+          <ContextPicker value={contextId} onChange={setContextId} />
+          <div className="recommend-keyword-field">
+            <KeywordPicker selectedIds={keywordIds} onChange={setKeywordIds} />
+          </div>
+          <label className="field recommend-topk-field">
+            <span>จำนวนผลลัพธ์ (top-K)</span>
+            <input
+              type="number"
+              min={1}
+              max={50}
+              value={topK}
+              onChange={(e) => {
+                const n = parseInt(e.target.value, 10);
+                if (!isNaN(n) && n >= 1 && n <= 50) setTopK(n);
+              }}
+            />
+          </label>
+        </div>
 
         <button
           type="submit"
           disabled={!canSubmit}
-          style={{ justifySelf: "start", minWidth: "180px" }}
+          className="recommend-submit-button"
         >
           {submitting ? "กำลังคำนวณ..." : "คำนวณคำแนะนำเฉพาะคุณ"}
         </button>
@@ -194,7 +198,7 @@ function ProfileRecommendationCard({
       : result.item.description;
 
   return (
-    <article className="popular-card">
+    <article className="popular-card profile-recommendation-card">
       <div
         className="popular-card-media"
         style={result.item.image_url ? { backgroundImage: `linear-gradient(135deg, rgba(6, 27, 60, 0.08), rgba(197, 145, 59, 0.12)), url("${result.item.image_url}")` } : undefined}
@@ -208,16 +212,18 @@ function ProfileRecommendationCard({
         <p className="muted" style={{ margin: 0, fontSize: "0.88rem" }}>
           {result.explanation}
         </p>
-        <Link className="secondary" href={`/items/${result.item.id}`} style={{ justifySelf: "start" }}>
-          รายละเอียด
-        </Link>
-        <ItemActionBar
-          itemId={result.item.id}
-          userKey={userKey}
-          userState={result.item.user_state}
-          onChange={(next) => onUserStateChange(result.item.id, next)}
-          requestId={requestId}
-        />
+        <div className="profile-card-footer">
+          <ItemActionBar
+            itemId={result.item.id}
+            userKey={userKey}
+            userState={result.item.user_state}
+            onChange={(next) => onUserStateChange(result.item.id, next)}
+            requestId={requestId}
+          />
+          <Link className="secondary profile-detail-link" href={`/items/${result.item.id}`}>
+            รายละเอียด
+          </Link>
+        </div>
       </div>
     </article>
   );

@@ -209,14 +209,29 @@ def load_keyword_links(source_root: Path, csv_name: str) -> pd.DataFrame:
         return pd.DataFrame(columns=["item_id", "keyword_name"])
     df = pd.read_csv(path)
     item_col = next((c for c in df.columns if "ชุด" in c or "item" in c.lower()), df.columns[0])
-    word_col = next((c for c in df.columns if "คำ" in c or "keyword" in c.lower() or "word" in c.lower()), df.columns[-1])
+    word_col = next(
+        (
+            c
+            for c in df.columns
+            if (
+                c.lower() in {"word", "words", "keyword", "keywords", "keyword_name"}
+                or "คำ" in c
+                or "keyword" in c.lower()
+                or "word" in c.lower()
+            )
+        ),
+        df.columns[-1],
+    )
     rows = []
     for _, row in df.iterrows():
         item_name = normalize_item_name(row.get(item_col))
-        word = clean_text(row.get(word_col))
-        if not item_name or not word:
+        words = [clean_text(part) for part in str(row.get(word_col) or "").split(",")]
+        if not item_name:
             continue
-        rows.append({"item_id": stable_id("item", item_name), "keyword_name": word})
+        for word in words:
+            if not word:
+                continue
+            rows.append({"item_id": stable_id("item", item_name), "keyword_name": word})
     return pd.DataFrame(rows)
 
 
@@ -229,11 +244,24 @@ def load_taxonomy(source_root: Path, csv_name: str) -> pd.DataFrame:
         return pd.DataFrame(columns=["keyword_name", "taxonomy_path"])
     df = pd.read_csv(path)
     word_col = next((c for c in df.columns if "คำ" in c or "keyword" in c.lower()), df.columns[0])
-    cat_col = next((c for c in df.columns if "หมวด" in c or "category" in c.lower()), None)
+    cat_col = next(
+        (
+            c
+            for c in df.columns
+            if (
+                "หมวด" in c
+                or "category" in c.lower()
+                or "taxonomy" in c.lower()
+                or "classification" in c.lower()
+                or "label" in c.lower()
+            )
+        ),
+        None,
+    )
     rows = []
     for _, row in df.iterrows():
         word = clean_text(row.get(word_col))
-        cat = clean_text(row.get(cat_col)) if cat_col else ""
+        cat = clean_text(row.get(cat_col)).replace("||", " > ") if cat_col else ""
         if not word:
             continue
         rows.append({"keyword_name": word, "taxonomy_path": cat})
@@ -416,6 +444,21 @@ def main() -> int:
     keyword_taxonomy: Dict[str, str] = {
         str(r["keyword_name"]): str(r["taxonomy_path"]) for _, r in tax.iterrows()
     }
+    region_path = next(
+        (
+            keyword_taxonomy.get(name, "")
+            for name in ("ภาคเหนือ", "ภาคกลาง", "ภาคอีสาน", "สี่ภาค")
+            if keyword_taxonomy.get(name)
+        ),
+        "",
+    )
+    if region_path:
+        keyword_taxonomy.setdefault("ภาคใต้", region_path)
+        keyword_taxonomy.setdefault("ล่องใต้", region_path)
+
+    royal_person_path = keyword_taxonomy.get("พระบรมราชชนนีพับปีหลวง", "")
+    if royal_person_path:
+        keyword_taxonomy.setdefault("พระบรมราชชนนีพันปีหลวง", royal_person_path)
 
     print(f"[4/6] Loading user logs")
     user_logs = load_user_logs(source_root, args.user_log_csv)
@@ -439,7 +482,7 @@ def main() -> int:
         lambda iid: item_contexts.get(int(iid), [])
     )
     items_df["taxonomy_paths"] = items_df["keyword_names"].apply(
-        lambda names: [keyword_taxonomy.get(n, "") for n in names if keyword_taxonomy.get(n)]
+        lambda names: [keyword_taxonomy.get(n, "") for n in names]
     )
 
     print(f"[5/6] Computing embeddings (synthetic={args.synthetic_embeddings})")

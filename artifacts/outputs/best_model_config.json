@@ -1,0 +1,57 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-07-29T15:52:23.305442+00:00",
+  "experiment_output_dir": "C:\\Users\\Pichaya\\Downloads\\web_appRS1\\old code\\4.recommendation\\output",
+  "selection_metric": "nDCG_mean",
+  "selected_model": {
+    "candidate_strategy": "EligibilityGate",
+    "max_cands": 20,
+    "top_k": 10,
+    "cbf_model": "intfloat/multilingual-e5-large-instruct",
+    "cbf_keyword_boost": 0.05,
+    "cf_model": "ItemKNN",
+    "itemknn_k": 10,
+    "itemknn_shrink": 50.0,
+    "hybrid_method": "WeightedSum",
+    "hybrid_alpha": 0.8,
+    "method": "Hybrid-WeightedSum"
+  },
+  "evidence": {
+    "overall_best": {
+      "Model": "Hybrid-WeightedSum",
+      "MAX_CANDS_LABEL": "20",
+      "nDCG_mean": 0.912416915244178,
+      "HR_mean": 0.996112165296226,
+      "MRR_mean": 0.8841944990673376
+    },
+    "cbf_best": {
+      "Model": "CBF-multilingual-e5-large-instruct",
+      "MAX_CANDS_LABEL": "20",
+      "nDCG_mean": 0.8930526966813614,
+      "HR_mean": 0.9960952983343876,
+      "MRR_mean": 0.858680917517713
+    },
+    "cf_best": {
+      "Model": "CF-ItemKNN",
+      "MAX_CANDS": 20.0,
+      "best_val_nDCG@10": 0.8243917364876387,
+      "feasible_nDCG@10": 0.8345503755243501,
+      "Seed": 42
+    },
+    "hybrid_best": {
+      "Model": "Hybrid-WeightedSum",
+      "MAX_CANDS_LABEL": "20",
+      "nDCG_mean": 0.912416915244178,
+      "HR_mean": 0.996112165296226,
+      "MRR_mean": 0.8841944990673376
+    }
+  },
+  "source_files": [
+    "C:\\Users\\Pichaya\\Downloads\\web_appRS1\\old code\\4.recommendation\\output\\results_overall.csv",
+    "C:\\Users\\Pichaya\\Downloads\\web_appRS1\\old code\\4.recommendation\\output\\results_cbf.csv",
+    "C:\\Users\\Pichaya\\Downloads\\web_appRS1\\old code\\4.recommendation\\output\\results_cf.csv",
+    "C:\\Users\\Pichaya\\Downloads\\web_appRS1\\old code\\4.recommendation\\output\\results_hybrid_methods.csv",
+    "C:\\Users\\Pichaya\\Downloads\\web_appRS1\\old code\\4.recommendation\\output\\tuned_params.csv",
+    "C:\\Users\\Pichaya\\Downloads\\web_appRS1\\old code\\4.recommendation\\output\\experiment_config.json"
+  ]
+}

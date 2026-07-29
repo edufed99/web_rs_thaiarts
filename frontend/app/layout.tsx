@@ -3,7 +3,6 @@ import Link from "next/link";
 import React from "react";
 
 import { FrontendNav } from "@/components/FrontendNav";
-import { SideMenu } from "@/components/SideMenu";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -27,7 +26,6 @@ export default function RootLayout({
           <FrontendNav />
         </header>
         <div className="app-shell">
-          <SideMenu />
           <main className="container">{children}</main>
         </div>
       </body>

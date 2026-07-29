@@ -119,21 +119,22 @@ def list_keywords(
     limit: int = Query(200, ge=1, le=1000),
     loader: ArtifactLoader = Depends(get_singleton),
 ) -> KeywordListOut:
-    db_keywords = _db_keywords(search=search, limit=limit)
+    artifact_paths_by_name = _artifact_keyword_paths_by_name(loader)
+    db_keywords = _db_keywords(
+        search=search,
+        limit=limit,
+        artifact_paths_by_name=artifact_paths_by_name,
+    )
     if db_keywords is not None:
         return KeywordListOut(keywords=db_keywords)
 
     seen = set()
     rows = []
-    paths_by_name = {}
-    for idx, names in enumerate(loader.items["keyword_names"]):
-        paths = loader.items["taxonomy_paths"].iloc[idx] if "taxonomy_paths" in loader.items.columns else []
-        for j, n in enumerate(names or []):
+    for names in loader.items["keyword_names"]:
+        for n in names or []:
             if not n or n in seen:
                 continue
             seen.add(n)
-            tp = paths[j] if j < len(paths) else ""
-            paths_by_name[n] = tp
     for name in sorted(seen):
         if search and search.lower() not in name.lower():
             continue
@@ -141,7 +142,7 @@ def list_keywords(
             KeywordOut(
                 id=stable_id("keyword", name),
                 name=name,
-                taxonomy_path=str(paths_by_name.get(name, "") or ""),
+                taxonomy_path=str(artifact_paths_by_name.get(name, "") or ""),
             )
         )
         if len(rows) >= limit:
@@ -175,7 +176,29 @@ def metrics(
     )
 
 
-def _db_keywords(search: Optional[str], limit: int) -> Optional[list[KeywordOut]]:
+def _artifact_keyword_paths_by_name(loader: ArtifactLoader) -> dict[str, str]:
+    paths_by_name: dict[str, str] = {}
+    if "keyword_names" not in loader.items.columns:
+        return paths_by_name
+
+    has_taxonomy_paths = "taxonomy_paths" in loader.items.columns
+    for idx, names in enumerate(loader.items["keyword_names"]):
+        paths = loader.items["taxonomy_paths"].iloc[idx] if has_taxonomy_paths else []
+        for j, name in enumerate(names or []):
+            name_text = str(name or "").strip()
+            if not name_text:
+                continue
+            taxonomy_path = str(paths[j] if j < len(paths) and paths[j] else "").strip()
+            if taxonomy_path and name_text not in paths_by_name:
+                paths_by_name[name_text] = taxonomy_path
+    return paths_by_name
+
+
+def _db_keywords(
+    search: Optional[str],
+    limit: int,
+    artifact_paths_by_name: dict[str, str],
+) -> Optional[list[KeywordOut]]:
     try:
         with session_scope() as session:
             if session is None:
@@ -196,7 +219,12 @@ def _db_keywords(search: Optional[str], limit: int) -> Optional[list[KeywordOut]
             KeywordOut(
                 id=int(keyword_id),
                 name=name_text,
-                taxonomy_path=taxonomy_paths.get(int(taxonomy_node_id), "") if taxonomy_node_id else "",
+                taxonomy_path=(
+                    taxonomy_paths.get(int(taxonomy_node_id), "")
+                    if taxonomy_node_id
+                    else artifact_paths_by_name.get(name_text.strip(), "")
+                )
+                or artifact_paths_by_name.get(name_text.strip(), ""),
             )
         )
         if len(out) >= limit:

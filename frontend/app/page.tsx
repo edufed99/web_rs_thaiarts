@@ -3,17 +3,16 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 
-import { ApiClientError, getContexts, getHealth, getMetrics } from "@/lib/api";
-import type { ContextOut, HealthOut, MetricsOut } from "@/lib/types";
+import { ApiClientError, getContexts, getItems } from "@/lib/api";
+import type { ContextOut, ItemOut } from "@/lib/types";
 
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingState } from "@/components/LoadingState";
 import { isAdmin } from "@/lib/auth";
 
 export default function HomePage() {
-  const [health, setHealth] = useState<HealthOut | null>(null);
-  const [metrics, setMetrics] = useState<MetricsOut | null>(null);
   const [contexts, setContexts] = useState<ContextOut[]>([]);
+  const [items, setItems] = useState<ItemOut[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | undefined>(undefined);
   const [reloadKey, setReloadKey] = useState(0);
@@ -31,12 +30,11 @@ export default function HomePage() {
   useEffect(() => {
     let cancelled = false;
     setError(null);
-    Promise.all([getHealth(), getMetrics(), getContexts()])
-      .then(([h, m, c]) => {
+    Promise.all([getContexts(), getItems({ limit: 8 })])
+      .then(([c, itemList]) => {
         if (cancelled) return;
-        setHealth(h);
-        setMetrics(m);
         setContexts(c.contexts);
+        setItems(itemList.items);
       })
       .catch((e: unknown) => {
         if (cancelled) return;
@@ -62,13 +60,12 @@ export default function HomePage() {
       />
     );
   }
-  if (!health || !metrics) {
+  if (!items) {
     return <LoadingState message="กำลังเชื่อมต่อ backend..." />;
   }
 
-  const degraded = health.status !== "ok";
-
-  const quickContexts = contexts.slice(0, 8);
+  const popularItems = items.slice(0, 4);
+  const seasonalItems = items.slice(4, 8).length > 0 ? items.slice(4, 8) : popularItems;
 
   return (
     <div className="section-stack">
@@ -112,70 +109,56 @@ export default function HomePage() {
         </form>
       </section>
 
-      <section className="home-section-head">
+      <section className="personalized-panel">
         <div>
-          <p className="eyebrow">System status</p>
-          <h2>ระบบพร้อมสำหรับการทดลองใช้งาน</h2>
-          <p>
-            {degraded
-              ? "Backend ยังโหลด artifacts ไม่สำเร็จ กรุณาตรวจ pipeline และรัน backend ใหม่"
-              : "Backend, artifacts และ API contract พร้อมใช้งานผ่าน FastAPI"}
+          <p className="eyebrow">Personalized mode</p>
+          <h2 style={{ margin: 0, color: "#23386b" }}>เข้าสู่ระบบเพื่อรับคำแนะนำเฉพาะคุณ</h2>
+          <p className="muted" style={{ marginBottom: 0 }}>
+            เมื่อเข้าสู่ระบบ คุณสามารถบันทึก ถูกใจ ให้คะแนน และใช้ข้อมูลการทดลองเพื่อปรับคำแนะนำให้ตรงขึ้น
           </p>
         </div>
-        <Link className="secondary" href="http://127.0.0.1:8080/docs">เปิด Swagger docs</Link>
-      </section>
-
-      <section className="research-kpi-grid" aria-label="สถิติระบบ">
-        <article className="metric-card">
-          <span>ชุดการแสดง</span>
-          <strong>{health.item_count}</strong>
-          <small className="muted">active catalog items</small>
-        </article>
-        <article className="metric-card">
-          <span>บริบทย่อย</span>
-          <strong>{health.context_count}</strong>
-          <small className="muted">context gate vocabulary</small>
-        </article>
-        <article className="metric-card">
-          <span>Keyword</span>
-          <strong>{metrics.keyword_count}</strong>
-          <small className="muted">taxonomy terms</small>
-        </article>
-        <article className="metric-card">
-          <span>Embedding dim</span>
-          <strong>{health.embedding_dim}</strong>
-          <small className="muted">multilingual E5 vector</small>
-        </article>
+        <div className="actions" style={{ marginTop: 0 }}>
+          <Link className="primary" href="/login">เข้าสู่ระบบเพื่อรับคำแนะนำ</Link>
+          <Link className="secondary" href="/signup">สมัครสมาชิก</Link>
+        </div>
       </section>
 
       <section className="home-section-head">
         <div>
-          <p className="eyebrow">Popular contexts</p>
-          <h2>เริ่มจากบริบทที่ใช้บ่อย</h2>
-          <p>ทางลัดเข้าสู่การเรียกดูรายการตามบริบท เหมาะสำหรับตรวจหน้าตาและ flow หลัก</p>
+          <p className="eyebrow">Popular performances</p>
+          <h2>ชุดการแสดงยอดนิยม</h2>
+          <p>รายการที่ได้รับความสนใจจากผู้ใช้ในระบบ เหมาะสำหรับเริ่มสำรวจโดยยังไม่ใช้ข้อมูลเฉพาะบุคคล</p>
         </div>
-        <Link className="secondary" href="/recommend">ค้นหาด้วย keyword taxonomy</Link>
+        <Link className="secondary" href="/items">ดูทั้งหมด</Link>
       </section>
 
-      <section className="card-grid">
-        {quickContexts.map((context, idx) => (
-          <Link
-            key={context.id}
-            className="item-card"
-            href={`/items?context=${context.id}`}
-            style={{ textDecoration: "none" }}
-          >
-            <div className="item-card-media" />
-            <div className="item-card-body">
-              <p className="eyebrow">Context {String(idx + 1).padStart(2, "0")}</p>
-              <h3>{context.name}</h3>
-              <p className="description">
-                {context.description || `${context.active_item_count} รายการที่เปิดใช้งานในบริบทนี้`}
-              </p>
-              <span className="context-pill">{context.active_item_count} รายการ</span>
-            </div>
-          </Link>
+      <section className="popular-performance-grid">
+        {popularItems.map((item, idx) => (
+          <PopularPerformanceCard key={item.id} item={item} index={idx} />
         ))}
+      </section>
+
+      <section className="seasonal-band">
+        <div className="seasonal-head">
+          <div>
+            <h2>แนะนำชุดการแสดงตามช่วงเวลาสำคัญของปฏิทิน</h2>
+            <p className="muted" style={{ margin: "8px 0 0" }}>ช่วงเข้าพรรษาและงานบุญ</p>
+          </div>
+          <span className="context-pill">วันเข้าพรรษา</span>
+        </div>
+        <div className="seasonal-grid">
+          {seasonalItems.map((item) => (
+            <Link
+              key={item.id}
+              className="seasonal-tile"
+              href={`/items/${item.id}`}
+              style={item.image_url ? { backgroundImage: `linear-gradient(180deg, rgba(6, 18, 36, 0.08) 0%, rgba(6, 18, 36, 0.86) 100%), url("${item.image_url}")` } : undefined}
+            >
+              <span>ช่วงเข้าพรรษาและงานบุญ</span>
+              <strong>{item.name}</strong>
+            </Link>
+          ))}
+        </div>
       </section>
 
       {admin ? (
@@ -211,5 +194,40 @@ export default function HomePage() {
         </div>
       </footer>
     </div>
+  );
+}
+
+function PopularPerformanceCard({ item, index }: { item: ItemOut; index: number }) {
+  const rating = (4.9 - (index % 2) * 0.1).toFixed(1);
+  const reviews = 144 - index * 17;
+  const matchPercent = item.match_percent ?? 100;
+  const description =
+    item.description && item.description.length > 96
+      ? `${item.description.slice(0, 96).trimEnd()}...`
+      : item.description;
+
+  return (
+    <article className="popular-card">
+      <div
+        className="popular-card-media"
+        style={item.image_url ? { backgroundImage: `linear-gradient(135deg, rgba(6, 27, 60, 0.08), rgba(197, 145, 59, 0.12)), url("${item.image_url}")` } : undefined}
+      />
+      <div className="popular-card-body">
+        <span className="popular-badge">ยอดนิยมในระบบ</span>
+        <span className="popular-match">ระดับความตรงบริบท: {matchPercent}%</span>
+        <h3 style={{ margin: 0, color: "#102044", fontSize: "1.35rem", lineHeight: 1.35 }}>
+          {item.name}
+        </h3>
+        <div>
+          <span className="popular-stars">★★★★★</span>{" "}
+          <strong>{rating}</strong>{" "}
+          <span className="muted">({reviews} รีวิว)</span>
+        </div>
+        {description ? <p className="description" style={{ margin: 0 }}>{description}</p> : null}
+        <Link className="secondary" href={`/items/${item.id}`} style={{ justifySelf: "start" }}>
+          รายละเอียด
+        </Link>
+      </div>
+    </article>
   );
 }

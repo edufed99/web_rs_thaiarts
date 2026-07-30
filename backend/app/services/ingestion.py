@@ -147,6 +147,17 @@ def ingest_new_item(
     description = (item_create.description or "").strip()
     category = (item_create.category_group or "").strip()
     ptype = (item_create.performance_type or "").strip()
+    performers = (
+        int(item_create.performers_count)
+        if item_create.performers_count is not None
+        else None
+    )
+    duration = (
+        int(item_create.duration_minutes)
+        if item_create.duration_minutes is not None
+        else None
+    )
+    price = (item_create.price_text or "").strip()
 
     # Step 1 — embedding OUTSIDE the lock (slow).
     row_for_embed = {
@@ -206,9 +217,9 @@ def ingest_new_item(
                 description=description,
                 category_group=category,
                 performance_type=ptype,
-                performers_count=0,
-                duration_minutes=0,
-                price_text="",
+                performers_count=performers,
+                duration_minutes=duration,
+                price_text=price,
                 image_url="",
                 video_url="",
                 is_active=True,
@@ -243,9 +254,9 @@ def ingest_new_item(
                     "description": description,
                     "category_group": category,
                     "performance_type": ptype,
-                    "performers_count": 0,
-                    "duration_minutes": 0,
-                    "price_text": "",
+                    "performers_count": performers if performers is not None else 0,
+                    "duration_minutes": duration if duration is not None else 0,
+                    "price_text": price,
                     "is_active": True,
                 },
                 embedding=embed_vec,
@@ -264,6 +275,9 @@ def ingest_new_item(
                 description=description,
                 category_group=category,
                 performance_type=ptype,
+                performers_count=performers,
+                duration_minutes=duration,
+                price_text=price,
                 keywords=[],
                 contexts=[],
             )

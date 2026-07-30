@@ -13,7 +13,7 @@ Three flows:
 """
 from __future__ import annotations
 
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -32,6 +32,9 @@ class ItemDraft(BaseModel):
     description: str = Field(default="", max_length=2000)
     category_group: str = Field(default="", max_length=255)
     performance_type: str = Field(default="", max_length=255)
+    performers_count: Optional[int] = Field(default=None, ge=0)
+    duration_minutes: Optional[int] = Field(default=None, ge=0)
+    price_text: str = Field(default="", max_length=255)
     context_names: List[str] = Field(default_factory=list)
     keyword_names: List[str] = Field(default_factory=list)
 
@@ -43,6 +46,9 @@ class ItemCreate(BaseModel):
     description: str = Field(default="", max_length=2000)
     category_group: str = Field(default="", max_length=255)
     performance_type: str = Field(default="", max_length=255)
+    performers_count: Optional[int] = Field(default=None, ge=0)
+    duration_minutes: Optional[int] = Field(default=None, ge=0)
+    price_text: str = Field(default="", max_length=255)
     context_names: List[str] = Field(default_factory=list)
     keyword_ids: List[int] = Field(default_factory=list)
 
@@ -89,3 +95,58 @@ class ItemKeywordReassign(BaseModel):
 class ItemReassignOut(BaseModel):
     item: ItemOut
     warnings: List[str] = Field(default_factory=list)
+
+
+class ItemUpdate(BaseModel):
+    """Admin edit payload for an existing catalog item.
+
+    The URL carries the stable artifact id. Editable scalar fields are stored
+    on ``items``; contexts and keywords rewrite the DB join rows when present.
+    """
+
+    name: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    description: Optional[str] = Field(default=None, max_length=2000)
+    category_group: Optional[str] = Field(default=None, max_length=255)
+    performance_type: Optional[str] = Field(default=None, max_length=255)
+    performers_count: Optional[int] = Field(default=None, ge=0)
+    duration_minutes: Optional[int] = Field(default=None, ge=0)
+    price_text: Optional[str] = Field(default=None, max_length=255)
+    image_url: Optional[str] = Field(default=None, max_length=500)
+    video_url: Optional[str] = Field(default=None, max_length=500)
+    is_active: Optional[bool] = None
+    context_names: Optional[List[str]] = None
+    keyword_ids: Optional[List[int]] = None
+
+
+class ItemDeleteOut(BaseModel):
+    item_id: int
+    deleted: bool = True
+    warnings: List[str] = Field(default_factory=list)
+
+
+class ItemFacetsOut(BaseModel):
+    """Distinct categorical values used to populate the admin form dropdowns.
+
+    Source priority is DB rows first (newer values may have been added since
+    the artifact was built) with a graceful fallback to the in-memory
+    artifact loader when the DB layer is disabled.
+
+    ``category_groups_by_performance_type`` lets the form render the
+    ``หมวดหมู่`` dropdown as a dependent cascade — selecting
+    ``ประเภทการแสดง`` first filters the category options to only those
+    seen together in the corpus.
+    """
+
+    category_groups: List[str] = Field(default_factory=list)
+    performance_types: List[str] = Field(default_factory=list)
+    category_groups_by_performance_type: Dict[str, List[str]] = Field(default_factory=dict)
+    source: Literal["db", "artifact"] = "artifact"
+
+
+class ItemImageUploadOut(BaseModel):
+    """Result of a successful cover-image upload."""
+
+    url: str = Field(..., description="Public URL where the image is served (e.g. /uploads/items/abc.jpg).")
+    size_bytes: int = Field(..., ge=0, description="File size in bytes.")
+    mime: str = Field(..., description="Sniffed MIME type (image/jpeg | image/png | image/webp).")
+    item_id: int = Field(..., description="Artifact item id the image was attached to.")

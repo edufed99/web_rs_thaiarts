@@ -248,6 +248,9 @@ export interface ItemDraft {
   description?: string;
   category_group?: string;
   performance_type?: string;
+  performers_count?: number | null;
+  duration_minutes?: number | null;
+  price_text?: string;
   context_names: string[];
   keyword_names: string[];
 }
@@ -264,6 +267,9 @@ export interface ItemCreate {
   description?: string;
   category_group?: string;
   performance_type?: string;
+  performers_count?: number | null;
+  duration_minutes?: number | null;
+  price_text?: string;
   context_names: string[];
   keyword_ids: number[];
 }
@@ -307,4 +313,26 @@ export interface ItemDeleteOut {
   item_id: number;
   deleted: boolean;
   warnings: string[];
+}
+
+export interface ItemFacetsOut {
+  category_groups: string[];
+  performance_types: string[];
+  /**
+   * Cascade map: ``หมวดหมู่`` dropdown options filtered by the
+   * selected ``ประเภทการแสดง``. Keys are performance_type strings;
+   * values are the category_groups seen with that performance_type
+   * in the corpus.
+   */
+  category_groups_by_performance_type: Record<string, string[]>;
+  source: "db" | "artifact";
+}
+
+export interface ItemImageUploadOut {
+  /** Public URL where the image is served (e.g. ``/uploads/items/abc.jpg``). */
+  url: string;
+  size_bytes: number;
+  /** Sniffed MIME type (``image/jpeg`` | ``image/png`` | ``image/webp``). */
+  mime: string;
+  item_id: number;
 }

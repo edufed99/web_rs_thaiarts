@@ -13,7 +13,7 @@ only — never imports Python, reads CSV, or opens model artifacts directly.
 ```bash
 cd frontend
 npm install
-cp .env.example .env.local       # optional — defaults to http://localhost:8080
+cp .env.example .env.local       # optional — defaults to http://127.0.0.1:8001
 ```
 
 ## Run dev server
@@ -55,5 +55,5 @@ lib/
 
 ## Environment
 
-`NEXT_PUBLIC_API_BASE_URL` — defaults to `http://localhost:8080`. Set in
+`NEXT_PUBLIC_API_BASE_URL` — defaults to `http://127.0.0.1:8001`. Set in
 `.env.local` for a different backend host.

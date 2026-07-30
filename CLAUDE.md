@@ -66,10 +66,10 @@ python pipelines/train_or_generate_artifacts.py \
 ```bash
 cd backend
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8080
+uvicorn app.main:app --reload --port 8001
 ```
 
-Open Swagger UI: http://localhost:8080/docs
+Open Swagger UI: http://127.0.0.1:8001/docs
 
 ### Run frontend
 
@@ -79,7 +79,7 @@ npm install
 npm run dev          # http://localhost:3000
 ```
 
-`NEXT_PUBLIC_API_BASE_URL` env var defaults to `http://localhost:8080`.
+`NEXT_PUBLIC_API_BASE_URL` env var defaults to `http://127.0.0.1:8001`.
 
 ### Run tests
 

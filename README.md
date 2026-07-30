@@ -6,7 +6,7 @@ read-only — never modified) into a clean **Next.js + FastAPI** split.
 ```
 Thai Arts Recommender
 ├── Frontend  (Next.js 14 + TypeScript, App Router)   →  :3000
-├── Backend   (Python 3 + FastAPI)                    →  :8080
+├── Backend   (Python 3 + FastAPI)                    →  :8001
 ├── Pipeline  (offline artifact generator)            →  artifacts/
 └── Artifacts (static .npz / .parquet / .json)
 ```
@@ -25,10 +25,10 @@ python pipelines/train_or_generate_artifacts.py \
     --output-dir artifacts \
     --synthetic-embeddings
 
-# 2. Run backend (port 8080)
+# 2. Run backend (port 8001)
 cd backend
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8080
+uvicorn app.main:app --reload --port 8001
 
 # 3. Run frontend (port 3000, in a second terminal)
 cd frontend
@@ -42,9 +42,9 @@ pytest --cov=app --cov-report=term-missing --cov-fail-under=90
 
 Open:
 - **App:**       http://localhost:3000
-- **Swagger:**   http://localhost:8080/docs
-- **ReDoc:**     http://localhost:8080/redoc
-- **OpenAPI:**   http://localhost:8080/openapi.json
+- **Swagger:**   http://127.0.0.1:8001/docs
+- **ReDoc:**     http://127.0.0.1:8001/redoc
+- **OpenAPI:**   http://127.0.0.1:8001/openapi.json
 
 ---
 
@@ -53,7 +53,7 @@ Open:
 ```
 ┌──────────────────┐    HTTP/JSON     ┌──────────────────┐
 │   Next.js app    │  ──────────────► │   FastAPI app    │
-│   (port 3000)    │                  │   (port 8080)    │
+│   (port 3000)    │                  │   (port 8001)    │
 │   TypeScript     │  ◄────────────── │   Python 3       │
 └──────────────────┘                  └────────┬─────────┘
                                                 │
@@ -166,7 +166,7 @@ pip install -r requirements.txt
 # Postgres. See backend/.env.example for the full list.
 cp .env.example .env
 
-uvicorn app.main:app --reload --port 8080
+uvicorn app.main:app --reload --port 8001
 ```
 
 The `.env` file is gitignored. `.env.example` is tracked so devs
@@ -217,7 +217,7 @@ Every endpoint carries a `summary` and `description` for the Swagger docs.
 ```bash
 cd frontend
 npm install
-cp .env.example .env.local       # defaults to http://localhost:8080
+cp .env.example .env.local       # defaults to http://127.0.0.1:8001
 npm run dev
 ```
 

@@ -8,10 +8,13 @@
 #
 # The backend reads RECSYS_DATABASE_URL; defaults to:
 #   postgresql+psycopg://postgres:postgres@127.0.0.1:5432/web_rs_thaiarts
+name: web_rs_thaiarts
+
 services:
   postgres:
-    image: postgres:16-alpine
-    container_name: thai_arts_postgres
+    image: postgres:16
+    container_name: web_rs_thaiarts
+    restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -28,3 +31,4 @@ services:
 
 volumes:
   postgres_data:
+    name: web_rs_thaiarts_postgres_data

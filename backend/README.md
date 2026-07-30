@@ -21,7 +21,7 @@ pip install -r requirements.txt
 
 ### Without DB (artifacts only)
 ```bash
-RECSYS_DB_ENABLED=0 uvicorn app.main:app --reload --port 8080
+RECSYS_DB_ENABLED=0 uvicorn app.main:app --reload --port 8001
 ```
 
 ### With Postgres
@@ -37,14 +37,14 @@ python pipelines/migrate_sqlite_to_postgres.py \
 
 # Start backend (auto-detects DB via RECSYS_DATABASE_URL)
 cd backend
-uvicorn app.main:app --reload --port 8080
+uvicorn app.main:app --reload --port 8001
 ```
 
 Open:
-- Swagger UI: http://localhost:8080/docs
-- ReDoc:      http://localhost:8080/redoc
-- OpenAPI:    http://localhost:8080/openapi.json
-- DB health:  http://localhost:8080/db/health
+- Swagger UI: http://127.0.0.1:8001/docs
+- ReDoc:      http://127.0.0.1:8001/redoc
+- OpenAPI:    http://127.0.0.1:8001/openapi.json
+- DB health:  http://127.0.0.1:8001/db/health
 
 ## Tests
 

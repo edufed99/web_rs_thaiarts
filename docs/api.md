@@ -1,7 +1,7 @@
 # API Tour
 
 Human walkthrough of the FastAPI endpoints exposed by the recommender backend.
-Base URL during development: `http://localhost:8080`.
+Base URL during development: `http://127.0.0.1:8001`.
 
 For the full machine-readable contract, see `/openapi.json` (every endpoint
 carries a `summary` and `description`).
@@ -13,7 +13,7 @@ carries a `summary` and `description`).
 Liveness probe. Returns 200 with build metadata when artifacts are loaded.
 
 ```bash
-curl http://localhost:8080/health
+curl http://127.0.0.1:8001/health
 ```
 
 ```json
@@ -37,7 +37,7 @@ The main workflow. Accepts a context + optional keywords + top-K. Returns the
 top-K items with per-model scores, matched keywords, and a Thai explanation.
 
 ```bash
-curl -X POST http://localhost:8080/recommendations \
+curl -X POST http://127.0.0.1:8001/recommendations \
     -H "Content-Type: application/json" \
     -d '{
         "context_id": 142863314,
@@ -97,21 +97,21 @@ Response (truncated):
 
 ```bash
 # 422 — invalid input (top_k out of range, negative keyword id, malformed JSON)
-curl -X POST http://localhost:8080/recommendations \
+curl -X POST http://127.0.0.1:8001/recommendations \
     -H "Content-Type: application/json" \
     -d '{"context_id": 1, "keyword_ids": [], "top_k": 0}'
 
 # {"error": {"code": "validation_error", "message": "body.top_k: Input should be greater than or equal to 1"}}
 
 # 404 — unknown context
-curl -X POST http://localhost:8080/recommendations \
+curl -X POST http://127.0.0.1:8001/recommendations \
     -H "Content-Type: application/json" \
     -d '{"context_id": 99999999, "keyword_ids": [], "top_k": 5}'
 
 # {"error": {"code": "context_not_found", "message": "Context id 99999999 is not known.", "context_id": 99999999}}
 
 # 503 — artifacts not loaded
-curl http://localhost:8080/health
+curl http://127.0.0.1:8001/health
 # {"status": "degraded", ...}
 ```
 
@@ -137,12 +137,12 @@ recommendation ranking.
 
 ```bash
 # browse mode
-curl 'http://localhost:8080/items?limit=5'
-curl 'http://localhost:8080/items?search=ระบำ'
-curl 'http://localhost:8080/items?limit=10&offset=20&user_key=anon:abc'
+curl 'http://127.0.0.1:8001/items?limit=5'
+curl 'http://127.0.0.1:8001/items?search=ระบำ'
+curl 'http://127.0.0.1:8001/items?limit=10&offset=20&user_key=anon:abc'
 
 # ranked mode (legacy top-10 by context)
-curl 'http://localhost:8080/items?context=142863314'
+curl 'http://127.0.0.1:8001/items?context=142863314'
 ```
 
 Response (browse mode):
@@ -179,7 +179,7 @@ size.
 404 if `context` is unknown:
 
 ```bash
-curl 'http://localhost:8080/items?context=99999'
+curl 'http://127.0.0.1:8001/items?context=99999'
 # {"error": {"code": "context_not_found", "message": "Context id 99999 is not known.", "context_id": 99999}}
 ```
 
@@ -190,14 +190,14 @@ curl 'http://localhost:8080/items?context=99999'
 One item with its keywords, contexts, per-user state, and suitability hint.
 
 ```bash
-curl 'http://localhost:8080/items/45123'
-curl 'http://localhost:8080/items/45123?user_key=anon:abc'
+curl 'http://127.0.0.1:8001/items/45123'
+curl 'http://127.0.0.1:8001/items/45123?user_key=anon:abc'
 ```
 
 404 if the id is unknown:
 
 ```bash
-curl http://localhost:8080/items/99999
+curl http://127.0.0.1:8001/items/99999
 # {"error": {"code": "item_not_found", "message": "Item id 99999 not found.", "item_id": 99999}}
 ```
 
@@ -208,7 +208,7 @@ curl http://localhost:8080/items/99999
 All filterable sub-contexts, ordered by group then name.
 
 ```bash
-curl http://localhost:8080/contexts
+curl http://127.0.0.1:8001/contexts
 ```
 
 ```json
@@ -232,8 +232,8 @@ curl http://localhost:8080/contexts
 All keywords found across the catalog. Optional substring filter.
 
 ```bash
-curl 'http://localhost:8080/keywords'
-curl 'http://localhost:8080/keywords?search=ผู้หญิง'
+curl 'http://127.0.0.1:8001/keywords'
+curl 'http://127.0.0.1:8001/keywords?search=ผู้หญิง'
 ```
 
 ```json
@@ -252,7 +252,7 @@ curl 'http://localhost:8080/keywords?search=ผู้หญิง'
 High-level corpus + CF index stats plus the build timestamp and config hash.
 
 ```bash
-curl http://localhost:8080/metrics
+curl http://127.0.0.1:8001/metrics
 ```
 
 ```json
@@ -301,7 +301,7 @@ Stable `code` strings you can branch on:
 
 ## Try it interactively
 
-Start the backend and open `http://localhost:8080/docs` — Swagger UI has a
+Start the backend and open `http://127.0.0.1:8001/docs` — Swagger UI has a
 "Try it out" button on every endpoint, with the request/response schema
 inline.
 ---
@@ -322,7 +322,7 @@ on first load). See `frontend/lib/user.ts`.
 Likes an item. Idempotent.
 
 ```bash
-curl -X POST http://localhost:8080/actions/like \
+curl -X POST http://127.0.0.1:8001/actions/like \
     -H "Content-Type: application/json" \
     -d '{"user_key":"anon:7f3a","item_id":222445941}'
 ```
@@ -346,7 +346,7 @@ curl -X POST http://localhost:8080/actions/like \
 Removes the like. Idempotent.
 
 ```bash
-curl -X DELETE http://localhost:8080/actions/like \
+curl -X DELETE http://127.0.0.1:8001/actions/like \
     -H "Content-Type: application/json" \
     -d '{"user_key":"anon:7f3a","item_id":222445941}'
 ```
@@ -360,7 +360,7 @@ Same shape as the like endpoints, but writes to the `saved_items` table.
 Upserts a 1..5 rating. `rating` must be supplied in the body.
 
 ```bash
-curl -X PUT http://localhost:8080/actions/rating \
+curl -X PUT http://127.0.0.1:8001/actions/rating \
     -H "Content-Type: application/json" \
     -d '{"user_key":"anon:7f3a","item_id":222445941,"rating":4}'
 ```

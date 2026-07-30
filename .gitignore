@@ -67,3 +67,16 @@ backend/coverage/
 backend/.coverage
 backend/htmlcov/
 backend/.pytest_cache/
+
+# Root-level coverage report (created by pytest at repo root when
+# ``--cov`` is run from the project root, not just inside backend/).
+.coverage
+
+# User-uploaded media lives outside ``artifacts/`` so the offline
+# recommender pipeline re-runs don't wipe it. Never commit it.
+backend/data/
+
+# Ephemeral debug dumps left in the repo root during smoke tests.
+cascade_dump.txt
+facets.json
+test.png

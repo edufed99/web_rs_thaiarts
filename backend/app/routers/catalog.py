@@ -46,8 +46,8 @@ RANKED_MODE_LIMIT = 10
     summary="List active items",
     description=(
         "Returns a paginated list of active catalog items. Supports an "
-        "optional `search` substring match against `name`, `description` "
-        "and `keyword_names`, an optional `context` for the legacy "
+        "optional `search` substring match against `name`, `description`, "
+        "`keyword_names`, and `taxonomy_path`, an optional `context` for the legacy "
         "top-10 ranked mode, and an optional `user_key` to populate "
         "each item's `user_state`."
     ),
@@ -80,14 +80,20 @@ def list_items(
         active_items = [row for row in db_items if row["is_active"]]
         if context is not None:
             return _ranked_by_context_db(active_items, context, effective_user_key, loader)
-        if search:
-            needle = search.lower()
+        terms = _search_terms(search)
+        if terms:
             active_items = [
                 row
                 for row in active_items
-                if needle in str(row["name"]).lower()
-                or needle in str(row["description"]).lower()
-                or any(needle in str(k["name"]).lower() for k in row["keywords"])
+                if _matches_all_terms(
+                    terms,
+                    [
+                        row["name"],
+                        row["description"],
+                        *(k["name"] for k in row["keywords"]),
+                        *(k.get("taxonomy_path") or "" for k in row["keywords"]),
+                    ],
+                )
             ]
         total = len(active_items)
         page = active_items[offset : offset + limit]
@@ -109,14 +115,22 @@ def list_items(
         return _ranked_by_context(active, context, effective_user_key, loader)
 
     # Browse mode: optional substring search + pagination.
-    if search:
-        needle = search.lower()
-        name_mask = active["name"].fillna("").str.lower().str.contains(needle, regex=False, na=False)
-        desc_mask = active["description"].fillna("").str.lower().str.contains(needle, regex=False, na=False)
-        kw_mask = active["keyword_names"].apply(
-            lambda names: needle in " ".join(str(n).lower() for n in (names or []))
-        )
-        active = active[name_mask | desc_mask | kw_mask]
+    terms = _search_terms(search)
+    if terms:
+        active = active[
+            active.apply(
+                lambda row: _matches_all_terms(
+                    terms,
+                    [
+                        row.get("name") or "",
+                        row.get("description") or "",
+                        *(row.get("keyword_names") or []),
+                        *(row.get("taxonomy_paths") or []),
+                    ],
+                ),
+                axis=1,
+            )
+        ]
 
     total = int(len(active))
     page = active.iloc[offset : offset + limit]
@@ -162,6 +176,49 @@ def get_item(
         )
     state_map = live_user_state_for_items(effective_user_key, [int(item_id)])
     return _row_to_item_out(row, loader, user_state=state_map.get(int(item_id)))
+
+
+def _search_terms(search: Optional[str]) -> list[str]:
+    if not search:
+        return []
+    return [term.strip().lower() for term in str(search).split("|") if term.strip()]
+
+
+def _matches_all_terms(terms: list[str], values: list[Any]) -> bool:
+    value_texts = [str(value or "").lower() for value in values]
+    return all(any(_matches_term(term, value) for value in value_texts) for term in terms)
+
+
+def _matches_term(term: str, value: str) -> bool:
+    if not term:
+        return True
+    start = value.find(term)
+    while start != -1:
+        if _is_acceptable_match_boundary(term, value, start):
+            return True
+        start = value.find(term, start + 1)
+    return False
+
+
+def _is_acceptable_match_boundary(term: str, value: str, start: int) -> bool:
+    end = start + len(term)
+    if not _is_thai_text(term):
+        return True
+    # Keep short Thai keyword search permissive: "โขน" should still match
+    # compact titles such as "โขนเรื่อง..." where Thai writing omits spaces.
+    if len(term) <= 3:
+        return True
+    if end >= len(value):
+        return True
+    return not _is_thai_char(value[end])
+
+
+def _is_thai_text(value: str) -> bool:
+    return any(_is_thai_char(ch) for ch in value)
+
+
+def _is_thai_char(ch: str) -> bool:
+    return "\u0e00" <= ch <= "\u0e7f"
 
 
 def _db_item_rows() -> Optional[list[dict[str, Any]]]:
@@ -386,14 +443,30 @@ def _row_to_item_out(row, loader: ArtifactLoader, user_state: Optional[UserState
         context_count=len(ctx_names),
         description_length=len(str(row.get("description") or "")),
     )
+    # Loader rows may carry pandas NaN for missing numeric fields — coerce
+    # those to ``None`` so Pydantic v2.12's strict ``finite_number`` check
+    # accepts them.
+    def _clean_int(value):
+        if value is None:
+            return None
+        try:
+            if value != value:  # NaN guard (covers float('nan'), numpy.nan, pandas.NA-like)
+                return None
+        except TypeError:
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
     return ItemOut(
         id=iid,
         name=str(row.get("name") or ""),
         description=str(row.get("description") or ""),
         category_group=str(row.get("category_group") or ""),
         performance_type=str(row.get("performance_type") or ""),
-        performers_count=row.get("performers_count"),
-        duration_minutes=row.get("duration_minutes"),
+        performers_count=_clean_int(row.get("performers_count")),
+        duration_minutes=_clean_int(row.get("duration_minutes")),
         price_text=str(row.get("price_text") or ""),
         image_url="",
         video_url="",

@@ -17,7 +17,7 @@ import uuid
 from threading import Lock
 from typing import Any, Dict, List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, UploadFile
 
 from ..core.config import get_settings
 from ..core.exceptions import InvalidRequestError
@@ -25,13 +25,17 @@ from ..model_loader import ArtifactLoader, get_singleton
 from ..schemas.admin import (
     ItemCommit,
     ItemCommitOut,
+    ItemDeleteOut,
     ItemDraft,
     ItemDraftOut,
+    ItemFacetsOut,
+    ItemImageUploadOut,
     ItemKeywordReassign,
     ItemReassignOut,
+    ItemUpdate,
 )
 from ..schemas.item import ItemOut
-from ..services import grounding, ingestion
+from ..services import grounding, ingestion, storage
 from ..services.auth import get_current_admin
 from ..services._ids import stable_id
 
@@ -140,6 +144,9 @@ def create_draft(
             "description": draft.description,
             "category_group": draft.category_group,
             "performance_type": draft.performance_type,
+            "performers_count": draft.performers_count,
+            "duration_minutes": draft.duration_minutes,
+            "price_text": draft.price_text,
             "context_names": list(draft.context_names or []),
             "context_ids": context_ids,
             "layer_a_ids": grounded["layer_a_ids"],
@@ -206,6 +213,9 @@ def commit_item(
         description=payload.get("description", ""),
         category_group=payload.get("category_group", ""),
         performance_type=payload.get("performance_type", ""),
+        performers_count=payload.get("performers_count"),
+        duration_minutes=payload.get("duration_minutes"),
+        price_text=payload.get("price_text", "") or "",
         context_names=payload.get("context_names", []),
         keyword_ids=final_kw_ids,
     )
@@ -239,11 +249,12 @@ def reassign_keywords(
                 f"Item not found: {item_id}",
                 extra={"code": "item_not_found"},
             )
-        session.execute(delete(ItemKeyword).where(ItemKeyword.item_id == int(item_id)))
+        django_id = int(item.id)
+        session.execute(delete(ItemKeyword).where(ItemKeyword.item_id == django_id))
         for kid in body.keyword_ids:
             session.add(
                 ItemKeyword(
-                    item_id=int(item_id),
+                    item_id=django_id,
                     keyword_id=int(kid),
                     source="human",
                 )
@@ -252,7 +263,7 @@ def reassign_keywords(
         # Refresh the loader's view of this item's keyword names.
         loader = get_singleton()
         kw_rows = session.execute(
-            select(ItemKeyword.keyword_id).where(ItemKeyword.item_id == int(item_id))
+            select(ItemKeyword.keyword_id).where(ItemKeyword.item_id == django_id)
         ).all()
         kw_names = _names_for_keyword_ids([r[0] for r in kw_rows])
 
@@ -272,16 +283,321 @@ def reassign_keywords(
         finally:
             lock.release()
 
-        item_out = ItemOut(
-            id=int(item.artifact_item_id),
-            name=item.name,
-            description=item.description or "",
-            category_group=item.category_group or "",
-            performance_type=item.performance_type or "",
-            keywords=[],
-            contexts=[],
-        )
+        item_out = _item_out_from_session(session, item)
         return ItemReassignOut(item=item_out, warnings=[])
+
+
+@router.put("/items/{item_id}", response_model=ItemReassignOut)
+def update_item(
+    item_id: int,
+    body: ItemUpdate,
+    admin_user=Depends(get_current_admin),
+) -> ItemReassignOut:
+    """Edit an existing catalog row without touching PostgreSQL manually."""
+    from sqlalchemy import delete, select
+
+    from ..db import session_scope
+    from ..models_db import Context, Item, ItemContext, ItemKeyword
+
+    warnings: List[str] = []
+    with session_scope() as session:
+        item = session.execute(
+            select(Item).where(Item.artifact_item_id == int(item_id))
+        ).scalar_one_or_none()
+        if item is None:
+            raise InvalidRequestError(
+                f"Item not found: {item_id}",
+                extra={"code": "item_not_found"},
+            )
+
+        django_id = int(item.id)
+        if body.name is not None:
+            item.name = body.name.strip()
+        if body.description is not None:
+            item.description = body.description.strip()
+        if body.category_group is not None:
+            item.category_group = body.category_group.strip()
+        if body.performance_type is not None:
+            item.performance_type = body.performance_type.strip()
+        if body.performers_count is not None:
+            item.performers_count = int(body.performers_count)
+        if body.duration_minutes is not None:
+            item.duration_minutes = int(body.duration_minutes)
+        if body.price_text is not None:
+            item.price_text = body.price_text.strip()
+        if body.image_url is not None:
+            item.image_url = body.image_url.strip()
+        if body.video_url is not None:
+            item.video_url = body.video_url.strip()
+        if body.is_active is not None:
+            item.is_active = bool(body.is_active)
+
+        context_names: List[str] | None = None
+        if body.context_names is not None:
+            context_names = []
+            context_ids: List[int] = []
+            for raw in body.context_names:
+                if not isinstance(raw, str):
+                    continue
+                name = raw.strip()
+                if not name:
+                    continue
+                row = session.execute(select(Context).where(Context.name == name)).scalar_one_or_none()
+                if row is None:
+                    row = Context(name=name, group_name="", description="")
+                    session.add(row)
+                    session.flush()
+                    warnings.append(f"Created missing context: {name!r}")
+                context_names.append(str(row.name))
+                context_ids.append(int(row.id))
+            session.execute(delete(ItemContext).where(ItemContext.item_id == django_id))
+            for context_id in context_ids:
+                session.add(
+                    ItemContext(
+                        item_id=django_id,
+                        context_id=context_id,
+                        validity_status="valid",
+                    )
+                )
+
+        keyword_names: List[str] | None = None
+        if body.keyword_ids is not None:
+            kw_ids = _unique_ints(body.keyword_ids)
+            session.execute(delete(ItemKeyword).where(ItemKeyword.item_id == django_id))
+            for keyword_id in kw_ids:
+                session.add(
+                    ItemKeyword(
+                        item_id=django_id,
+                        keyword_id=keyword_id,
+                        source="admin",
+                    )
+                )
+            keyword_names = _names_for_keyword_ids(kw_ids)
+
+        session.flush()
+        loader_values = {
+            "name": item.name,
+            "description": item.description or "",
+            "category_group": item.category_group or "",
+            "performance_type": item.performance_type or "",
+            "performers_count": item.performers_count,
+            "duration_minutes": item.duration_minutes,
+            "price_text": item.price_text or "",
+            "is_active": bool(item.is_active),
+        }
+        item_out = _item_out_from_session(session, item)
+
+    _update_loader_row(
+        int(item_id),
+        loader_values,
+        context_names=context_names,
+        keyword_names=keyword_names,
+    )
+    return ItemReassignOut(item=item_out, warnings=warnings)
+
+
+@router.get("/items/facets", response_model=ItemFacetsOut)
+def item_facets(
+    admin_user=Depends(get_current_admin),
+) -> ItemFacetsOut:
+    """Distinct ``category_group`` + ``performance_type`` values for dropdowns.
+
+    Pulls live values from Postgres when available (catches admin edits
+    made via /admin/items/{id} that haven't been baked into the artifact
+    yet), otherwise falls back to the in-memory loader. Also returns a
+    ``category_groups_by_performance_type`` map so the form can cascade
+    ``หมวดหมู่`` from the selected ``ประเภทการแสดง``.
+    """
+    from sqlalchemy import select
+
+    from ..db import session_scope
+    from ..models_db import Item
+
+    try:
+        with session_scope() as session:
+            if session is None:
+                raise RuntimeError("db_disabled")
+            cat_rows = session.execute(
+                select(Item.category_group)
+                .where(Item.is_active.is_(True))
+                .group_by(Item.category_group)
+            ).all()
+            perf_rows = session.execute(
+                select(Item.performance_type)
+                .where(Item.is_active.is_(True))
+                .group_by(Item.performance_type)
+            ).all()
+            pair_rows = session.execute(
+                select(Item.category_group, Item.performance_type)
+                .where(Item.is_active.is_(True))
+            ).all()
+            cats = [str(c[0] or "").strip() for c in cat_rows if str(c[0] or "").strip()]
+            perfs = [str(p[0] or "").strip() for p in perf_rows if str(p[0] or "").strip()]
+            cats_by_perf: Dict[str, set] = {}
+            for cat_raw, perf_raw in pair_rows:
+                cat = str(cat_raw or "").strip()
+                perf = str(perf_raw or "").strip()
+                if not cat or not perf:
+                    continue
+                cats_by_perf.setdefault(perf, set()).add(cat)
+            # We always trust the DB rows when the query succeeded — empty
+            # lists here just mean no admin has filled in those fields yet,
+            # which is information the UI should display (vs. silently
+            # falling back to artifact values that may be stale).
+            return ItemFacetsOut(
+                category_groups=sorted(cats),
+                performance_types=sorted(perfs),
+                category_groups_by_performance_type={
+                    perf: sorted(vals) for perf, vals in cats_by_perf.items()
+                },
+                source="db",
+            )
+    except Exception:  # noqa: BLE001 - fall back to artifact loader
+        pass
+
+    loader = get_singleton()
+    df = loader.items
+    cats: List[str] = []
+    perfs: List[str] = []
+    cats_by_perf: Dict[str, set] = {}
+    if "category_group" in df.columns and "performance_type" in df.columns:
+        for _, row in df.iterrows():
+            cat = str(row.get("category_group") or "").strip()
+            perf = str(row.get("performance_type") or "").strip()
+            if cat:
+                cats.append(cat)
+            if perf:
+                perfs.append(perf)
+            if cat and perf:
+                cats_by_perf.setdefault(perf, set()).add(cat)
+    return ItemFacetsOut(
+        category_groups=sorted(set(cats)),
+        performance_types=sorted(set(perfs)),
+        category_groups_by_performance_type={
+            perf: sorted(vals) for perf, vals in cats_by_perf.items()
+        },
+        source="artifact",
+    )
+
+
+@router.post(
+    "/items/{artifact_id}/image",
+    response_model=ItemImageUploadOut,
+    summary="Upload a cover image for an item",
+    description=(
+        "Accepts a single multipart ``file`` field (image/jpeg, image/png, "
+        "or image/webp — validated by magic-byte sniffing, not the "
+        "client's Content-Type). Persists the file under "
+        "``data/uploads/items/`` and updates ``items.image_url`` so the "
+        "catalog detail page can render it immediately. Also pushes the "
+        "new URL into the in-memory ``ArtifactLoader`` (the legacy edit "
+        "endpoint silently dropped this)."
+    ),
+)
+def upload_item_image(
+    artifact_id: int,
+    file: UploadFile = File(..., description="JPEG/PNG/WebP, max 5 MB."),
+    admin_user=Depends(get_current_admin),
+) -> ItemImageUploadOut:
+    """Save the cover image, persist ``image_url``, and clean up the old file."""
+    from sqlalchemy import select
+
+    from ..db import session_scope
+    from ..models_db import Item
+
+    settings = get_settings()
+    items_dir = settings.upload_dir / "items"
+
+    with session_scope() as session:
+        if session is None:
+            raise InvalidRequestError(
+                "DB layer disabled",
+                extra={"code": "db_disabled"},
+            )
+        item = session.execute(
+            select(Item).where(Item.artifact_item_id == int(artifact_id))
+        ).scalar_one_or_none()
+        if item is None:
+            raise InvalidRequestError(
+                f"Item not found: {artifact_id}",
+                extra={"code": "item_not_found"},
+            )
+        old_url = str(item.image_url or "")
+        # Persist BEFORE writing to disk so the DB record is always in sync
+        # with what we return. If the file write fails the transaction
+        # rolls back and the old image_url stays intact.
+        _filename, public_url, size_bytes, mime = storage.save_upload(
+            file,
+            items_dir,
+            prefix=str(artifact_id),
+            max_bytes=settings.max_upload_bytes,
+            allowed_mime=settings.allowed_upload_mime,
+        )
+        item.image_url = public_url
+        django_id = int(item.id)
+        session.flush()
+
+    _update_loader_row(int(artifact_id), {"image_url": public_url})
+
+    # Best-effort cleanup of the previous cover. We do this after the DB
+    # write so a failed delete doesn't leave the DB pointing at a missing
+    # file.
+    storage.delete_upload(old_url, settings.upload_dir)
+
+    return ItemImageUploadOut(
+        url=public_url,
+        size_bytes=int(size_bytes),
+        mime=mime,
+        item_id=int(artifact_id),
+    )
+
+
+@router.delete("/items/{item_id}", response_model=ItemDeleteOut)
+def delete_item(
+    item_id: int,
+    admin_user=Depends(get_current_admin),
+) -> ItemDeleteOut:
+    """Delete a catalog row and hide it from the in-memory recommender."""
+    from sqlalchemy import delete, select, update
+
+    from ..db import session_scope
+    from ..models_db import (
+        InteractionLog,
+        Item,
+        ItemContext,
+        ItemKeyword,
+        LegacyInteraction,
+        Like,
+        Rating,
+        SavedItem,
+    )
+
+    with session_scope() as session:
+        item = session.execute(
+            select(Item).where(Item.artifact_item_id == int(item_id))
+        ).scalar_one_or_none()
+        if item is None:
+            raise InvalidRequestError(
+                f"Item not found: {item_id}",
+                extra={"code": "item_not_found"},
+            )
+        django_id = int(item.id)
+        session.execute(delete(ItemKeyword).where(ItemKeyword.item_id == django_id))
+        session.execute(delete(ItemContext).where(ItemContext.item_id == django_id))
+        session.execute(delete(Like).where(Like.item_id == django_id))
+        session.execute(delete(SavedItem).where(SavedItem.item_id == django_id))
+        session.execute(delete(Rating).where(Rating.item_id == django_id))
+        session.execute(delete(LegacyInteraction).where(LegacyInteraction.item_id == django_id))
+        session.execute(
+            update(InteractionLog)
+            .where(InteractionLog.item_id == django_id)
+            .values(item_id=None)
+        )
+        session.delete(item)
+        session.flush()
+
+    _update_loader_row(int(item_id), {"is_active": False})
+    return ItemDeleteOut(item_id=int(item_id), deleted=True, warnings=[])
 
 
 def _names_for_keyword_ids(ids: List[int]) -> List[str]:
@@ -299,3 +615,123 @@ def _names_for_keyword_ids(ids: List[int]) -> List[str]:
         for r in rows:
             out.append(str(r.name))
     return out
+
+
+def _unique_ints(values: List[int]) -> List[int]:
+    out: List[int] = []
+    seen: set[int] = set()
+    for raw in values or []:
+        value = int(raw)
+        if value in seen:
+            continue
+        seen.add(value)
+        out.append(value)
+    return out
+
+
+def _item_out_from_session(session, item) -> ItemOut:
+    from sqlalchemy import func, select
+
+    from ..models_db import Context, Item, ItemContext, ItemKeyword, Keyword
+    from ..schemas.context import ContextOut
+    from ..schemas.keyword import KeywordOut
+    from ..services.suitability import catalog_match_percent, suitability_label
+
+    django_id = int(item.id)
+    context_counts = dict(
+        session.execute(
+            select(ItemContext.context_id, func.count(ItemContext.item_id))
+            .join(Item, Item.id == ItemContext.item_id)
+            .where(Item.is_active.is_(True))
+            .group_by(ItemContext.context_id)
+        ).all()
+    )
+    context_rows = session.execute(
+        select(Context.id, Context.name, Context.group_name, Context.description)
+        .join(ItemContext, ItemContext.context_id == Context.id)
+        .where(ItemContext.item_id == django_id)
+        .order_by(Context.group_name, Context.name)
+    ).all()
+    keyword_rows = session.execute(
+        select(Keyword.id, Keyword.name)
+        .join(ItemKeyword, ItemKeyword.keyword_id == Keyword.id)
+        .where(ItemKeyword.item_id == django_id)
+        .order_by(Keyword.name)
+    ).all()
+    mp = catalog_match_percent(
+        keyword_count=len(keyword_rows),
+        context_count=len(context_rows),
+        description_length=len(str(item.description or "")),
+    )
+    # Coerce numeric fields to plain ``int | None`` — SQLAlchemy can hand
+    # us numpy scalars (e.g. ``numpy.int64``) on SQLite, which Pydantic v2.12
+    # rejects under strict ``finite_number`` validation.
+    def _coerce_int(value):
+        if value is None:
+            return None
+        try:
+            n = int(value)
+        except (TypeError, ValueError):
+            return None
+        if n != n:  # NaN guard
+            return None
+        return n
+
+    return ItemOut(
+        id=int(item.artifact_item_id),
+        name=str(item.name or ""),
+        description=str(item.description or ""),
+        category_group=str(item.category_group or ""),
+        performance_type=str(item.performance_type or ""),
+        performers_count=_coerce_int(item.performers_count),
+        duration_minutes=_coerce_int(item.duration_minutes),
+        price_text=str(item.price_text or ""),
+        image_url=str(item.image_url or ""),
+        video_url=str(item.video_url or ""),
+        keywords=[
+            KeywordOut(id=int(keyword_id), name=str(name or ""), taxonomy_path="")
+            for keyword_id, name in keyword_rows
+        ],
+        contexts=[
+            ContextOut(
+                id=stable_id("context", str(name or "")),
+                name=str(name or ""),
+                group=str(group_name or ""),
+                description=str(description or ""),
+                active_item_count=int(context_counts.get(context_id, 0)),
+            )
+            for context_id, name, group_name, description in context_rows
+        ],
+        match_percent=mp,
+        suitability_label=suitability_label(mp),
+    )
+
+
+def _update_loader_row(
+    artifact_id: int,
+    values: Dict[str, Any],
+    *,
+    context_names: List[str] | None = None,
+    keyword_names: List[str] | None = None,
+) -> None:
+    loader = get_singleton()
+    idx = loader.id_to_row.get(int(artifact_id))
+    if idx is None or getattr(loader, "_items", None) is None:
+        return
+
+    from ..model_loader import get_lock
+
+    lock = get_lock()
+    acquired = lock.acquire(timeout=30)
+    if not acquired:
+        raise RuntimeError("Could not acquire loader lock within 30 s")
+    try:
+        for column, value in values.items():
+            if column in loader._items.columns:
+                loader._items.at[idx, column] = value
+        if context_names is not None and "context_names" in loader._items.columns:
+            loader._items.at[idx, "context_names"] = list(context_names)
+        if keyword_names is not None and "keyword_names" in loader._items.columns:
+            loader._items.at[idx, "keyword_names"] = list(keyword_names)
+    finally:
+        lock.release()

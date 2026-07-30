@@ -1,16 +1,20 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
   ApiClientError,
+  getContexts,
   getItem,
+  getItemFacets,
   getKeywords,
   postItemCommit,
   postItemDraft,
+  uploadItemImage,
 } from "@/lib/api";
 import type {
+  ContextOut,
   ItemDraft,
   ItemDraftOut,
   KeywordOut,
@@ -24,8 +28,17 @@ interface DraftFields {
   description: string;
   category_group: string;
   performance_type: string;
+  performers_count: string;
+  duration_minutes: string;
+  price_text: string;
   context_names: string[];
   keyword_names: string[];
+  /**
+   * Picked cover image (client-side only). Held in state until the new
+   * item is committed; we then POST it to ``/admin/items/{id}/image``
+   * before redirecting. Not sent in the draft/commit JSON payload.
+   */
+  image_file: File | null;
 }
 
 const EMPTY_FIELDS: DraftFields = {
@@ -33,9 +46,20 @@ const EMPTY_FIELDS: DraftFields = {
   description: "",
   category_group: "",
   performance_type: "",
+  performers_count: "",
+  duration_minutes: "",
+  price_text: "",
   context_names: [],
   keyword_names: [],
+  image_file: null,
 };
+
+// Client-side pre-check mirrors the backend allow-list + cap. Showing
+// the error here gives the admin instant feedback before the form
+// submits — the backend will re-validate.
+const ALLOWED_IMAGE_MIME = ["image/jpeg", "image/png", "image/webp"] as const;
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB
+const MAX_IMAGE_LABEL = "5 MB";
 
 const SOURCE_COLOR: Record<KeywordProposal["source"], { bg: string; fg: string; label: string }> = {
   auto: { bg: "#e8f1ff", fg: "#1e6fd9", label: "กฎ (Layer A)" },
@@ -52,7 +76,75 @@ export function AdminItemForm() {
   const [additionalNames, setAdditionalNames] = useState<string>("");
   const [searchResults, setSearchResults] = useState<KeywordOut[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  // ``saveMode`` lets the two submit buttons share the ``submitting`` flag
+  // while showing different in-progress labels.
+  const [saveMode, setSaveMode] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Cover-image preview (object URL) + per-field validation message.
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
+  // Dropdown source data — loaded once when the form mounts. Categories
+  // and performance types come from the admin-only ``/admin/items/facets``
+  // endpoint (DB-first, artifact fallback), contexts from the public
+  // ``/contexts`` endpoint.
+  const [categoryGroups, setCategoryGroups] = useState<string[]>([]);
+  const [performanceTypes, setPerformanceTypes] = useState<string[]>([]);
+  const [categoryGroupsByPerformance, setCategoryGroupsByPerformance] = useState<
+    Record<string, string[]>
+  >({});
+  const [contextOptions, setContextOptions] = useState<ContextOut[]>([]);
+  const [facetsLoading, setFacetsLoading] = useState(true);
+
+  // Cascade: when the admin picks ``ประเภทการแสดง`` the ``หมวดหมู่``
+  // dropdown is filtered to the categories seen with that performance
+  // type. If the previously-picked category no longer matches the new
+  // performance we clear it so the form can't submit a stale combo.
+  const categoryOptionsForPerformance = useMemo(() => {
+    const perf = fields.performance_type;
+    if (!perf) return categoryGroups;
+    const filtered = categoryGroupsByPerformance[perf];
+    if (filtered && filtered.length > 0) return filtered;
+    // Defensive fallback — if the cascade map doesn't have this key
+    // (yet — facets endpoint might lag), keep the full list visible so
+    // the admin isn't stuck with an empty dropdown.
+    return categoryGroups;
+  }, [fields.performance_type, categoryGroupsByPerformance, categoryGroups]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setFacetsLoading(true);
+    Promise.all([
+      getItemFacets().catch(
+        () =>
+          ({
+            category_groups: [],
+            performance_types: [],
+            category_groups_by_performance_type: {},
+            source: "artifact" as const,
+          }),
+      ),
+      getContexts().catch(() => ({ contexts: [] as ContextOut[] })),
+    ])
+      .then(([facets, ctxResp]) => {
+        if (cancelled) return;
+        setCategoryGroups(facets.category_groups || []);
+        setPerformanceTypes(facets.performance_types || []);
+        setCategoryGroupsByPerformance(facets.category_groups_by_performance_type || {});
+        setContextOptions(ctxResp.contexts || []);
+        setFacetsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Release object URLs when the form unmounts (or the user picks a new
+  // file) so the browser doesn't leak the preview image.
+  useEffect(() => {
+    return () => {
+      if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
+    };
+  }, [imagePreviewUrl]);
 
   // Search existing keyword vocabulary when the admin types in the "add" box.
   useEffect(() => {
@@ -82,27 +174,70 @@ export function AdminItemForm() {
     setFields((prev) => ({ ...prev, [key]: value }));
   }
 
+  function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const next = e.target.files?.[0] ?? null;
+    setError(null);
+    setImageError(null);
+    // Clear any existing preview before allocating a new object URL.
+    if (imagePreviewUrl) {
+      URL.revokeObjectURL(imagePreviewUrl);
+      setImagePreviewUrl(null);
+    }
+    if (!next) {
+      update("image_file", null);
+      return;
+    }
+    if (!ALLOWED_IMAGE_MIME.includes(next.type as (typeof ALLOWED_IMAGE_MIME)[number])) {
+      setImageError("รองรับเฉพาะไฟล์รูปภาพ JPEG, PNG หรือ WebP เท่านั้น");
+      update("image_file", null);
+      // Allow the admin to pick again after seeing the error.
+      e.target.value = "";
+      return;
+    }
+    if (next.size > MAX_IMAGE_BYTES) {
+      setImageError(`ไฟล์ใหญ่เกินไป — สูงสุด ${MAX_IMAGE_LABEL}`);
+      update("image_file", null);
+      e.target.value = "";
+      return;
+    }
+    setImagePreviewUrl(URL.createObjectURL(next));
+    update("image_file", next);
+  }
+
+  /**
+   * Upload the picked cover image (if any) to the freshly-committed
+   * item. Runs after the JSON draft/commit succeeds so we have a real
+   * ``artifact_id`` to attach the file to. Failures are surfaced as
+   * inline errors but never block the redirect — the catalog row
+   * exists either way; the admin can re-upload from the edit page.
+   */
+  async function uploadCoverIfAny(artifactId: number): Promise<void> {
+    if (!fields.image_file) return;
+    try {
+      await uploadItemImage(artifactId, fields.image_file);
+    } catch (e) {
+      // Don't throw — the item is already created. Show the message so
+      // the admin knows to re-attach the image via the edit page.
+      const msg =
+        e instanceof ApiClientError
+          ? `อัปโหลดรูปไม่สำเร็จ: ${e.message}`
+          : "อัปโหลดรูปไม่สำเร็จ";
+      // eslint-disable-next-line no-alert
+      window.alert(msg);
+    }
+  }
+
   async function handleDraft(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setSaveMode(false);
     if (!fields.name.trim()) {
       setError("กรุณากรอกชื่อการแสดง");
       return;
     }
     setSubmitting(true);
     try {
-      const body: ItemDraft = {
-        name: fields.name.trim(),
-        description: fields.description.trim(),
-        category_group: fields.category_group.trim(),
-        performance_type: fields.performance_type.trim(),
-        context_names: fields.context_names
-          .map((s) => s.trim())
-          .filter((s) => s.length > 0),
-        keyword_names: fields.keyword_names
-          .map((s) => s.trim())
-          .filter((s) => s.length > 0),
-      };
+      const body: ItemDraft = buildDraftBody(fields);
       const result = await postItemDraft(body);
       setDraftResult(result);
       // Pre-select all server proposals — the admin can prune them.
@@ -114,6 +249,42 @@ export function AdminItemForm() {
       setError(e instanceof ApiClientError ? e.message : String(e));
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  /**
+   * Skip Step 2 and commit directly with every server proposal accepted.
+   * Useful when the admin trusts the auto/llm suggestions and just wants
+   * to persist the row without reviewing the keyword checklist.
+   */
+  async function handleSave() {
+    setError(null);
+    setSaveMode(true);
+    if (!fields.name.trim()) {
+      setError("กรุณากรอกชื่อการแสดง");
+      setSaveMode(false);
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const draft = await postItemDraft(buildDraftBody(fields));
+      const out = await postItemCommit({
+        draft_id: draft.draft_id,
+        additional_keyword_ids: [],
+        removed_keyword_ids: [],
+      });
+      await uploadCoverIfAny(out.item.id);
+      try {
+        await getItem(out.item.id);
+      } catch {
+        // ignore
+      }
+      router.push(`/items/${out.item.id}`);
+    } catch (e) {
+      setError(e instanceof ApiClientError ? e.message : String(e));
+    } finally {
+      setSubmitting(false);
+      setSaveMode(false);
     }
   }
 
@@ -151,6 +322,7 @@ export function AdminItemForm() {
         additional_keyword_ids: additional,
         removed_keyword_ids: removed,
       });
+      await uploadCoverIfAny(out.item.id);
       // Best-effort: re-fetch the item so we get full context lists, then redirect.
       try {
         await getItem(out.item.id);
@@ -197,36 +369,158 @@ export function AdminItemForm() {
         </Field>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+          <Field label="ประเภทการแสดง">
+            <select
+              value={fields.performance_type}
+              onChange={(e) => {
+                const nextPerf = e.target.value;
+                setFields((prev) => {
+                  // Clear the category if it doesn't pair with the new
+                  // performance_type so the admin can't submit a stale
+                  // combo.
+                  const allowed =
+                    categoryGroupsByPerformance[nextPerf] ?? categoryGroups;
+                  const keepCat =
+                    nextPerf === "" ||
+                    prev.category_group === "" ||
+                    allowed.includes(prev.category_group);
+                  return {
+                    ...prev,
+                    performance_type: nextPerf,
+                    category_group: keepCat ? prev.category_group : "",
+                  };
+                });
+              }}
+              disabled={facetsLoading}
+              style={inputStyle}
+            >
+              <option value="">
+                {facetsLoading ? "กำลังโหลด..." : "— เลือกประเภทการแสดง —"}
+              </option>
+              {performanceTypes.map((value) => (
+                <option key={value} value={value}>{value}</option>
+              ))}
+            </select>
+          </Field>
           <Field label="หมวดหมู่">
-            <input
-              maxLength={255}
+            <select
               value={fields.category_group}
               onChange={(e) => update("category_group", e.target.value)}
+              disabled={facetsLoading || !fields.performance_type}
+              style={inputStyle}
+            >
+              <option value="">
+                {!fields.performance_type
+                  ? "เลือกประเภทการแสดงก่อน"
+                  : facetsLoading
+                    ? "กำลังโหลด..."
+                    : "— เลือกหมวดหมู่ —"}
+              </option>
+              {categoryOptionsForPerformance.map((value) => (
+                <option key={value} value={value}>{value}</option>
+              ))}
+            </select>
+          </Field>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem" }}>
+          <Field label="จำนวนผู้แสดง">
+            <input
+              type="number"
+              min={0}
+              step={1}
+              value={fields.performers_count}
+              onChange={(e) => update("performers_count", e.target.value)}
               style={inputStyle}
             />
           </Field>
-          <Field label="ประเภทการแสดง">
+          <Field label="ระยะเวลาการแสดง (นาที)">
+            <input
+              type="number"
+              min={0}
+              step={1}
+              value={fields.duration_minutes}
+              onChange={(e) => update("duration_minutes", e.target.value)}
+              style={inputStyle}
+            />
+          </Field>
+          <Field label="ราคาต่อชุด">
             <input
               maxLength={255}
-              value={fields.performance_type}
-              onChange={(e) => update("performance_type", e.target.value)}
+              placeholder="เช่น 24,000"
+              value={fields.price_text}
+              onChange={(e) => update("price_text", e.target.value)}
               style={inputStyle}
             />
           </Field>
         </div>
 
-        <Field label="บริบท (คั่นด้วยจุลภาค, สร้างใหม่ได้ถ้ายังไม่มี)">
-          <input
-            placeholder="เช่น งานเทศกาล, การแสดงกลางคืน"
-            value={fields.context_names.join(", ")}
+        <Field label="โอกาสการแสดง">
+          <select
+            value={fields.context_names[0] ?? ""}
             onChange={(e) =>
               update(
                 "context_names",
-                e.target.value.split(",").map((s) => s.trim()),
+                e.target.value ? [e.target.value] : [],
               )
             }
+            disabled={facetsLoading}
+            style={inputStyle}
+          >
+            <option value="">
+              {facetsLoading ? "กำลังโหลด..." : "— เลือกโอกาสการแสดง —"}
+            </option>
+            {contextOptions.map((ctx) => (
+              <option key={ctx.id} value={ctx.name}>
+                {ctx.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        <Field label="รูปภาพการแสดง (ไม่บังคับ)">
+          <input
+            type="file"
+            accept={ALLOWED_IMAGE_MIME.join(",")}
+            onChange={handleImageChange}
             style={inputStyle}
           />
+          <small
+            className="muted"
+            style={{ display: "block", marginTop: "0.25rem" }}
+          >
+            รองรับไฟล์ JPEG / PNG / WebP ขนาดไม่เกิน {MAX_IMAGE_LABEL}
+          </small>
+          {imageError ? (
+            <div
+              role="alert"
+              className="error-panel"
+              style={{ marginTop: "0.5rem", padding: "0.5rem 0.75rem" }}
+            >
+              {imageError}
+            </div>
+          ) : null}
+          {imagePreviewUrl ? (
+            <div style={{ marginTop: "0.75rem" }}>
+              <img
+                src={imagePreviewUrl}
+                alt="ตัวอย่างรูปภาพ"
+                style={{
+                  maxWidth: "220px",
+                  maxHeight: "160px",
+                  borderRadius: "8px",
+                  border: "1px solid rgba(197, 145, 59, 0.28)",
+                  objectFit: "cover",
+                }}
+              />
+              <small
+                className="muted"
+                style={{ display: "block", marginTop: "0.25rem" }}
+              >
+                รูปจะถูกอัปโหลดหลังจากบันทึกข้อมูลเรียบร้อย
+              </small>
+            </div>
+          ) : null}
         </Field>
 
         <Field label="คำสำคัญที่รู้แล้ว (คั่นด้วยจุลภาค, ไม่บังคับ)">
@@ -245,12 +539,22 @@ export function AdminItemForm() {
 
         {error ? <ErrorBlock message={error} /> : null}
 
-        <button
-          type="submit"
-          disabled={submitting}
-        >
-          {submitting ? "กำลังวิเคราะห์..." : "ดูคำสำคัญที่เสนอ"}
-        </button>
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            disabled={submitting || !canSave(fields)}
+            onClick={() => void handleSave()}
+            className="secondary"
+          >
+            {submitting && saveMode ? "กำลังบันทึก..." : "บันทึกข้อมูล"}
+          </button>
+          <button
+            type="submit"
+            disabled={submitting}
+          >
+            {submitting && !saveMode ? "กำลังวิเคราะห์..." : "ดูคำสำคัญที่เสนอ"}
+          </button>
+        </div>
       </form>
     );
   }
@@ -434,6 +738,47 @@ function Field({
       {children}
     </label>
   );
+}
+
+/**
+ * Parse a numeric form field into ``int | null``. Empty strings, NaN, and
+ * negative numbers all collapse to ``null`` so the backend gets a typed
+ * optional rather than ``0``.
+ */
+function parseCount(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return null;
+  const n = Number(trimmed);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.floor(n);
+}
+
+/**
+ * Map the form's draft field state into an ``ItemDraft`` POST body. Shared
+ * by both submit paths (``ดูคำสำคัญที่เสนอ`` → review, and ``บันทึกข้อมูล``
+ * → direct commit) so they never drift apart.
+ */
+function buildDraftBody(fields: DraftFields): ItemDraft {
+  return {
+    name: fields.name.trim(),
+    description: fields.description.trim(),
+    category_group: fields.category_group.trim(),
+    performance_type: fields.performance_type.trim(),
+    performers_count: parseCount(fields.performers_count),
+    duration_minutes: parseCount(fields.duration_minutes),
+    price_text: fields.price_text.trim(),
+    context_names: fields.context_names
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0),
+    keyword_names: fields.keyword_names
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0),
+  };
+}
+
+/** The "บันทึกข้อมูล" shortcut needs at least a name to make sense. */
+function canSave(fields: DraftFields): boolean {
+  return fields.name.trim().length > 0;
 }
 
 function ErrorBlock({ message }: { message: string }) {

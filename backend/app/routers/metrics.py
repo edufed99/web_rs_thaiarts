@@ -1,22 +1,33 @@
 """
-routers/metrics.py — GET /contexts, GET /keywords, GET /metrics.
+routers/metrics.py — GET /contexts, GET /keywords, GET /metrics,
+GET /metrics/requests, GET /metrics/config.
 
 Auxiliary read-only endpoints that drive the frontend picker UIs and the
 researcher dashboard.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 
+from ..core.config import get_settings
 from ..db import session_scope
 from ..model_loader import ArtifactLoader, get_singleton
-from ..models_db import Context, Item, ItemContext, Keyword, TaxonomyNode
+from ..models_db import (
+    Context,
+    Item,
+    ItemContext,
+    Keyword,
+    RecommendationRequest,
+    RecommendationResult,
+    TaxonomyNode,
+)
 from ..schemas.context import ContextListOut, ContextOut
 from ..schemas.keyword import KeywordListOut, KeywordOut
-from ..schemas.metrics import MetricsOut
+from ..schemas.metrics import MetricsOut, ModelConfigOut, RequestTrendBucket, RequestTrendOut
 from ..services._ids import stable_id
 from ..services.eligibility import build_context_id_map, context_name_for_id
 
@@ -317,3 +328,207 @@ def _count_unique_keywords(loader: ArtifactLoader) -> int:
             if n:
                 seen.add(n)
     return len(seen)
+
+
+# ---------------------------------------------------------------------------
+# Dashboard-only analytics endpoints
+# ---------------------------------------------------------------------------
+
+# Short Thai month labels keyed 1..12. The dashboard chart reuses this order.
+_TH_MONTH_LABELS = [
+    "", "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.",
+    "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค.",
+]
+
+
+def _month_window(months: int) -> tuple[int, int]:
+    """Return (start_year, start_month) for the window covering the last
+    ``months`` calendar months ending at the current UTC month. Always
+    anchored on the first of the month.
+    """
+    today = datetime.now(timezone.utc)
+    # Convert to (year, month) and subtract (months-1) to get the start bucket.
+    year, month = today.year, today.month
+    for _ in range(months - 1):
+        month -= 1
+        if month == 0:
+            month = 12
+            year -= 1
+    return year, month
+
+
+def _iterate_month_buckets(start_year: int, start_month: int, count: int):
+    """Yield ``(year, month, label)`` tuples for ``count`` consecutive months
+    starting at ``(start_year, start_month)``.
+    """
+    year, month = start_year, start_month
+    for _ in range(count):
+        yield year, month, _TH_MONTH_LABELS[month]
+        month += 1
+        if month == 13:
+            month = 1
+            year += 1
+
+
+@router.get(
+    "/metrics/requests",
+    response_model=RequestTrendOut,
+    summary="Recommendation-request trend (monthly buckets)",
+    description=(
+        "Returns the last ``months`` calendar months of recommendation "
+        "activity, aggregated from ``recommendation_requests`` and "
+        "``recommendation_results``. Used by the admin dashboard trend "
+        "chart. Returns all-zero buckets (with ``source='disabled'``) when "
+        "the DB layer is disabled or unreachable."
+    ),
+)
+def request_trend(
+    months: int = 12,
+) -> RequestTrendOut:
+    if months < 1:
+        months = 1
+    if months > 36:
+        months = 36
+
+    start_year, start_month = _month_window(months)
+    buckets_index: dict[tuple[int, int], dict[str, int]] = {}
+    for y, m, _label in _iterate_month_buckets(start_year, start_month, months):
+        buckets_index[(y, m)] = {"request_count": 0, "shown_count": 0}
+
+    source = "disabled"
+    total_requests = 0
+    total_shown = 0
+    try:
+        with session_scope() as session:
+            if session is not None:
+                # Recommendation requests per (year, month).
+                req_rows = session.execute(
+                    select(
+                        func.extract("year", RecommendationRequest.created_at).label("y"),
+                        func.extract("month", RecommendationRequest.created_at).label("m"),
+                        func.count().label("c"),
+                    )
+                    .where(
+                        RecommendationRequest.created_at
+                        >= datetime(start_year, start_month, 1, tzinfo=timezone.utc)
+                    )
+                    .group_by("y", "m")
+                ).all()
+                # Items actually shown per (year, month) via JOIN to request's
+                # created_at — counts result rows, not unique items.
+                shown_rows = session.execute(
+                    select(
+                        func.extract("year", RecommendationRequest.created_at).label("y"),
+                        func.extract("month", RecommendationRequest.created_at).label("m"),
+                        func.count(RecommendationResult.id).label("c"),
+                    )
+                    .select_from(RecommendationResult)
+                    .join(
+                        RecommendationRequest,
+                        RecommendationRequest.id == RecommendationResult.request_id,
+                    )
+                    .where(
+                        RecommendationRequest.created_at
+                        >= datetime(start_year, start_month, 1, tzinfo=timezone.utc)
+                    )
+                    .group_by("y", "m")
+                ).all()
+                source = "postgres"
+                for y, m, c in req_rows:
+                    key = (int(y), int(m))
+                    if key in buckets_index:
+                        buckets_index[key]["request_count"] = int(c)
+                        total_requests += int(c)
+                for y, m, c in shown_rows:
+                    key = (int(y), int(m))
+                    if key in buckets_index:
+                        buckets_index[key]["shown_count"] = int(c)
+                        total_shown += int(c)
+    except Exception:  # noqa: BLE001 - dashboard should still render with zeros
+        # Reset to disabled state if DB query failed mid-flight.
+        source = "disabled"
+        buckets_index = {
+            (y, m): {"request_count": 0, "shown_count": 0}
+            for y, m, _ in _iterate_month_buckets(start_year, start_month, months)
+        }
+        total_requests = 0
+        total_shown = 0
+
+    buckets: list[RequestTrendBucket] = []
+    for y, m, label in _iterate_month_buckets(start_year, start_month, months):
+        data = buckets_index.get((y, m), {"request_count": 0, "shown_count": 0})
+        buckets.append(
+            RequestTrendBucket(
+                year=y,
+                month=m,
+                label=label,
+                request_count=data["request_count"],
+                shown_count=data["shown_count"],
+            )
+        )
+
+    return RequestTrendOut(
+        months=months,
+        total_requests=total_requests,
+        total_shown=total_shown,
+        source=source,
+        buckets=buckets,
+    )
+
+
+@router.get(
+    "/metrics/config",
+    response_model=ModelConfigOut,
+    summary="Active recommender configuration",
+    description=(
+        "Returns the experiment configuration that the backend is currently "
+        "serving — sourced from ``best_model_config.json`` (the manifest "
+        "produced by the offline tuning pipeline) and augmented with the "
+        "runtime ``RECSYS_*`` env-var overrides. Used by the admin "
+        "dashboard so the model-control sliders reflect reality instead of "
+        "showing placeholder values."
+    ),
+)
+def model_config(
+    loader: ArtifactLoader = Depends(get_singleton),
+) -> ModelConfigOut:
+    md = loader.metadata or {}
+    settings = get_settings()
+    best_cfg = md.get("best_model_config") or {}
+    if not isinstance(best_cfg, dict):
+        best_cfg = {}
+
+    # ``extra`` is everything in best_model_config that we don't surface as
+    # a typed field — keeps the schema forward-compatible without leaking
+    # unknown keys.
+    known_keys = {
+        "cbf_model",
+        "cf_model",
+        "hybrid_method",
+        "hybrid_alpha",
+        "candidate_strategy",
+        "embedding_dim",
+        "itemknn_k",
+        "itemknn_shrink",
+        "cbf_keyword_boost",
+        "positive_threshold",
+    }
+    extra = {k: v for k, v in best_cfg.items() if k not in known_keys}
+
+    return ModelConfigOut(
+        cbf_model=str(best_cfg.get("cbf_model", settings.e5_model_name)),
+        cf_model=str(best_cfg.get("cf_model", "ItemKNN")),
+        hybrid_method=str(best_cfg.get("hybrid_method", settings.recommendation_method)),
+        hybrid_alpha=(
+            float(best_cfg["hybrid_alpha"])
+            if "hybrid_alpha" in best_cfg
+            else settings.hybrid_alpha
+        ),
+        candidate_strategy=str(best_cfg.get("candidate_strategy", "EligibilityGate")),
+        embedding_dim=int(md.get("embedding_dim", 0)) or None,
+        itemknn_k=settings.itemknn_k,
+        itemknn_shrink=settings.itemknn_shrink,
+        cbf_keyword_boost=settings.cbf_keyword_boost,
+        positive_threshold=settings.positive_threshold,
+        extra=extra,
+    )

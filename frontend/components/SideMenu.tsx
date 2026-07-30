@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 import {
   AUTH_CHANGED_EVENT,
@@ -11,12 +11,21 @@ import {
   logout,
   STORAGE_KEY,
 } from "@/lib/auth";
-import type { UserOut } from "@/lib/types";
+import { getBaseUrl, getContexts, getKeywords } from "@/lib/api";
+import type { ContextOut, KeywordOut, UserOut } from "@/lib/types";
 
 export function SideMenu() {
   const pathname = usePathname();
+  const [hash, setHash] = useState("");
   const [user, setUser] = useState<UserOut | null>(null);
   const [admin, setAdmin] = useState(false);
+  const [contexts, setContexts] = useState<ContextOut[]>([]);
+  const [keywords, setKeywords] = useState<KeywordOut[]>([]);
+  // Controlled filter state — selecting an option now actually feeds the
+  // "ใช้เงื่อนไขนี้" link below.
+  const [selectedContextId, setSelectedContextId] = useState<string>("");
+  const [selectedKeywordId, setSelectedKeywordId] = useState<string>("");
+  const [topK, setTopK] = useState<number>(10);
 
   useEffect(() => {
     const syncAuth = () => {
@@ -38,11 +47,60 @@ export function SideMenu() {
     };
   }, []);
 
+  useEffect(() => {
+    function syncHash() {
+      setHash(window.location.hash);
+    }
+
+    syncHash();
+    window.addEventListener("hashchange", syncHash);
+    return () => window.removeEventListener("hashchange", syncHash);
+  }, []);
+
+  // Fetch contexts + a small slice of keywords once on mount so the side
+  // filter dropdowns show real data instead of hardcoded Thai strings.
+  // Failures fall back to empty lists — the panel stays visible but the
+  // CTA is disabled until the user has a real option to pick.
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([getContexts(), getKeywords(undefined, 200)])
+      .then(([contextList, keywordList]) => {
+        if (cancelled) return;
+        setContexts(contextList.contexts);
+        setKeywords(keywordList.keywords);
+        if (contextList.contexts.length > 0) {
+          setSelectedContextId(String(contextList.contexts[0].id));
+        }
+        if (keywordList.keywords.length > 0) {
+          setSelectedKeywordId(String(keywordList.keywords[0].id));
+        }
+      })
+      .catch(() => {
+        // Silently leave the lists empty; the CTA will reflect that.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const recommendHref = user ? "/recommend" : "/login?next=/recommend";
-  const savedHref = user ? "/profile#saved" : "/login?next=/profile";
-  const historyHref = user ? "/profile#history" : "/login?next=/profile";
   const profileHref = user ? "/profile" : "/login?next=/profile";
   const settingsHref = user ? "/profile#settings" : "/login?next=/profile";
+  const apiDocsHref = `${getBaseUrl()}/docs`;
+
+  // Build a real /recommend URL from the selected filter values. Empty
+  // selections are simply omitted from the query string.
+  const filterHref = useMemo(() => {
+    const params = new URLSearchParams();
+    if (selectedContextId) params.set("context_id", selectedContextId);
+    if (selectedKeywordId) params.set("keyword_ids", selectedKeywordId);
+    if (topK && topK !== 10) params.set("top_k", String(topK));
+    const query = params.toString();
+    return user
+      ? `/recommend${query ? `?${query}` : ""}`
+      : `/login?next=/recommend${query ? `&${query}` : ""}`;
+  }, [selectedContextId, selectedKeywordId, topK, user]);
+  const filterDisabled = !selectedContextId || !user;
 
   return (
     <aside className="side-menu" aria-label="เมนูหลักของระบบ">
@@ -65,22 +123,21 @@ export function SideMenu() {
           label="ค้นหาชุดการแสดง"
           active={pathname?.startsWith("/items")}
         />
-        <SideNavLink href={savedHref} icon="♡" label="รายการที่บันทึกไว้" active={false} />
-        <SideNavLink href={historyHref} icon="◷" label="ประวัติความสนใจ" active={false} />
         <SideNavLink
           href={profileHref}
           icon="♙"
           label="ข้อมูลผู้ใช้"
-          active={pathname === "/profile"}
+          active={pathname === "/profile" && !hash}
         />
-        <SideNavLink href={settingsHref} icon="⚙" label="ตั้งค่าระบบ" active={false} />
+        <SideNavLink href={settingsHref} icon="⚙" label="ตั้งค่าระบบ" active={pathname === "/profile" && hash === "#settings"} />
       </nav>
 
       {admin ? (
         <>
           <div className="side-menu-title">Research tools</div>
-          <Link href="/admin/items"><span>05</span><b>Dashboard ผู้วิจัย</b></Link>
-          <Link href="http://127.0.0.1:8080/docs"><span>API</span><b>Swagger docs</b></Link>
+          <Link href="/dashboard"><span>05</span><b>Dashboard / สถิติ</b></Link>
+          <Link href="/admin/items"><span>DB</span><b>บริหารฐานข้อมูล</b></Link>
+          <Link href={apiDocsHref}><span>API</span><b>Swagger docs</b></Link>
         </>
       ) : null}
 
@@ -106,30 +163,59 @@ export function SideMenu() {
         <strong>ปรับเงื่อนไขคำแนะนำ</strong>
         <label>
           <span>บริบทการแสดง</span>
-          <select defaultValue="วันลอยกระทง">
-            <option>วันลอยกระทง</option>
-            <option>วันสงกรานต์</option>
-            <option>งานทำบุญ</option>
+          <select
+            value={selectedContextId}
+            onChange={(e) => setSelectedContextId(e.target.value)}
+          >
+            {contexts.length === 0 ? (
+              <option value="">กำลังโหลดบริบท...</option>
+            ) : (
+              <>
+                <option value="">— เลือกบริบท —</option>
+                {contexts.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </>
+            )}
           </select>
         </label>
         <label>
-          <span>หมวดคำสำคัญ</span>
-          <select defaultValue="ภูมิศาสตร์และอาณาบริเวณ">
-            <option>ภูมิศาสตร์และอาณาบริเวณ</option>
-            <option>นาฏยศิลป์และการแสดง</option>
-            <option>ดุริยางคศิลป์และคีตศิลป์</option>
+          <span>คำสำคัญ (ไม่บังคับ)</span>
+          <select
+            value={selectedKeywordId}
+            onChange={(e) => setSelectedKeywordId(e.target.value)}
+          >
+            {keywords.length === 0 ? (
+              <option value="">กำลังโหลดคำสำคัญ...</option>
+            ) : (
+              <>
+                <option value="">— ไม่ระบุ —</option>
+                {keywords.slice(0, 50).map((k) => (
+                  <option key={k.id} value={k.id}>{k.name}</option>
+                ))}
+              </>
+            )}
           </select>
         </label>
         <label>
           <span>จำนวนรายการ</span>
-          <select defaultValue="10">
-            <option>10</option>
-            <option>20</option>
-            <option>30</option>
+          <select
+            value={topK}
+            onChange={(e) => setTopK(Number(e.target.value))}
+          >
+            <option value={5}>5</option>
+            <option value={10}>10</option>
+            <option value={20}>20</option>
+            <option value={30}>30</option>
           </select>
         </label>
-        <Link className="side-filter-button" href={recommendHref}>
-          ใช้เงื่อนไขนี้
+        <Link
+          className="side-filter-button"
+          href={filterHref}
+          aria-disabled={filterDisabled || undefined}
+          style={filterDisabled ? { pointerEvents: "none", opacity: 0.5 } : undefined}
+        >
+          {filterDisabled ? "เลือกบริบทก่อน" : "ใช้เงื่อนไขนี้"}
         </Link>
       </div>
     </aside>

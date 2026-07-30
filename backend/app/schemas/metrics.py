@@ -1,7 +1,7 @@
 """Schemas for /health and /metrics endpoints."""
 from __future__ import annotations
 
-from typing import Optional
+from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -31,3 +31,72 @@ class MetricsOut(BaseModel):
     embedding_dim: int = Field(..., ge=0)
     artifacts_loaded_at: str = Field(..., description="ISO-8601 timestamp.")
     config_hash: str = Field(..., description="Short hash of the pipeline config used.")
+
+
+class RequestTrendBucket(BaseModel):
+    """One month-bucket in the dashboard trend chart."""
+
+    year: int = Field(..., ge=1970, le=2100)
+    month: int = Field(..., ge=1, le=12, description="1-based calendar month.")
+    label: str = Field(..., description="Short Thai month label, e.g. 'ส.ค.'")
+    request_count: int = Field(..., ge=0, description="Recommendations requested.")
+    shown_count: int = Field(
+        ...,
+        ge=0,
+        description="Items actually shown (sum of result rows in those requests).",
+    )
+
+
+class RequestTrendOut(BaseModel):
+    """GET /metrics/requests response — dashboard trend chart."""
+
+    months: int = Field(..., ge=1, le=36, description="Window size (last N months).")
+    total_requests: int = Field(..., ge=0)
+    total_shown: int = Field(..., ge=0)
+    source: str = Field(
+        ...,
+        description="'postgres' when DB is reachable, 'disabled' otherwise.",
+    )
+    buckets: List[RequestTrendBucket] = Field(
+        default_factory=list,
+        description="Oldest first; length == months.",
+    )
+
+
+class ModelConfigOut(BaseModel):
+    """GET /metrics/config response — chosen experiment config the
+    backend currently serves. Mirrors ``artifacts/outputs/best_model_config.json``.
+    Falls back to env-var defaults when the manifest is absent."""
+
+    cbf_model: str = Field(default="", description="CBF encoder model id.")
+    cf_model: str = Field(default="", description="CF model class.")
+    hybrid_method: str = Field(default="", description="Hybrid combiner method.")
+    hybrid_alpha: Optional[float] = Field(
+        default=None,
+        description="CBF weight in the WeightedSum combiner. CF weight = 1 - alpha.",
+    )
+    candidate_strategy: str = Field(default="", description="Eligibility filter name.")
+    embedding_dim: Optional[int] = Field(
+        default=None,
+        description="Embedding dimensionality served by the loader.",
+    )
+    itemknn_k: Optional[int] = Field(
+        default=None,
+        description="ItemKNN top-K neighbour count.",
+    )
+    itemknn_shrink: Optional[float] = Field(
+        default=None,
+        description="Cosine shrinkage constant.",
+    )
+    cbf_keyword_boost: Optional[float] = Field(
+        default=None,
+        description="Additive boost on keyword match in CBF scoring.",
+    )
+    positive_threshold: Optional[int] = Field(
+        default=None,
+        description="Min rating to count as a positive CF signal.",
+    )
+    extra: Dict[str, object] = Field(
+        default_factory=dict,
+        description="Other keys from best_model_config.json surfaced as-is.",
+    )

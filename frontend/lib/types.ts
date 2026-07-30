@@ -142,6 +142,59 @@ export interface MetricsOut {
   config_hash: string;
 }
 
+/**
+ * Real per-item stats from the live ``legacy_interactions`` Postgres table.
+ * Surfaced via ``GET /items/{id}/legacy-stats``. When the DB is disabled
+ * the endpoint returns zeros — components should treat ``count`` as
+ * "no legacy feedback yet" and fall back to a neutral display.
+ */
+export interface LegacyStatsOut {
+  item_id: number;
+  count: number;
+  avg_rating: number;
+  source: "postgres" | "disabled";
+}
+
+/**
+ * One month-bucket of the dashboard trend chart. Surface via
+ * ``GET /metrics/requests?months=12``.
+ */
+export interface RequestTrendBucket {
+  year: number;
+  month: number;
+  label: string;
+  request_count: number;
+  shown_count: number;
+}
+
+export interface RequestTrendOut {
+  months: number;
+  total_requests: number;
+  total_shown: number;
+  source: "postgres" | "disabled";
+  buckets: RequestTrendBucket[];
+}
+
+/**
+ * Active recommender configuration served by the backend — mirrors
+ * ``artifacts/outputs/best_model_config.json`` plus runtime env overrides.
+ * Surface via ``GET /metrics/config``. Used by the dashboard so the model
+ * sliders show real values instead of placeholders.
+ */
+export interface ModelConfigOut {
+  cbf_model: string;
+  cf_model: string;
+  hybrid_method: string;
+  hybrid_alpha: number | null;
+  candidate_strategy: string;
+  embedding_dim: number | null;
+  itemknn_k: number | null;
+  itemknn_shrink: number | null;
+  cbf_keyword_boost: number | null;
+  positive_threshold: number | null;
+  extra: Record<string, unknown>;
+}
+
 export interface ApiError {
   code: string;
   message: string;
@@ -232,5 +285,26 @@ export interface ItemKeywordReassign {
 
 export interface ItemReassignOut {
   item: ItemOut;
+  warnings: string[];
+}
+
+export interface ItemUpdate {
+  name?: string;
+  description?: string;
+  category_group?: string;
+  performance_type?: string;
+  performers_count?: number | null;
+  duration_minutes?: number | null;
+  price_text?: string;
+  image_url?: string;
+  video_url?: string;
+  is_active?: boolean;
+  context_names?: string[];
+  keyword_ids?: number[];
+}
+
+export interface ItemDeleteOut {
+  item_id: number;
+  deleted: boolean;
   warnings: string[];
 }

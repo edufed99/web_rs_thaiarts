@@ -8,6 +8,7 @@ import type {
   ActionRequestIn,
   ContextListOut,
   HealthOut,
+  ItemDeleteOut,
   ItemActionOut,
   ItemCommit,
   ItemCommitOut,
@@ -18,11 +19,15 @@ import type {
   ItemListOut,
   ItemOut,
   ItemReassignOut,
+  ItemUpdate,
   KeywordListOut,
+  LegacyStatsOut,
   MetricsOut,
+  ModelConfigOut,
   ProfileRecommendationResponseOut,
   RecommendationRequestIn,
   RecommendationResponseOut,
+  RequestTrendOut,
   TokenOut,
   UserLogin,
   UserOut,
@@ -32,7 +37,7 @@ import type {
 
 import { getAuthHeaders } from "./auth";
 
-const DEFAULT_BASE_URL = "http://localhost:8080";
+const DEFAULT_BASE_URL = "http://127.0.0.1:8001";
 
 function baseUrl(): string {
   // process.env.NEXT_PUBLIC_* is inlined at build time by Next.js.
@@ -139,9 +144,60 @@ export async function getItem(
   return handle<ItemOut>(res);
 }
 
+/**
+ * Real per-item rating stats from the legacy Postgres table.
+ * Used by the home / dashboard cards instead of fake-rendered numbers.
+ * Endpoint is anonymous (no JWT required) and returns zeros if the DB
+ * layer is disabled.
+ */
+export async function getItemLegacyStats(itemId: number): Promise<LegacyStatsOut> {
+  const res = await fetch(`${baseUrl()}/items/${itemId}/legacy-stats`, {
+    cache: "no-store",
+  });
+  return handle<LegacyStatsOut>(res);
+}
+
+/** Convenience: fetch legacy stats for many items in parallel. */
+export async function getItemLegacyStatsBatch(
+  itemIds: number[],
+): Promise<Map<number, LegacyStatsOut>> {
+  const results = await Promise.all(
+    itemIds.map(async (id) => {
+      try {
+        const stats = await getItemLegacyStats(id);
+        return [id, stats] as const;
+      } catch {
+        return [id, { item_id: id, count: 0, avg_rating: 0, source: "disabled" as const }] as const;
+      }
+    }),
+  );
+  return new Map(results);
+}
+
 export async function getMetrics(): Promise<MetricsOut> {
   const res = await fetch(`${baseUrl()}/metrics`, { cache: "no-store" });
   return handle<MetricsOut>(res);
+}
+
+/**
+ * Monthly request/shown trend for the dashboard chart. Falls back to
+ * an empty trend with ``source='disabled'`` when the DB layer is off.
+ */
+export async function getRequestTrend(months: number = 12): Promise<RequestTrendOut> {
+  const safeMonths = Math.min(36, Math.max(1, Math.floor(months)));
+  const url = `${baseUrl()}/metrics/requests?months=${safeMonths}`;
+  const res = await fetch(url, { cache: "no-store" });
+  return handle<RequestTrendOut>(res);
+}
+
+/**
+ * Active recommender configuration the backend is serving (from
+ * ``best_model_config.json`` + RECSYS_* env vars). Used by the dashboard
+ * model-control sliders to render real values.
+ */
+export async function getModelConfig(): Promise<ModelConfigOut> {
+  const res = await fetch(`${baseUrl()}/metrics/config`, { cache: "no-store" });
+  return handle<ModelConfigOut>(res);
 }
 
 export async function postRecommendations(
@@ -319,6 +375,28 @@ export async function putItemKeywords(
     cache: "no-store",
   });
   return handle<ItemReassignOut>(res);
+}
+
+export async function putAdminItem(
+  artifactId: number,
+  body: ItemUpdate,
+): Promise<ItemReassignOut> {
+  const res = await fetch(`${baseUrl()}/admin/items/${artifactId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  return handle<ItemReassignOut>(res);
+}
+
+export async function deleteAdminItem(artifactId: number): Promise<ItemDeleteOut> {
+  const res = await fetch(`${baseUrl()}/admin/items/${artifactId}`, {
+    method: "DELETE",
+    headers: { ...getAuthHeaders() },
+    cache: "no-store",
+  });
+  return handle<ItemDeleteOut>(res);
 }
 
 export function getBaseUrl(): string {

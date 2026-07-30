@@ -271,6 +271,141 @@ class User(Base):
     )
 
 
+# ---------------------------------------------------------------------------
+# Recommender history (migration 0006)
+# ---------------------------------------------------------------------------
+
+
+class UserProfile(Base):
+    """1:1 mirror of legacy ``accounts_userprofile``.
+
+    Used by the dashboard / admin slice; not consulted by the recommendation
+    hot path. ``role='super_admin'`` flips ``users.is_admin`` on import.
+    """
+
+    __tablename__ = "accounts_userprofile"
+    __table_args__ = (
+        UniqueConstraint("user_id", name="uq_accounts_userprofile_user_id"),
+        Index("ix_accounts_userprofile_user_id", "user_id", unique=True),
+        Index("ix_accounts_userprofile_role", "role"),
+    )
+
+    id: Mapped[int] = mapped_column(BigAutoPK, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    display_name: Mapped[str] = mapped_column(String(150), default="", nullable=False)
+    role: Mapped[str] = mapped_column(String(20), default="user", nullable=False)
+    user_group: Mapped[str] = mapped_column(String(100), default="", nullable=False)
+    experience_level: Mapped[str] = mapped_column(String(20), default="none", nullable=False)
+    consent_accepted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    consent_version: Mapped[str] = mapped_column(String(40), default="", nullable=False)
+    consent_accepted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    consent_withdrawn_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
+class RecommendationRequest(Base):
+    """Snapshot of every recommendation request that hit the API.
+
+    One row per ``POST /recommendations`` (and the auth-only
+    ``GET /recommendations/profile``). The dashboard reads this table to
+    render the 12-month trend chart via ``/metrics/requests``.
+    """
+
+    __tablename__ = "recommendation_requests"
+    __table_args__ = (
+        Index("ix_recommendation_requests_user_id", "user_id"),
+        Index("ix_recommendation_requests_created_at", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigAutoPK, primary_key=True)
+    user_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    selected_context_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("contexts.id", ondelete="RESTRICT"), nullable=False
+    )
+    candidate_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    top_k: Mapped[int] = mapped_column(Integer, nullable=False)
+    method: Mapped[str] = mapped_column(String(80), nullable=False)
+    # JSON-as-string for SQLite parity.
+    metadata_json: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+
+class RecommendationRequestSelectedKeyword(Base):
+    """M2M between ``RecommendationRequest`` and ``Keyword``."""
+
+    __tablename__ = "recommendation_request_selected_keywords"
+    __table_args__ = (
+        UniqueConstraint("request_id", "keyword_id", name="uq_rsk_request_keyword"),
+        Index("ix_rsk_request_id", "request_id"),
+        Index("ix_rsk_keyword_id", "keyword_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigAutoPK, primary_key=True)
+    request_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("recommendation_requests.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    keyword_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("keywords.id", ondelete="CASCADE"), nullable=False
+    )
+
+
+class RecommendationResult(Base):
+    """One ranked result inside a ``RecommendationRequest``.
+
+    One row per (request, item) pair. The dashboard reads
+    ``COUNT(*) FROM recommendation_results`` joined with
+    ``recommendation_requests.created_at`` for the "shown items" series.
+    """
+
+    __tablename__ = "recommendation_results"
+    __table_args__ = (
+        UniqueConstraint("request_id", "item_id", name="uq_rr_request_item"),
+        UniqueConstraint("request_id", "rank", name="uq_rr_request_rank"),
+        Index("ix_rr_request_id", "request_id"),
+        Index("ix_rr_item_id", "item_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigAutoPK, primary_key=True)
+    request_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("recommendation_requests.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    item_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("items.id", ondelete="CASCADE"), nullable=False
+    )
+    rank: Mapped[int] = mapped_column(Integer, nullable=False)
+    cbf_score: Mapped[float] = mapped_column(nullable=False)
+    cf_score: Mapped[float] = mapped_column(nullable=False)
+    hybrid_score: Mapped[float] = mapped_column(nullable=False)
+    is_context_valid: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    matched_keywords_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    explanation: Mapped[str] = mapped_column(Text, default="", nullable=False)
+
+
 __all__ = [
     "Base",
     "Context",
@@ -285,4 +420,8 @@ __all__ = [
     "Rating",
     "InteractionLog",
     "User",
+    "UserProfile",
+    "RecommendationRequest",
+    "RecommendationRequestSelectedKeyword",
+    "RecommendationResult",
 ]

@@ -8,6 +8,7 @@ import type { ContextOut, ItemOut, KeywordOut, UserOut } from "@/lib/types";
 
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingState } from "@/components/LoadingState";
+import PopularPerformanceCard from "@/components/PopularPerformanceCard";
 import {
   AUTH_CHANGED_EVENT,
   getCurrentUser,
@@ -123,7 +124,42 @@ export default function HomePage() {
   }
 
   const popularItems = items.slice(0, 4);
-  const seasonalItems = items.slice(4, 8).length > 0 ? items.slice(4, 8) : popularItems;
+  // Group contexts by item so the seasonal band can show the real top-context
+  // for each card instead of the hardcoded "วันเข้าพรรษา" pill.
+  const contextById = new Map<number, ContextOut>(contexts.map((c) => [c.id, c]));
+  const itemTopContexts = (item: ItemOut): string[] =>
+    item.contexts
+      .map((c) => contextById.get(c.id)?.name ?? c.name)
+      .filter(Boolean)
+      .slice(0, 2);
+
+  // The "seasonal band" used to advertise a Thai-calendar integration that
+  // never shipped. We now show the contexts with the most active items,
+  // sourced from the live ``GET /contexts`` payload.
+  const topContexts = [...contexts]
+    .filter((c) => c.active_item_count > 0)
+    .sort((a, b) => b.active_item_count - a.active_item_count)
+    .slice(0, 2);
+  const topContextNames = topContexts.map((c) => c.name);
+  const seasonalHeading = topContextNames.length > 0
+    ? `แนะนำชุดการแสดงจากบริบทยอดนิยม: ${topContextNames.join(", ")}`
+    : "แนะนำชุดการแสดงจากบริบทยอดนิยม";
+  const seasonalSubtitle = topContexts.length > 0
+    ? `อ้างอิงจากจำนวนรายการที่เปิดใช้งานในระบบ (${topContexts
+        .map((c) => `${c.name}: ${c.active_item_count} รายการ)`)
+        .join(" / ")})`
+    : "ยังไม่มีข้อมูลบริบทจาก backend";
+
+  // Pick seasonal items by picking items that share at least one of the top
+  // contexts; fall back to popular items if none match.
+  const topContextIds = new Set(topContexts.map((c) => c.id));
+  const seasonalCandidates = items.filter((item) =>
+    item.contexts.some((c) => topContextIds.has(c.id)),
+  );
+  const seasonalItems = seasonalCandidates.length > 0
+    ? seasonalCandidates.slice(0, 4)
+    : popularItems;
+
   const contextGroups = groupContexts(contexts);
   const readableUserName = user ? getReadableUserName(user) : "";
 
@@ -388,22 +424,41 @@ export default function HomePage() {
       </section>
 
       <section className="popular-performance-grid">
-        {popularItems.map((item, idx) => (
-          <PopularPerformanceCard key={item.id} item={item} index={idx} />
+        {popularItems.map((item) => (
+          <PopularPerformanceCard
+            key={item.id}
+            item={item}
+            variant="popular"
+          />
         ))}
       </section>
 
       <section className="seasonal-band">
         <div className="seasonal-head">
           <div>
-            <h2>แนะนำชุดการแสดงตามช่วงเวลาสำคัญของปฏิทิน</h2>
-            <p className="muted" style={{ margin: "8px 0 0" }}>ช่วงเข้าพรรษาและงานบุญ</p>
+            <h2>{seasonalHeading}</h2>
+            <p className="muted" style={{ margin: "8px 0 0" }}>
+              {seasonalSubtitle}
+            </p>
           </div>
-          <span className="context-pill">วันเข้าพรรษา</span>
+          <div className="seasonal-pill-stack" aria-label="บริบทยอดนิยม">
+            {topContextNames.length > 0 ? (
+              topContextNames.map((name) => (
+                <span key={name} className="context-pill">{name}</span>
+              ))
+            ) : (
+              <span className="context-pill subtle">ไม่มีข้อมูล</span>
+            )}
+          </div>
         </div>
         <div className="seasonal-grid">
-          {seasonalItems.map((item, idx) => (
-            <SeasonalPerformanceCard key={item.id} item={item} index={idx} />
+          {seasonalItems.map((item) => (
+            <PopularPerformanceCard
+              key={item.id}
+              item={item}
+              variant="seasonal"
+              topContexts={itemTopContexts(item)}
+            />
           ))}
         </div>
       </section>
@@ -416,6 +471,7 @@ export default function HomePage() {
             เพิ่มการแสดงใหม่ ตรวจ catalog และใช้ Layer A+B grounding เพื่อช่วยเลือกคำสำคัญ
           </p>
           <div className="actions">
+            <Link className="primary" href="/dashboard">เปิด Dashboard ผู้วิจัย</Link>
             <Link className="primary" href="/admin/items/new">เพิ่มการแสดงใหม่</Link>
             <Link className="secondary" href="/admin/items">จัดการแคตตาล็อก</Link>
           </div>
@@ -585,68 +641,11 @@ function taxonomyLevelsFor(keyword: KeywordOut): [string, string, string] {
   ];
 }
 
-function PopularPerformanceCard({ item, index }: { item: ItemOut; index: number }) {
-  const rating = (4.9 - (index % 2) * 0.1).toFixed(1);
-  const reviews = 144 - index * 17;
-  const description =
-    item.description && item.description.length > 96
-      ? `${item.description.slice(0, 96).trimEnd()}...`
-      : item.description;
-
-  return (
-    <article className="popular-card">
-      <div
-        className="popular-card-media"
-        style={item.image_url ? { backgroundImage: `linear-gradient(135deg, rgba(6, 27, 60, 0.08), rgba(197, 145, 59, 0.12)), url("${item.image_url}")` } : undefined}
-      />
-      <div className="popular-card-body">
-        <span className="popular-badge">ยอดนิยมในระบบ</span>
-        <h3 style={{ margin: 0, color: "#102044", fontSize: "1.35rem", lineHeight: 1.35 }}>
-          {item.name}
-        </h3>
-        <div>
-          <span className="popular-stars">★★★★★</span>{" "}
-          <strong>{rating}</strong>{" "}
-          <span className="muted">({reviews} รีวิว)</span>
-        </div>
-        {description ? <p className="description" style={{ margin: 0 }}>{description}</p> : null}
-        <Link className="secondary" href={`/items/${item.id}`} style={{ justifySelf: "start" }}>
-          รายละเอียด
-        </Link>
-      </div>
-    </article>
-  );
-}
-
 function SeasonalPerformanceCard({ item, index }: { item: ItemOut; index: number }) {
-  const rating = (4.9 - (index % 2) * 0.1).toFixed(1);
-  const reviews = 144 - index * 17;
-  const description =
-    item.description && item.description.length > 96
-      ? `${item.description.slice(0, 96).trimEnd()}...`
-      : item.description;
-
-  return (
-    <article className="popular-card">
-      <div
-        className="popular-card-media"
-        style={item.image_url ? { backgroundImage: `linear-gradient(135deg, rgba(6, 27, 60, 0.08), rgba(197, 145, 59, 0.12)), url("${item.image_url}")` } : undefined}
-      />
-      <div className="popular-card-body">
-        <span className="popular-badge">ช่วงเข้าพรรษาและงานบุญ</span>
-        <h3 style={{ margin: 0, color: "#102044", fontSize: "1.35rem", lineHeight: 1.35 }}>
-          {item.name}
-        </h3>
-        <div>
-          <span className="popular-stars">★★★★★</span>{" "}
-          <strong>{rating}</strong>{" "}
-          <span className="muted">({reviews} รีวิว)</span>
-        </div>
-        {description ? <p className="description" style={{ margin: 0 }}>{description}</p> : null}
-        <Link className="secondary" href={`/items/${item.id}`} style={{ justifySelf: "start" }}>
-          รายละเอียด
-        </Link>
-      </div>
-    </article>
-  );
+  // DEPRECATED — replaced by components/PopularPerformanceCard.tsx which
+  // fetches real legacy stats. Kept as a stub for one release to avoid
+  // breaking any leftover imports; remove in next refactor.
+  void item;
+  void index;
+  return null;
 }

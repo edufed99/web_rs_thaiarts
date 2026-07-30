@@ -15,6 +15,8 @@ import type {
   ItemCreate,
   ItemDraft,
   ItemDraftOut,
+  ItemFacetsOut,
+  ItemImageUploadOut,
   ItemKeywordReassign,
   ItemListOut,
   ItemOut,
@@ -121,10 +123,13 @@ export async function getItems(opts?: {
   if (opts?.limit !== undefined) params.set("limit", String(opts.limit));
   if (opts?.offset !== undefined) params.set("offset", String(opts.offset));
   if (opts?.contextId !== undefined) params.set("context", String(opts.contextId));
+  // Backend's ``resolve_user_key`` prefers the JWT bearer token when present,
+  // so we always send ``Authorization`` here. The legacy ``anon:<uuid>``
+  // query param is only used as a fallback for fully anonymous callers.
   if (opts?.userKey) params.set("user_key", opts.userKey);
   const url = `${baseUrl()}/items${params.toString() ? `?${params.toString()}` : ""}`;
   const res = await fetch(url, {
-    headers: { ...(opts?.extraHeaders ?? {}) },
+    headers: { ...getAuthHeaders(), ...(opts?.extraHeaders ?? {}) },
     cache: "no-store",
   });
   return handle<ItemListOut>(res);
@@ -138,7 +143,7 @@ export async function getItem(
   if (opts?.userKey) params.set("user_key", opts.userKey);
   const url = `${baseUrl()}/items/${itemId}${params.toString() ? `?${params.toString()}` : ""}`;
   const res = await fetch(url, {
-    headers: { ...(opts?.extraHeaders ?? {}) },
+    headers: { ...getAuthHeaders(), ...(opts?.extraHeaders ?? {}) },
     cache: "no-store",
   });
   return handle<ItemOut>(res);
@@ -390,6 +395,18 @@ export async function putAdminItem(
   return handle<ItemReassignOut>(res);
 }
 
+/**
+ * Distinct ``category_group`` + ``performance_type`` values for the admin
+ * form dropdowns. Admin-only — the backend rejects anonymous calls.
+ */
+export async function getItemFacets(): Promise<ItemFacetsOut> {
+  const res = await fetch(`${baseUrl()}/admin/items/facets`, {
+    headers: { ...getAuthHeaders() },
+    cache: "no-store",
+  });
+  return handle<ItemFacetsOut>(res);
+}
+
 export async function deleteAdminItem(artifactId: number): Promise<ItemDeleteOut> {
   const res = await fetch(`${baseUrl()}/admin/items/${artifactId}`, {
     method: "DELETE",
@@ -397,6 +414,26 @@ export async function deleteAdminItem(artifactId: number): Promise<ItemDeleteOut
     cache: "no-store",
   });
   return handle<ItemDeleteOut>(res);
+}
+
+/**
+ * Upload a cover image (JPEG / PNG / WebP, max 5 MB) for an item.
+ * Sends ``multipart/form-data`` so the browser sets the boundary
+ * automatically — we don't set Content-Type here.
+ */
+export async function uploadItemImage(
+  artifactId: number,
+  file: File,
+): Promise<ItemImageUploadOut> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${baseUrl()}/admin/items/${artifactId}/image`, {
+    method: "POST",
+    headers: { ...getAuthHeaders() },
+    body: form,
+    cache: "no-store",
+  });
+  return handle<ItemImageUploadOut>(res);
 }
 
 export function getBaseUrl(): string {

@@ -101,8 +101,9 @@ export default function DashboardPage() {
     };
   }, [ready, reloadKey]);
 
-  // Derived state — computed below the loading guards, so it's safe to
-  // assert ``state`` is non-null by the time we reach here.
+  // Derived state — declared ABOVE the loading guards so the hook order is
+  // stable across renders (Rules of Hooks). When ``state`` is null the
+  // memos fall back to the same defaults the early-return branches render.
   const modelControls = useMemo(() => {
     // Map the active config into the slider UI. We render real values
     // (from /metrics/config) as percentages so the dashboard reflects the
@@ -139,6 +140,44 @@ export default function DashboardPage() {
       },
     ];
   }, [state?.config]);
+
+  // Catalog Coverage Watchlist — surfaces items that are likely to score low
+  // because they're missing keywords/contexts (CBF cold-start) or carry no
+  // description (poor XAI explanation). Sourced from the live /items payload
+  // so the table is honest about what the loader sees right now.
+  const watchlistRows = useMemo(() => {
+    const itemsForWatchlist = state?.items ?? [];
+    const rows: { item: ItemOut; issue: string; status: string; tone: string; action: string }[] = [];
+    for (const item of itemsForWatchlist) {
+      if (item.keywords.length === 0) {
+        rows.push({
+          item,
+          issue: "ไม่มี keyword",
+          status: "CBF cold-start",
+          tone: "danger",
+          action: "เพิ่ม keyword ผ่าน /admin/items",
+        });
+      } else if (item.contexts.length === 0) {
+        rows.push({
+          item,
+          issue: "ไม่มี context",
+          status: "อาจถูก context gate ตัด",
+          tone: "warning",
+          action: "เพิ่ม context ใน /admin/items",
+        });
+      } else if (!item.description || item.description.trim().length === 0) {
+        rows.push({
+          item,
+          issue: "ไม่มีคำอธิบาย",
+          status: "explanation จะว่าง",
+          tone: "neutral",
+          action: "เพิ่มคำอธิบายใน /admin/items",
+        });
+      }
+      if (rows.length >= 8) break;
+    }
+    return rows;
+  }, [state?.items]);
 
   if (!ready) {
     return <div className="panel">กำลังตรวจสอบสิทธิ์...</div>;
@@ -204,42 +243,6 @@ export default function DashboardPage() {
   const trendShown = trendHasData
     ? trend.buckets.map((bucket) => bucket.shown_count)
     : trend.buckets.map(() => 0);
-  // Catalog Coverage Watchlist — surfaces items that are likely to score low
-  // because they're missing keywords/contexts (CBF cold-start) or carry no
-  // description (poor XAI explanation). Sourced from the live /items payload
-  // so the table is honest about what the loader sees right now.
-  const watchlistRows = useMemo(() => {
-    const rows: { item: ItemOut; issue: string; status: string; tone: string; action: string }[] = [];
-    for (const item of items) {
-      if (item.keywords.length === 0) {
-        rows.push({
-          item,
-          issue: "ไม่มี keyword",
-          status: "CBF cold-start",
-          tone: "danger",
-          action: "เพิ่ม keyword ผ่าน /admin/items",
-        });
-      } else if (item.contexts.length === 0) {
-        rows.push({
-          item,
-          issue: "ไม่มี context",
-          status: "อาจถูก context gate ตัด",
-          tone: "warning",
-          action: "เพิ่ม context ใน /admin/items",
-        });
-      } else if (!item.description || item.description.trim().length === 0) {
-        rows.push({
-          item,
-          issue: "ไม่มีคำอธิบาย",
-          status: "explanation จะว่าง",
-          tone: "neutral",
-          action: "เพิ่มคำอธิบายใน /admin/items",
-        });
-      }
-      if (rows.length >= 8) break;
-    }
-    return rows;
-  }, [items]);
 
   return (
     <div className="dashboard-page">

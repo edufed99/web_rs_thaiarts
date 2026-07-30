@@ -18,6 +18,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from . import __version__
 from .core.config import get_settings
@@ -37,6 +38,16 @@ async def lifespan(app: FastAPI):
     """Load artifacts once at startup. If anything fails, /health returns 503
     but the app still mounts so /docs remains reachable."""
     settings = get_settings()
+    # Ensure the upload directory exists so the very first image upload
+    # doesn't 404 — the StaticFiles mount below refuses to start on a
+    # missing path.
+    upload_items = settings.upload_dir / "items"
+    try:
+        upload_items.mkdir(parents=True, exist_ok=True)
+        logger.info("Upload directory ready: %s", upload_items)
+    except OSError as exc:  # noqa: BLE001 - logged, not fatal
+        logger.warning("Could not prepare upload directory %s: %s", upload_items, exc)
+
     loader = ArtifactLoader()
     try:
         loader.load(settings.artifact_dir)
@@ -94,6 +105,15 @@ def create_app() -> FastAPI:
     app.include_router(actions.router)
     app.include_router(auth.router)
     app.include_router(admin.router)
+
+    # Static mount for user-uploaded media (cover images for catalog
+    # items). The directory is created in ``lifespan`` so the mount
+    # doesn't fail on a fresh checkout.
+    app.mount(
+        "/uploads",
+        StaticFiles(directory=str(settings.upload_dir), check_dir=False),
+        name="uploads",
+    )
 
     return app
 

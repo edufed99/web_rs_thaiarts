@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -47,6 +47,27 @@ def _default_artifact_dir() -> Path:
     return here.parents[1] / "artifacts"
 
 
+def _default_upload_dir() -> Path:
+    """Locate the runtime upload directory.
+
+    Kept separate from ``artifacts/`` (which the offline recommender
+    pipeline owns and the legacy project treats as regenerated build
+    output — see ``CLAUDE.md`` §architecture-invariants). Uploaded
+    media is user-generated and must persist across pipeline re-runs.
+    """
+    return Path(__file__).resolve().parents[2] / "data" / "uploads"
+
+
+# Magic-byte MIME → canonical Content-Type mapping. ``imghdr.what``
+# returns strings like ``"jpeg"`` / ``"png"`` / ``"webp"`` that we
+# normalize for client consumption.
+IMGHDR_TO_MIME: Dict[str, str] = {
+    "jpeg": "image/jpeg",
+    "png": "image/png",
+    "webp": "image/webp",
+}
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="RECSYS_",
@@ -56,6 +77,15 @@ class Settings(BaseSettings):
     )
 
     artifact_dir: Path = Field(default_factory=_default_artifact_dir)
+    upload_dir: Path = Field(default_factory=_default_upload_dir)
+    # 5 MB upload cap — generous for a 4K phone snapshot, small enough to
+    # keep request bodies bounded and to fit comfortably in process memory
+    # while streaming.
+    max_upload_bytes: int = 5 * 1024 * 1024
+    # Only formats browsers render natively without plugins.
+    allowed_upload_mime: Set[str] = Field(
+        default_factory=lambda: {"image/jpeg", "image/png", "image/webp"}
+    )
     hybrid_alpha: float = 0.7
     cbf_keyword_boost: float = 0.05
     itemknn_k: int = 10

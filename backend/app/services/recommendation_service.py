@@ -582,7 +582,7 @@ def _build_item_out(
         performers_count=item.get("performers_count"),
         duration_minutes=item.get("duration_minutes"),
         price_text=str(item.get("price_text") or ""),
-        image_url="",
+        image_url=str(item.get("image_url") or ""),
         video_url="",
         keywords=keyword_objs,
         contexts=context_objs,

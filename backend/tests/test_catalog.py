@@ -4,6 +4,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+from app.routers.catalog import _matches_all_terms
 from tests.conftest import context_id, item_id
 
 
@@ -137,6 +138,30 @@ def test_list_items_search_matches_keyword_name(client: TestClient):
     body = r.json()
     assert body["total"] >= 1
     assert any(item_id("ระบำพรหมาสตร์") == it["id"] for it in body["items"])
+
+
+def test_list_items_search_matches_taxonomy_path(client: TestClient):
+    """The home-page taxonomy selector can search by taxonomy path level."""
+    r = client.get("/items", params={"search": "เครื่องแต่งกาย", **_ANON})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["total"] >= 1
+    assert any(item_id("ระบำพรหมาสตร์") == it["id"] for it in body["items"])
+
+
+def test_list_items_search_matches_multiple_taxonomy_chips(client: TestClient):
+    """Multiple selected chips are matched as separate search terms."""
+    r = client.get("/items", params={"search": "ผู้หญิง|เครื่องแต่งกาย", **_ANON})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["total"] >= 1
+    assert any(item_id("ระบำพรหมาสตร์") == it["id"] for it in body["items"])
+
+
+def test_search_does_not_match_thai_prefix_inside_longer_word():
+    assert not _matches_all_terms(["ทำนา"], ["พิเภกทำนายฝัน"])
+    assert _matches_all_terms(["ทำนา"], ["การแสดงเกี่ยวกับการทำนา"])
+    assert _matches_all_terms(["โขน"], ["การแสดงโขนเรื่องรามเกียรติ์"])
 
 
 def test_get_item_includes_suitability(client: TestClient):

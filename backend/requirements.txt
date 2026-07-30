@@ -1,6 +1,9 @@
 # Web framework
 fastapi>=0.110.0
 uvicorn[standard]>=0.27.0
+# FastAPI requires python-multipart for any ``UploadFile`` route
+# (the dep check fires even if the field is unused).
+python-multipart>=0.0.7
 
 # Settings + schemas
 pydantic>=2.6.0

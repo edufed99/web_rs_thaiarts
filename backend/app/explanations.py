@@ -5,7 +5,7 @@ Generate natural-language Thai explanations for a recommendation.
 """
 from __future__ import annotations
 
-from typing import Iterable, List, Tuple
+from typing import Iterable, List
 
 
 def build_explanation(
@@ -17,43 +17,43 @@ def build_explanation(
     matched_keywords: List[str],
 ) -> str:
     """
-    Returns a single Thai-language paragraph explaining the recommendation.
+    Returns a concise Thai-language reason for the recommendation.
     """
-    sentences: List[str] = []
+    has_context = bool(str(context_name or "").strip())
+    has_keyword_match = bool(matched_keywords)
+    has_keyword_query = bool([name for name in selected_keyword_names if str(name).strip()])
+    has_content_signal = cbf_score > 0
+    has_history_signal = cf_score > 0
 
-    if context_name:
-        sentences.append(
-            f'รายการนี้เหมาะกับบริบท "{context_name}" '
-            "และผ่านการคัดกรองเบื้องต้นก่อนนำไปจัดอันดับ"
-        )
+    if has_context and has_keyword_match:
+        main_reason = "ตรงบริบทและคำสำคัญ"
+    elif has_context and has_keyword_query and has_content_signal:
+        main_reason = "ตรงบริบทและใกล้เคียงคำสำคัญ"
+    elif has_keyword_match:
+        main_reason = "ตรงคำสำคัญ"
+    elif has_context:
+        main_reason = "ตรงบริบท"
+    elif has_content_signal:
+        main_reason = "ใกล้เคียงคำสำคัญ"
+    elif has_history_signal:
+        main_reason = "คล้ายกับความสนใจในอดีต"
+    else:
+        main_reason = "เหมาะกับเงื่อนไขที่เลือก"
 
-    if matched_keywords:
-        shown = ", ".join(f'"{w}"' for w in matched_keywords[:5])
-        sentences.append(
-            f"คุณลักษณะที่ตรงกับสิ่งที่เลือกคือ {shown}"
-        )
-        # Taxonomy summary if available
-        taxonomy_labels = _taxonomy_summaries(item, matched_keywords)
-        if taxonomy_labels:
-            labels = ", ".join(f'"{l}"' for l in taxonomy_labels[:3])
-            sentences.append(
-                f"คุณลักษณะเหล่านี้อยู่ในหมวดความหมาย {labels}"
-            )
-    elif cbf_score > 0:
-        sentences.append(
-            "แม้ไม่มีคุณลักษณะที่ตรงแบบคำต่อคำ แต่คำอธิบายและข้อมูลประกอบ "
-            "ของรายการนี้ยังใกล้เคียงกับสิ่งที่เลือก"
-        )
+    details: List[str] = []
+    if has_context:
+        details.append(f'บริบท: "{context_name}"')
+    if has_keyword_match:
+        shown_keywords = ", ".join(f'"{w}"' for w in matched_keywords[:3])
+        details.append(f"คำสำคัญ: {shown_keywords}")
 
-    content_phrase = _content_signal_phrase(cbf_score)
-    if content_phrase:
-        sentences.append(content_phrase)
-
-    collab_phrase = _collaborative_signal_phrase(cf_score)
-    if collab_phrase:
-        sentences.append(collab_phrase)
-
-    return " ".join(s + "." for s in sentences)
+    detail_text = f" ({'; '.join(details)})" if details else ""
+    history_text = (
+        " และคล้ายกับความสนใจในอดีต"
+        if has_history_signal and main_reason != "คล้ายกับความสนใจในอดีต"
+        else ""
+    )
+    return f"แนะนำชุดนี้เพราะ{main_reason}{detail_text}{history_text}."
 
 
 def _taxonomy_summaries(item: dict, matched_keywords: List[str]) -> List[str]:
@@ -69,17 +69,17 @@ def _taxonomy_summaries(item: dict, matched_keywords: List[str]) -> List[str]:
 
 def _content_signal_phrase(score: float) -> str:
     if score >= 0.75:
-        return "ในด้านเนื้อหา รายการนี้มีความใกล้เคียงเชิงความหมายกับคำค้นในระดับสูง"
+        return "ใกล้เคียงคำสำคัญมาก"
     if score >= 0.45:
-        return "ในด้านเนื้อหา รายการนี้มีความใกล้เคียงเชิงความหมายกับคำค้นในระดับปานกลาง"
+        return "ใกล้เคียงคำสำคัญปานกลาง"
     if score > 0:
-        return "ในด้านเนื้อหา รายการนี้ยังมีสัญญาณความเกี่ยวข้องกับคำที่เลือก"
+        return "มีสัญญาณใกล้เคียงคำสำคัญ"
     return ""
 
 
 def _collaborative_signal_phrase(score: float) -> str:
     if score >= 0.65:
-        return "จากพฤติกรรมผู้ใช้เดิม รายการนี้ได้รับสัญญาณสนับสนุนค่อนข้างชัดเจน"
+        return "คล้ายกับความสนใจในอดีตชัดเจน"
     if score > 0:
-        return "จากพฤติกรรมผู้ใช้เดิม รายการนี้ได้รับสัญญาณสนับสนุนบางส่วน"
+        return "คล้ายกับความสนใจในอดีต"
     return ""

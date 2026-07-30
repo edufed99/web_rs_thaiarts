@@ -10,16 +10,16 @@ from app.explanations import (
 
 
 def test_content_signal_phrase_thresholds():
-    assert "สูง" in _content_signal_phrase(0.9)
+    assert "มาก" in _content_signal_phrase(0.9)
     assert "ปานกลาง" in _content_signal_phrase(0.5)
-    assert "สัญญาณความเกี่ยวข้อง" in _content_signal_phrase(0.1)
+    assert "สัญญาณใกล้เคียง" in _content_signal_phrase(0.1)
     assert _content_signal_phrase(0) == ""
     assert _content_signal_phrase(-0.5) == ""
 
 
 def test_collaborative_signal_phrase_thresholds():
-    assert "ค่อนข้างชัดเจน" in _collaborative_signal_phrase(0.8)
-    assert "บางส่วน" in _collaborative_signal_phrase(0.3)
+    assert "ชัดเจน" in _collaborative_signal_phrase(0.8)
+    assert _collaborative_signal_phrase(0.3) == "คล้ายกับความสนใจในอดีต"
     assert _collaborative_signal_phrase(0) == ""
 
 
@@ -45,6 +45,7 @@ def test_build_explanation_includes_context_sentence():
         matched_keywords=[],
     )
     assert "งานบวช" in text
+    assert text == 'แนะนำชุดนี้เพราะตรงบริบท (บริบท: "งานบวช").'
 
 
 def test_build_explanation_matched_keywords():
@@ -59,7 +60,9 @@ def test_build_explanation_matched_keywords():
         matched_keywords=["ผู้หญิง"],
     )
     assert "ผู้หญิง" in text
-    assert "สูง" in text or "ค่อนข้างชัดเจน" in text
+    assert "ตรงบริบทและคำสำคัญ" in text
+    assert "คล้ายกับความสนใจในอดีต" in text
+    assert len(text) < 140
 
 
 def test_build_explanation_no_match_path():
@@ -70,7 +73,7 @@ def test_build_explanation_no_match_path():
         cbf_score=0.1, cf_score=0.0,
         matched_keywords=[],
     )
-    assert "แม้ไม่มีคุณลักษณะที่ตรง" in text
+    assert "ตรงบริบทและใกล้เคียงคำสำคัญ" in text
 
 
 def test_build_explanation_empty_context():
@@ -83,3 +86,4 @@ def test_build_explanation_empty_context():
     )
     # No context sentence should appear
     assert "บริบท" not in text
+    assert text == "แนะนำชุดนี้เพราะเหมาะกับเงื่อนไขที่เลือก."

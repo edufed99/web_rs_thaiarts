@@ -6,18 +6,6 @@ import Link from "next/link";
 import { ItemActionBar } from "@/components/ItemActionBar";
 import type { ItemOut, UserState as UserStateType } from "@/lib/types";
 
-function suitabilityColor(label: string | null | undefined): string {
-  if (label === "เหมาะมาก") return "#e8f5e9";
-  if (label === "เหมาะสม") return "#e3f2fd";
-  return "#f5f5f5";
-}
-
-function suitabilityBorder(label: string | null | undefined): string {
-  if (label === "เหมาะมาก") return "#43a047";
-  if (label === "เหมาะสม") return "#1e88e5";
-  return "#9e9e9e";
-}
-
 export interface CatalogItemCardProps {
   item: ItemOut;
   userKey: string;
@@ -66,23 +54,6 @@ export function CatalogItemCard({
           {rank ? `#${rank} ` : null}
           <Link href={`/items/${item.id}`}>{item.name}</Link>
         </h3>
-        {item.match_percent != null && item.suitability_label ? (
-          <span
-            style={{
-              fontSize: "0.78rem",
-              color: suitabilityBorder(item.suitability_label),
-              padding: "0.2rem 0.55rem",
-              backgroundColor: suitabilityColor(item.suitability_label),
-              borderRadius: "999px",
-              border: `1px solid ${suitabilityBorder(item.suitability_label)}`,
-              fontWeight: 600,
-              flexShrink: 0,
-            }}
-            title="Display-only match percent — does not affect ranking."
-          >
-            {item.suitability_label} · {item.match_percent}%
-          </span>
-        ) : null}
       </header>
 
       {item.category_group || item.performance_type ? (

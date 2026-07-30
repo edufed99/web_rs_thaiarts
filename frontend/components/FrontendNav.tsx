@@ -40,15 +40,6 @@ export function FrontendNav() {
     <div className="topbar-nav" aria-label="เมนูบัญชีผู้ใช้ด้านบน">
       {user === undefined ? null : user ? (
         <nav className="utility-nav" aria-label="เมนูบัญชีผู้ใช้">
-          <button
-            type="button"
-            className="icon-button"
-            aria-label="การแจ้งเตือน"
-            title="การแจ้งเตือน"
-          >
-            <span aria-hidden="true">🔔</span>
-            <span className="notification-dot">3</span>
-          </button>
           <span
             title={user.is_admin ? "ผู้ดูแลระบบ" : user.username}
             className="user-chip"

@@ -10,11 +10,12 @@ import { LoadingState } from "@/components/LoadingState";
 
 import { ApiClientError, getContexts, getItems } from "@/lib/api";
 import { groupContexts } from "@/lib/contextGroups";
-import type { ContextOut, ItemListOut, UserState } from "@/lib/types";
+import type { ContextOut, ItemListOut, ItemOut, UserState } from "@/lib/types";
 import { useAuthHeaders } from "@/lib/useAuthHeaders";
 import { getUserKey } from "@/lib/user";
 
-const PAGE_SIZE = 20;
+const FETCH_LIMIT = 200;
+const DISPLAY_LIMIT = 24;
 
 function ItemsContent() {
   const router = useRouter();
@@ -23,6 +24,9 @@ function ItemsContent() {
   const searchInput = params.get("q") ?? "";
   const contextIdStr = params.get("context");
   const contextId = contextIdStr ? Number(contextIdStr) : null;
+  const categoryInput = params.get("category") ?? "";
+  const rawSortInput = params.get("sort") ?? "name-asc";
+  const sortInput = rawSortInput === "updated" ? "newest" : rawSortInput;
 
   const [data, setData] = useState<ItemListOut | null>(null);
   const [contexts, setContexts] = useState<ContextOut[]>([]);
@@ -64,7 +68,7 @@ function ItemsContent() {
       contextId: contextId ?? undefined,
       userKey: userKey || undefined,
       extraHeaders: authHeaders,
-      limit: PAGE_SIZE,
+      limit: FETCH_LIMIT,
       offset: 0,
     })
       .then((resp) => {
@@ -97,10 +101,12 @@ function ItemsContent() {
   }, []);
 
   const updateUrl = useCallback(
-    (next: { q?: string; context?: number | null }) => {
+    (next: { q?: string; context?: number | null; category?: string; sort?: string }) => {
       const sp = new URLSearchParams();
       if (next.q) sp.set("q", next.q);
       if (next.context != null && next.context > 0) sp.set("context", String(next.context));
+      if (next.category) sp.set("category", next.category);
+      if (next.sort && next.sort !== "name-asc") sp.set("sort", next.sort);
       const qs = sp.toString();
       router.push(`/items${qs ? `?${qs}` : ""}`);
     },
@@ -109,12 +115,40 @@ function ItemsContent() {
 
   const onSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    updateUrl({ q: searchDraft.trim(), context: contextId });
+    updateUrl({
+      q: searchDraft.trim(),
+      context: contextId,
+      category: categoryInput,
+      sort: sortInput,
+    });
   };
 
   const onContextChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const v = e.target.value;
-    updateUrl({ q: searchInput, context: v ? Number(v) : null });
+    updateUrl({
+      q: searchInput,
+      context: v ? Number(v) : null,
+      category: categoryInput,
+      sort: sortInput,
+    });
+  };
+
+  const onCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    updateUrl({
+      q: searchInput,
+      context: contextId,
+      category: e.target.value,
+      sort: sortInput,
+    });
+  };
+
+  const onSortChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    updateUrl({
+      q: searchInput,
+      context: contextId,
+      category: categoryInput,
+      sort: e.target.value,
+    });
   };
 
   const selectedContext = useMemo(
@@ -122,6 +156,20 @@ function ItemsContent() {
     [contextId, contexts],
   );
   const contextGroups = useMemo(() => groupContexts(contexts), [contexts]);
+  const categoryOptions = useMemo(() => {
+    if (!data) return [];
+    return Array.from(
+      new Set(data.items.map((item) => item.category_group).filter(Boolean)),
+    ).sort((a, b) => a.localeCompare(b, "th"));
+  }, [data]);
+  const filteredItems = useMemo(() => {
+    if (!data) return [];
+    const byCategory = categoryInput
+      ? data.items.filter((item) => item.category_group === categoryInput)
+      : data.items;
+    return sortCatalogItems(byCategory, sortInput);
+  }, [data, categoryInput, sortInput]);
+  const visibleItems = filteredItems.slice(0, DISPLAY_LIMIT);
 
   if (error) {
     return (
@@ -137,74 +185,83 @@ function ItemsContent() {
   }
 
   return (
-    <div className="section-stack">
-      <section className="page-hero">
-        <div>
-          <p className="eyebrow">Catalog browser</p>
-          <h1>คลังชุดการแสดง</h1>
-          <p className="muted">ค้นหาจากชื่อ คำสำคัญ หรือเลือกโอกาสที่ใช้แสดงเพื่อดูรายการที่เหมาะสมที่สุด</p>
+    <div className="section-stack catalog-page">
+      <section className="catalog-search-panel">
+        <div className="catalog-title-block">
+          <p className="eyebrow">Performance catalog</p>
+          <div className="catalog-title-row">
+            <span className="catalog-title-icon" aria-hidden="true">◈</span>
+            <h1>รายการการแสดง</h1>
+          </div>
         </div>
+
+        <form
+          onSubmit={onSearchSubmit}
+          className="catalog-filter-bar"
+        >
+          <input
+            type="search"
+            value={searchDraft}
+            onChange={(e) => setSearchDraft(e.target.value)}
+            placeholder="ค้นหาชื่อหรือคำสำคัญ"
+            aria-label="ค้นหาชื่อหรือคำสำคัญ"
+          />
+          <select
+            value={categoryInput}
+            onChange={onCategoryChange}
+            aria-label="เลือกหมวดหมู่"
+          >
+            <option value="">ทุกหมวดหมู่</option>
+            {categoryOptions.map((category) => (
+              <option key={category} value={category}>
+                {category}
+              </option>
+            ))}
+          </select>
+          <select
+            value={sortInput}
+            onChange={onSortChange}
+            aria-label="เรียงลำดับรายการ"
+          >
+            <option value="name-asc">เรียงตามชื่อ ก-ฮ</option>
+            <option value="name-desc">เรียงตามชื่อ ฮ-ก</option>
+            <option value="newest">รายการใหม่ล่าสุด</option>
+          </select>
+          <select
+            value={contextId ?? ""}
+            onChange={onContextChange}
+            aria-label="เลือกโอกาสที่ใช้แสดง"
+          >
+            <option value="">ทุกโอกาสที่ใช้แสดง</option>
+            {contextGroups.map((group) => (
+              <optgroup key={group.label} label={group.label}>
+                {group.contexts.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+          <button type="submit">ค้นหา</button>
+        </form>
       </section>
 
-      <form
-        onSubmit={onSearchSubmit}
-        className="portal-search-card"
-        style={{ margin: 0, maxWidth: "none" }}
-      >
-        <div className="portal-search-intro">
-          <strong>ค้นหาและกรอง catalog</strong>
-          <span>รองรับ search + ranked mode ตาม context</span>
-        </div>
-        <div className="portal-search-fields">
-        <input
-          type="search"
-          value={searchDraft}
-          onChange={(e) => setSearchDraft(e.target.value)}
-          placeholder="ค้นหาชื่อหรือคำสำคัญ..."
-        />
-        <select
-          value={contextId ?? ""}
-          onChange={onContextChange}
-        >
-          <option value="">— ทุกโอกาส —</option>
-          {contextGroups.map((group) => (
-            <optgroup key={group.label} label={group.label}>
-              {group.contexts.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
-        <button
-          type="submit"
-        >
-          ค้นหา
-        </button>
-        </div>
-      </form>
+      <p className="catalog-result-count">
+        กำลังแสดง 1-{visibleItems.length} จากทั้งหมด {filteredItems.length} รายการ
+        {selectedContext ? <span> · โอกาสที่ใช้แสดง: {selectedContext.name}</span> : null}
+      </p>
 
-      {selectedContext ? (
-        <p className="muted" style={{ margin: 0 }}>
-          <strong>จัดอันดับตามบริบท:</strong> {selectedContext.name} · top {data.items.length} รายการ
-        </p>
-      ) : (
-        <p className="muted" style={{ margin: 0 }}>
-          <strong>แคตตาล็อกทั้งหมด</strong> · {data.total} รายการ
-        </p>
-      )}
-
-      {data.items.length === 0 ? (
+      {visibleItems.length === 0 ? (
         <EmptyState
           title="ไม่พบรายการ"
           message={selectedContext
-            ? "บริบทนี้ยังไม่มีรายการที่เปิดใช้งาน"
-            : "ลองเปลี่ยนคำค้นหรือเลือกบริบทอื่น"}
+            ? "โอกาสนี้ยังไม่มีรายการที่เปิดใช้งาน"
+            : "ลองเปลี่ยนคำค้นหรือเลือกโอกาสที่ใช้แสดงอื่น"}
         />
       ) : (
         <div className="card-grid">
-          {data.items.map((item, idx) => (
+          {visibleItems.map((item, idx) => (
             <CatalogItemCard
               key={item.id}
               item={item}
@@ -219,6 +276,17 @@ function ItemsContent() {
       )}
     </div>
   );
+}
+
+function sortCatalogItems(items: ItemOut[], sort: string): ItemOut[] {
+  const next = [...items];
+  if (sort === "name-desc") {
+    return next.sort((a, b) => b.name.localeCompare(a.name, "th"));
+  }
+  if (sort === "newest") {
+    return next.sort((a, b) => b.id - a.id || a.name.localeCompare(b.name, "th"));
+  }
+  return next.sort((a, b) => a.name.localeCompare(b.name, "th"));
 }
 
 export default function ItemsPage() {

@@ -3,15 +3,18 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { CatalogItemCard } from "@/components/CatalogItemCard";
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingState } from "@/components/LoadingState";
-import { ApiClientError, getMe, patchMe } from "@/lib/api";
+import { ApiClientError, getItems, getMe, patchMe } from "@/lib/api";
 import {
   getCurrentUser,
   getReadableUserName,
   updateStoredUser,
 } from "@/lib/auth";
-import type { UserOut } from "@/lib/types";
+import type { ItemOut, UserOut, UserState } from "@/lib/types";
+import { useAuthHeaders } from "@/lib/useAuthHeaders";
+import { getUserKey } from "@/lib/user";
 
 function editableDisplayName(user: UserOut): string {
   const raw = (user.display_name || "").trim();
@@ -35,8 +38,15 @@ function formatDate(value: string | null): string {
 
 export default function ProfilePage() {
   const router = useRouter();
+  const authHeaders = useAuthHeaders();
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState<UserOut | null>(null);
+  const [activeSection, setActiveSection] = useState<"profile" | "saved" | "history" | "settings">("profile");
+  const [savedItems, setSavedItems] = useState<ItemOut[] | null>(null);
+  const [savedError, setSavedError] = useState<string | null>(null);
+  const [historyItems, setHistoryItems] = useState<ItemOut[] | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [userKey, setUserKey] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -51,6 +61,8 @@ export default function ProfilePage() {
       router.replace("/login?next=/profile");
       return;
     }
+    setActiveSection(sectionFromHash(window.location.hash));
+    setUserKey(getUserKey());
     setUser(storedUser);
     setDisplayName(editableDisplayName(storedUser));
     setReady(true);
@@ -70,6 +82,85 @@ export default function ProfilePage() {
       cancelled = true;
     };
   }, [router]);
+
+  useEffect(() => {
+    function onHashChange() {
+      setActiveSection(sectionFromHash(window.location.hash));
+    }
+
+    onHashChange();
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  useEffect(() => {
+    if (!ready || !user || activeSection !== "saved") return;
+
+    let cancelled = false;
+    setSavedItems(null);
+    setSavedError(null);
+    getItems({ limit: 200, userKey, extraHeaders: authHeaders })
+      .then((resp) => {
+        if (cancelled) return;
+        setSavedItems(resp.items.filter((item) => item.user_state.saved));
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setSavedError(e instanceof ApiClientError ? e.message : String(e));
+        setSavedItems([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSection, authHeaders, ready, user, userKey]);
+
+  useEffect(() => {
+    if (!ready || !user || activeSection !== "history") return;
+
+    let cancelled = false;
+    setHistoryItems(null);
+    setHistoryError(null);
+    getItems({ limit: 200, userKey, extraHeaders: authHeaders })
+      .then((resp) => {
+        if (cancelled) return;
+        setHistoryItems(resp.items.filter(hasAnyUserInterest));
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setHistoryError(e instanceof ApiClientError ? e.message : String(e));
+        setHistoryItems([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSection, authHeaders, ready, user, userKey]);
+
+  function handleSavedItemStateChange(itemId: number, next: UserState) {
+    setSavedItems((current) => {
+      if (!current) return current;
+      if (!next.saved) return current.filter((item) => item.id !== itemId);
+      return current.map((item) =>
+        item.id === itemId ? { ...item, user_state: next } : item,
+      );
+    });
+  }
+
+  function handleHistoryItemStateChange(itemId: number, next: UserState) {
+    setHistoryItems((current) => {
+      if (!current) return current;
+      if (!hasAnyUserStateInterest(next)) return current.filter((item) => item.id !== itemId);
+      return current.map((item) =>
+        item.id === itemId ? { ...item, user_state: next } : item,
+      );
+    });
+    setSavedItems((current) => {
+      if (!current) return current;
+      if (!next.saved) return current.filter((item) => item.id !== itemId);
+      return current.map((item) =>
+        item.id === itemId ? { ...item, user_state: next } : item,
+      );
+    });
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -133,13 +224,40 @@ export default function ProfilePage() {
       <section className="page-hero">
         <div>
           <p className="eyebrow">Account profile</p>
-          <h1>ข้อมูลผู้ใช้</h1>
+          <h1>{profileTitle(activeSection)}</h1>
           <p className="muted">
-            จัดการชื่อที่แสดงและรหัสผ่านของบัญชีที่ใช้รับคำแนะนำเฉพาะคุณ
+            {profileSubtitle(activeSection)}
           </p>
         </div>
       </section>
 
+      <nav className="profile-tabs" aria-label="เมนูข้อมูลผู้ใช้">
+        <a className={activeSection === "profile" ? "active" : undefined} href="/profile">
+          ข้อมูลผู้ใช้
+        </a>
+        <a className={activeSection === "saved" ? "active" : undefined} href="/profile#saved">
+          รายการที่บันทึกไว้
+        </a>
+        <a className={activeSection === "history" ? "active" : undefined} href="/profile#history">
+          ประวัติความสนใจ
+        </a>
+      </nav>
+
+      {activeSection === "saved" ? (
+        <SavedItemsSection
+          items={savedItems}
+          error={savedError}
+          userKey={userKey}
+          onUserStateChange={handleSavedItemStateChange}
+        />
+      ) : activeSection === "history" ? (
+        <HistoryItemsSection
+          items={historyItems}
+          error={historyError}
+          userKey={userKey}
+          onUserStateChange={handleHistoryItemStateChange}
+        />
+      ) : (
       <form onSubmit={handleSubmit} className="form-panel" style={{ maxWidth: 620 }}>
         <div className="panel" style={{ boxShadow: "none" }}>
           <p className="muted" style={{ margin: 0 }}>
@@ -223,6 +341,155 @@ export default function ProfilePage() {
           {submitting ? "กำลังบันทึก..." : "บันทึกข้อมูลผู้ใช้"}
         </button>
       </form>
+      )}
     </div>
   );
+}
+
+function sectionFromHash(hash: string): "profile" | "saved" | "history" | "settings" {
+  if (hash === "#saved") return "saved";
+  if (hash === "#history") return "history";
+  if (hash === "#settings") return "settings";
+  return "profile";
+}
+
+function profileTitle(section: "profile" | "saved" | "history" | "settings"): string {
+  if (section === "saved") return "รายการที่บันทึกไว้";
+  if (section === "history") return "ประวัติความสนใจ";
+  if (section === "settings") return "ตั้งค่าระบบ";
+  return "ข้อมูลผู้ใช้";
+}
+
+function profileSubtitle(section: "profile" | "saved" | "history" | "settings"): string {
+  if (section === "saved") return "ชุดการแสดงที่คุณเคยกดบันทึกไว้";
+  if (section === "history") return "สรุปสัญญาณความสนใจจากการถูกใจ บันทึก และให้คะแนน";
+  if (section === "settings") return "ตั้งค่าบัญชีและประสบการณ์ใช้งาน";
+  return "จัดการชื่อที่แสดงและรหัสผ่านของบัญชีที่ใช้รับคำแนะนำเฉพาะคุณ";
+}
+
+function SavedItemsSection({
+  items,
+  error,
+  userKey,
+  onUserStateChange,
+}: {
+  items: ItemOut[] | null;
+  error: string | null;
+  userKey: string;
+  onUserStateChange: (itemId: number, next: UserState) => void;
+}) {
+  if (error) {
+    return <ErrorState title="โหลดรายการที่บันทึกไว้ไม่ได้" message={error} />;
+  }
+
+  if (items === null) {
+    return <LoadingState message="กำลังโหลดรายการที่บันทึกไว้..." />;
+  }
+
+  if (items.length === 0) {
+    return (
+      <section className="empty-panel">
+        <h2>ยังไม่มีรายการที่บันทึกไว้</h2>
+        <p className="muted" style={{ marginBottom: 0 }}>
+          เมื่อกดปุ่ม “บันทึก” บนชุดการแสดง รายการนั้นจะแสดงที่หน้านี้
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="profile-item-grid">
+      {items.map((item) => (
+        <CatalogItemCard
+          key={item.id}
+          item={item}
+          userKey={userKey}
+          descriptionLimit={140}
+          onUserStateChange={onUserStateChange}
+        />
+      ))}
+    </section>
+  );
+}
+
+function HistoryItemsSection({
+  items,
+  error,
+  userKey,
+  onUserStateChange,
+}: {
+  items: ItemOut[] | null;
+  error: string | null;
+  userKey: string;
+  onUserStateChange: (itemId: number, next: UserState) => void;
+}) {
+  if (error) {
+    return <ErrorState title="โหลดประวัติความสนใจไม่ได้" message={error} />;
+  }
+
+  if (items === null) {
+    return <LoadingState message="กำลังโหลดประวัติความสนใจ..." />;
+  }
+
+  if (items.length === 0) {
+    return (
+      <section className="empty-panel">
+        <h2>ยังไม่มีประวัติความสนใจ</h2>
+        <p className="muted" style={{ marginBottom: 0 }}>
+          เมื่อกดถูกใจ บันทึก หรือให้คะแนนดาว ชุดการแสดงนั้นจะแสดงที่หน้านี้
+        </p>
+      </section>
+    );
+  }
+
+  const likedCount = items.filter((item) => item.user_state.liked).length;
+  const savedCount = items.filter((item) => item.user_state.saved).length;
+  const ratedCount = items.filter((item) => item.user_state.rating > 0).length;
+
+  return (
+    <div className="section-stack">
+      <section className="profile-history-summary" aria-label="สรุปประวัติความสนใจ">
+        <div>
+          <span>ถูกใจ</span>
+          <strong>{likedCount}</strong>
+        </div>
+        <div>
+          <span>บันทึกไว้</span>
+          <strong>{savedCount}</strong>
+        </div>
+        <div>
+          <span>ให้คะแนน</span>
+          <strong>{ratedCount}</strong>
+        </div>
+      </section>
+
+      <section className="profile-item-grid">
+        {items.map((item) => (
+          <div key={item.id} className="profile-history-card">
+            <div className="profile-history-tags">
+              {item.user_state.liked ? <span className="interest-chip liked">ถูกใจ</span> : null}
+              {item.user_state.saved ? <span className="interest-chip saved">บันทึกไว้</span> : null}
+              {item.user_state.rating > 0 ? (
+                <span className="interest-chip rated">{item.user_state.rating} ดาว</span>
+              ) : null}
+            </div>
+            <CatalogItemCard
+              item={item}
+              userKey={userKey}
+              descriptionLimit={140}
+              onUserStateChange={onUserStateChange}
+            />
+          </div>
+        ))}
+      </section>
+    </div>
+  );
+}
+
+function hasAnyUserInterest(item: ItemOut): boolean {
+  return hasAnyUserStateInterest(item.user_state);
+}
+
+function hasAnyUserStateInterest(state: UserState): boolean {
+  return state.liked || state.saved || state.rating > 0;
 }

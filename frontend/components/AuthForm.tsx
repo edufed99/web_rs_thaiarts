@@ -14,7 +14,8 @@ export interface AuthFormProps {
 export function AuthForm({ mode }: AuthFormProps) {
   const router = useRouter();
   const search = useSearchParams();
-  const nextPath = (search?.get("next") ?? "").trim() || (mode === "signup" ? "/admin/items/new" : "/");
+  const requestedNextPath = (search?.get("next") ?? "").trim();
+  const nextPath = requestedNextPath || (mode === "signup" ? "/" : "/");
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -48,15 +49,18 @@ export function AuthForm({ mode }: AuthFormProps) {
   const isSignup = mode === "signup";
   const title = isSignup ? "สมัครสมาชิก" : "เข้าสู่ระบบ";
   const subtitle = isSignup
-    ? "สร้างบัญชีผู้ดูแลเพื่อเพิ่มการแสดงใหม่"
-    : "ใช้ชื่อผู้ใช้และรหัสผ่านที่ลงทะเบียนไว้";
+    ? "สร้างบัญชีเพื่อรับคำแนะนำเฉพาะคุณและบันทึกความสนใจของคุณ"
+    : "เข้าสู่ระบบเพื่อให้ระบบตรวจโปรไฟล์และคำนวณคำแนะนำเฉพาะคุณ";
   const ctaLabel = submitting
     ? "กำลังดำเนินการ..."
     : isSignup
       ? "สมัครสมาชิก"
       : "เข้าสู่ระบบ";
   const altPrompt = isSignup ? "มีบัญชีอยู่แล้ว?" : "ยังไม่มีบัญชี?";
-  const altHref = isSignup ? "/login" : "/signup";
+  const altBaseHref = isSignup ? "/login" : "/signup";
+  const altHref = requestedNextPath
+    ? `${altBaseHref}?next=${encodeURIComponent(requestedNextPath)}`
+    : altBaseHref;
 
   return (
     <form

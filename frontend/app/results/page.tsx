@@ -8,8 +8,9 @@ import { ErrorState } from "@/components/ErrorState";
 import { LoadingState } from "@/components/LoadingState";
 import { RecommendationCard } from "@/components/RecommendationCard";
 
-import { ApiClientError, postRecommendations } from "@/lib/api";
+import { ApiClientError, getKeywords, postRecommendations } from "@/lib/api";
 import type {
+  KeywordOut,
   RecommendationRequestIn,
   RecommendationResponseOut,
   UserState,
@@ -38,6 +39,7 @@ function ResultsContent() {
   const [errorCode, setErrorCode] = useState<string | undefined>(undefined);
   const [reloadKey, setReloadKey] = useState(0);
   const [ready, setReady] = useState(false);
+  const [keywordLookup, setKeywordLookup] = useState<Map<number, KeywordOut>>(new Map());
   // SSR-safe user key. Initialized to "" on the server, replaced on mount.
   const [userKey, setUserKey] = useState<string>("");
   const authHeaders = useAuthHeaders();
@@ -90,6 +92,22 @@ function ResultsContent() {
     };
   }, [ready, contextId, topK, keywordsCsv, reloadKey, userKey, authHeaders]);
 
+  useEffect(() => {
+    if (!ready || keywordIds.length === 0) return;
+    let cancelled = false;
+    getKeywords(undefined, 1000)
+      .then((resp) => {
+        if (cancelled) return;
+        setKeywordLookup(new Map(resp.keywords.map((keyword) => [keyword.id, keyword])));
+      })
+      .catch(() => {
+        if (!cancelled) setKeywordLookup(new Map());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, keywordsCsv]);
+
   const handleUserStateChange = useCallback((itemId: number, next: UserState) => {
     setData((prev) => {
       if (!prev) return prev;
@@ -106,6 +124,18 @@ function ResultsContent() {
 
   const headerLabel = useMemo(() => {
     if (!data) return null;
+    const requestedKeywordCount = keywordIds.length;
+    const resolvedKeywordCount = data.selected_keywords.length;
+    const displayKeywords =
+      resolvedKeywordCount > 0
+        ? data.selected_keywords
+        : keywordIds
+            .map((id) => keywordLookup.get(id))
+            .filter((keyword): keyword is KeywordOut => Boolean(keyword));
+    const unresolvedKeywordIds =
+      requestedKeywordCount > resolvedKeywordCount
+        ? keywordIds.filter((id) => !data.selected_keywords.some((keyword) => keyword.id === id))
+        : [];
     return (
       <section
         className="panel"
@@ -114,18 +144,26 @@ function ResultsContent() {
         }}
       >
         <p className="muted" style={{ margin: 0 }}>
-          บริบท: <strong>{data.selected_context.name}</strong> · คุณลักษณะที่เลือก:{" "}
-          <strong>{data.selected_keywords.length}</strong> · candidates:{" "}
+          บริบท: <strong>{data.selected_context.name}</strong> · คุณลักษณะที่ส่งไป:{" "}
+          <strong>{requestedKeywordCount}</strong> · backend รับรู้:{" "}
+          <strong>{resolvedKeywordCount}</strong> · candidates:{" "}
           <strong>{data.candidate_count}</strong> · top-K: <strong>{data.top_k}</strong>
         </p>
-        {data.selected_keywords.length > 0 ? (
+        {displayKeywords.length > 0 ? (
           <p className="muted" style={{ margin: "0.5rem 0 0 0", fontSize: "0.9rem" }}>
-            {data.selected_keywords.map((k) => k.name).join(" · ")}
+            {displayKeywords.map((k) => k.name).join(" · ")}
+          </p>
+        ) : null}
+        {requestedKeywordCount > 0 && resolvedKeywordCount === 0 ? (
+          <p className="muted" style={{ margin: "0.5rem 0 0 0", fontSize: "0.9rem" }}>
+            ระบบได้รับ keyword id จากหน้าเว็บแล้ว แต่ backend ยังไม่คืนชื่อคุณลักษณะกลับมา
+            จึงยังใช้ keyword นั้นในการให้เหตุผลไม่ได้ ไม่ได้แปลว่าไม่มีชุดการแสดงตรงกับบริบทเสมอไป
+            {unresolvedKeywordIds.length > 0 ? ` (ids: ${unresolvedKeywordIds.join(", ")})` : ""}
           </p>
         ) : null}
       </section>
     );
-  }, [data]);
+  }, [data, keywordIds, keywordLookup]);
 
   if (error) {
     return (
@@ -169,6 +207,7 @@ function ResultsContent() {
               result={r}
               userKey={userKey}
               contextId={data.selected_context.id}
+              contextName={data.selected_context.name}
               requestId={data.request_id}
               onUserStateChange={handleUserStateChange}
             />

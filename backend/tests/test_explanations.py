@@ -87,3 +87,39 @@ def test_build_explanation_empty_context():
     # No context sentence should appear
     assert "บริบท" not in text
     assert text == "แนะนำชุดนี้เพราะเหมาะกับเงื่อนไขที่เลือก."
+
+
+def test_build_explanation_keyword_only():
+    text = build_explanation(
+        item={},
+        context_name="",
+        selected_keyword_names=["ผู้หญิง"],
+        cbf_score=0.0,
+        cf_score=0.0,
+        matched_keywords=["ผู้หญิง"],
+    )
+    assert text == 'แนะนำชุดนี้เพราะตรงคำสำคัญ (คำสำคัญ: "ผู้หญิง").'
+
+
+def test_build_explanation_content_signal_only():
+    text = build_explanation(
+        item={},
+        context_name="",
+        selected_keyword_names=[],
+        cbf_score=0.2,
+        cf_score=0.0,
+        matched_keywords=[],
+    )
+    assert text == "แนะนำชุดนี้เพราะใกล้เคียงคำสำคัญ."
+
+
+def test_build_explanation_history_signal_only():
+    text = build_explanation(
+        item={},
+        context_name="",
+        selected_keyword_names=[],
+        cbf_score=0.0,
+        cf_score=0.2,
+        matched_keywords=[],
+    )
+    assert text == "แนะนำชุดนี้เพราะคล้ายกับความสนใจในอดีต."

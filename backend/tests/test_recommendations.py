@@ -4,6 +4,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+from app.models_db import User
 from tests.conftest import context_id, item_id, keyword_id
 
 
@@ -118,3 +119,35 @@ def test_recommend_negative_keyword_id_rejected(client: TestClient):
     }
     r = client.post("/recommendations", json=body)
     assert r.status_code == 422
+
+
+def test_profile_recommendations_requires_auth(client: TestClient):
+    r = client.get("/recommendations/profile")
+
+    assert r.status_code == 401
+    assert r.json()["error"]["code"] == "unauthorized"
+
+
+def test_authenticated_recommendation_uses_best_profile_key(client: TestClient):
+    from app.routers import recommendations as recommendations_router
+
+    app = client.app
+    app.dependency_overrides[recommendations_router.get_current_user_dep] = lambda: User(
+        id=7,
+        username="profile-user",
+        password_hash="unused",
+        is_admin=False,
+    )
+    try:
+        body = {
+            "context_id": context_id("งานบวช"),
+            "keyword_ids": [],
+            "top_k": 3,
+            "user_key": "anon:must-be-overridden",
+        }
+        r = client.post("/recommendations", json=body)
+    finally:
+        app.dependency_overrides.clear()
+
+    assert r.status_code == 200
+    assert r.json()["metadata"]["user_key_provided"] is True

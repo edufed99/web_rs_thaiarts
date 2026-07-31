@@ -240,3 +240,17 @@ def test_update_me_rejects_wrong_current_password(client):
     )
     assert r.status_code == 401
     assert r.json()["error"]["code"] == "invalid_current_password"
+
+
+def test_update_me_requires_current_password(client):
+    sig = client.post("/auth/signup", json={"username": "alice", "password": "hunter22"}).json()
+    token = sig["access_token"]
+
+    r = client.patch(
+        "/auth/me",
+        json={"new_password": "newpass123"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "current_password_required"

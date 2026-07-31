@@ -20,7 +20,7 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, Depends, File, UploadFile
 
 from ..core.config import get_settings
-from ..core.exceptions import InvalidRequestError
+from ..core.exceptions import InvalidRequestError, ItemNotFoundError
 from ..model_loader import ArtifactLoader, get_singleton
 from ..schemas.admin import (
     ItemCommit,
@@ -249,12 +249,12 @@ def reassign_keywords(
                 f"Item not found: {item_id}",
                 extra={"code": "item_not_found"},
             )
-        django_id = int(item.id)
-        session.execute(delete(ItemKeyword).where(ItemKeyword.item_id == django_id))
+        db_id = int(item.id)
+        session.execute(delete(ItemKeyword).where(ItemKeyword.item_id == db_id))
         for kid in body.keyword_ids:
             session.add(
                 ItemKeyword(
-                    item_id=django_id,
+                    item_id=db_id,
                     keyword_id=int(kid),
                     source="human",
                 )
@@ -263,7 +263,7 @@ def reassign_keywords(
         # Refresh the loader's view of this item's keyword names.
         loader = get_singleton()
         kw_rows = session.execute(
-            select(ItemKeyword.keyword_id).where(ItemKeyword.item_id == django_id)
+            select(ItemKeyword.keyword_id).where(ItemKeyword.item_id == db_id)
         ).all()
         kw_names = _names_for_keyword_ids([r[0] for r in kw_rows])
 
@@ -305,12 +305,9 @@ def update_item(
             select(Item).where(Item.artifact_item_id == int(item_id))
         ).scalar_one_or_none()
         if item is None:
-            raise InvalidRequestError(
-                f"Item not found: {item_id}",
-                extra={"code": "item_not_found"},
-            )
+            raise ItemNotFoundError(f"Item not found: {item_id}")
 
-        django_id = int(item.id)
+        db_id = int(item.id)
         if body.name is not None:
             item.name = body.name.strip()
         if body.description is not None:
@@ -350,11 +347,11 @@ def update_item(
                     warnings.append(f"Created missing context: {name!r}")
                 context_names.append(str(row.name))
                 context_ids.append(int(row.id))
-            session.execute(delete(ItemContext).where(ItemContext.item_id == django_id))
+            session.execute(delete(ItemContext).where(ItemContext.item_id == db_id))
             for context_id in context_ids:
                 session.add(
                     ItemContext(
-                        item_id=django_id,
+                        item_id=db_id,
                         context_id=context_id,
                         validity_status="valid",
                     )
@@ -363,11 +360,11 @@ def update_item(
         keyword_names: List[str] | None = None
         if body.keyword_ids is not None:
             kw_ids = _unique_ints(body.keyword_ids)
-            session.execute(delete(ItemKeyword).where(ItemKeyword.item_id == django_id))
+            session.execute(delete(ItemKeyword).where(ItemKeyword.item_id == db_id))
             for keyword_id in kw_ids:
                 session.add(
                     ItemKeyword(
-                        item_id=django_id,
+                        item_id=db_id,
                         keyword_id=keyword_id,
                         source="admin",
                     )
@@ -534,7 +531,7 @@ def upload_item_image(
             allowed_mime=settings.allowed_upload_mime,
         )
         item.image_url = public_url
-        django_id = int(item.id)
+        db_id = int(item.id)
         session.flush()
 
     _update_loader_row(int(artifact_id), {"image_url": public_url})
@@ -581,16 +578,16 @@ def delete_item(
                 f"Item not found: {item_id}",
                 extra={"code": "item_not_found"},
             )
-        django_id = int(item.id)
-        session.execute(delete(ItemKeyword).where(ItemKeyword.item_id == django_id))
-        session.execute(delete(ItemContext).where(ItemContext.item_id == django_id))
-        session.execute(delete(Like).where(Like.item_id == django_id))
-        session.execute(delete(SavedItem).where(SavedItem.item_id == django_id))
-        session.execute(delete(Rating).where(Rating.item_id == django_id))
-        session.execute(delete(LegacyInteraction).where(LegacyInteraction.item_id == django_id))
+        db_id = int(item.id)
+        session.execute(delete(ItemKeyword).where(ItemKeyword.item_id == db_id))
+        session.execute(delete(ItemContext).where(ItemContext.item_id == db_id))
+        session.execute(delete(Like).where(Like.item_id == db_id))
+        session.execute(delete(SavedItem).where(SavedItem.item_id == db_id))
+        session.execute(delete(Rating).where(Rating.item_id == db_id))
+        session.execute(delete(LegacyInteraction).where(LegacyInteraction.item_id == db_id))
         session.execute(
             update(InteractionLog)
-            .where(InteractionLog.item_id == django_id)
+            .where(InteractionLog.item_id == db_id)
             .values(item_id=None)
         )
         session.delete(item)
@@ -637,7 +634,7 @@ def _item_out_from_session(session, item) -> ItemOut:
     from ..schemas.keyword import KeywordOut
     from ..services.suitability import catalog_match_percent, suitability_label
 
-    django_id = int(item.id)
+    db_id = int(item.id)
     context_counts = dict(
         session.execute(
             select(ItemContext.context_id, func.count(ItemContext.item_id))
@@ -649,13 +646,13 @@ def _item_out_from_session(session, item) -> ItemOut:
     context_rows = session.execute(
         select(Context.id, Context.name, Context.group_name, Context.description)
         .join(ItemContext, ItemContext.context_id == Context.id)
-        .where(ItemContext.item_id == django_id)
+        .where(ItemContext.item_id == db_id)
         .order_by(Context.group_name, Context.name)
     ).all()
     keyword_rows = session.execute(
         select(Keyword.id, Keyword.name)
         .join(ItemKeyword, ItemKeyword.keyword_id == Keyword.id)
-        .where(ItemKeyword.item_id == django_id)
+        .where(ItemKeyword.item_id == db_id)
         .order_by(Keyword.name)
     ).all()
     mp = catalog_match_percent(

@@ -142,6 +142,20 @@ def test_orm_models_importable():
             "item_contexts", "item_keywords", "legacy_interactions"}.issubset(table_names)
 
 
+def test_popularity_weight_deserializes_valid_json():
+    from app.models_db import PopularityWeight
+
+    row = PopularityWeight(weights_json='{"saved": 0.3, "rating": 0.7}')
+    assert row.weights() == {"saved": 0.3, "rating": 0.7}
+
+
+def test_popularity_weight_rejects_invalid_or_non_object_json():
+    from app.models_db import PopularityWeight
+
+    assert PopularityWeight(weights_json="not-json").weights() == {}
+    assert PopularityWeight(weights_json="[]").weights() == {}
+
+
 # ---------------------------------------------------------------------------
 # Live-action layer (likes / saved_items / ratings / interaction_logs)
 # ---------------------------------------------------------------------------
@@ -172,11 +186,11 @@ def sqlite_db_with_live_actions(monkeypatch):
     }
     by_artifact = {}
     with SessionLocal() as s:
-        for django_id, name in items.items():
+        for db_id, name in items.items():
             aid = int(hashlib.sha256(f"item::{name}".encode("utf-8")).hexdigest()[:7], 16)
-            by_artifact[aid] = django_id
+            by_artifact[aid] = db_id
             s.add(Item(
-                id=django_id,
+                id=db_id,
                 name=name,
                 is_active=True,
                 artifact_item_id=aid,
@@ -393,14 +407,141 @@ def test_live_user_positive_items_returns_empty_when_db_disabled(monkeypatch):
     assert live_user_positive_items("anon:nobody") == set()
 
 
-def test_django_to_artifact_translation_round_trip(sqlite_db_with_live_actions):
-    from app.services.db_query import artifact_id_to_django_id, django_id_to_artifact_id
+def test_db_to_artifact_translation_round_trip(sqlite_db_with_live_actions):
+    from app.services.db_query import artifact_id_to_db_id, db_id_to_artifact_id
 
     eng, by_artifact = sqlite_db_with_live_actions
     aid = next(iter(by_artifact.keys()))
-    django_id = by_artifact[aid]
-    assert artifact_id_to_django_id(aid) == django_id
-    assert django_id_to_artifact_id(django_id) == aid
+    db_id = by_artifact[aid]
+    assert artifact_id_to_db_id(aid) == db_id
+    assert db_id_to_artifact_id(db_id) == aid
+
+
+def test_artifact_ids_to_db_ids_bulk_matches_single(sqlite_db_with_live_actions):
+    """The bulk helper must agree with the single-id helper, and skip unknowns."""
+    from app.services.db_query import artifact_id_to_db_id, artifact_ids_to_db_ids
+
+    eng, by_artifact = sqlite_db_with_live_actions
+    known = list(by_artifact.keys())
+    mapping = artifact_ids_to_db_ids(known + [999_999_999])
+
+    assert mapping == {aid: by_artifact[aid] for aid in known}
+    for aid in known:
+        assert mapping[aid] == artifact_id_to_db_id(aid)
+    # Unknown artifact ids are absent rather than mapped to None.
+    assert 999_999_999 not in mapping
+    assert artifact_ids_to_db_ids([]) == {}
+
+
+def test_legacy_stats_translates_artifact_id_to_db_id(
+    sqlite_db_with_live_actions, artifacts_dir, monkeypatch
+):
+    """Regression: the endpoint takes an ARTIFACT id, but legacy_interactions
+    is keyed by items.id. Passing the artifact id straight through returns
+    zeros for every item — which is what this route used to do.
+    """
+    from app.core.config import reset_settings_cache
+    from app.model_loader import reset_singleton
+    from app.models_db import Base, Item, LegacyInteraction
+    from app.routers import legacy as legacy_module
+
+    eng, by_artifact = sqlite_db_with_live_actions
+    artifact_id = next(iter(by_artifact.keys()))
+    db_id = by_artifact[artifact_id]
+    # fixture's seed: {111: 'แสดงโขน', 222: 'ระบำ', 333: 'ลิเก'}
+    seeded_names = {111: "แสดงโขน", 222: "ระบำ", 333: "ลิเก"}
+
+    # Build a fresh thread-safe engine for TestClient (which runs in a worker
+    # thread, but the fixture's engine was created on the test thread).
+    client_eng = create_engine(
+        INMEM_THREAD_URL,
+        future=True,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(client_eng)
+    client_session = sessionmaker(bind=client_eng, expire_on_commit=False, future=True)
+
+    # Reseed items + legacy rows on the client engine so the lookup chain
+    # artifact_id -> db_id -> legacy_interactions stays in one database.
+    with client_session() as s:
+        for db_id_seeded, name in seeded_names.items():
+            # Translate back to that item's artifact id via the fixture map.
+            aid_for_seeded = next(
+                aid for aid, did in by_artifact.items() if did == db_id_seeded
+            )
+            s.add(Item(
+                id=db_id_seeded,
+                name=name,
+                is_active=True,
+                artifact_item_id=aid_for_seeded,
+            ))
+        for i, rating in enumerate((4, 5, 3)):
+            s.add(LegacyInteraction(
+                legacy_user_id=f"legacy:{i}",
+                item_id=db_id,
+                rating=rating,
+                imported_at=datetime(2026, 1, 1),
+            ))
+        s.commit()
+
+    @contextmanager
+    def client_scope():
+        sess = client_session()
+        try:
+            yield sess
+            sess.commit()
+        finally:
+            sess.close()
+
+    def client_engine():
+        return client_eng
+
+    monkeypatch.setenv("RECSYS_ARTIFACT_DIR", str(artifacts_dir))
+    monkeypatch.setenv("RECSYS_DB_ENABLED", "1")
+    monkeypatch.setattr(legacy_module, "is_db_enabled", lambda: True)
+    from app.services import db_query as dbq_module
+    monkeypatch.setattr(dbq_module, "is_db_enabled", lambda: True)
+    monkeypatch.setattr(dbq_module, "session_scope", client_scope)
+    reset_settings_cache()
+    reset_singleton()
+
+    monkeypatch.setenv("RECSYS_ARTIFACT_DIR", str(artifacts_dir))
+    monkeypatch.setenv("RECSYS_DB_ENABLED", "1")
+    monkeypatch.setattr(legacy_module, "is_db_enabled", lambda: True)
+    reset_settings_cache()
+    reset_singleton()
+
+    from app.main import create_app
+    with TestClient(create_app()) as c:
+        r = c.get(f"/items/{artifact_id}/legacy-stats")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["item_id"] == artifact_id
+        assert body["count"] == 3
+        assert body["avg_rating"] == pytest.approx(4.0)
+
+        # The raw DB id must NOT be accepted as if it were an artifact id.
+        r_wrong = c.get(f"/items/{db_id}/legacy-stats")
+        assert r_wrong.json()["count"] == 0
+
+        # Batch form returns one row per requested id, in order, and
+        # tolerates unknown ids.
+        r_batch = c.get("/legacy-stats", params={"ids": f"{artifact_id},999999999"})
+        assert r_batch.status_code == 200, r_batch.text
+        stats = r_batch.json()["stats"]
+        assert [s["item_id"] for s in stats] == [artifact_id, 999999999]
+        assert stats[0]["count"] == 3
+        assert stats[0]["avg_rating"] == pytest.approx(4.0)
+        assert stats[1]["count"] == 0
+
+        # Junk and duplicate ids are dropped rather than failing the request.
+        r_junk = c.get(
+            "/legacy-stats",
+            params={"ids": f"{artifact_id},,abc,{artifact_id}"},
+        )
+        assert r_junk.status_code == 200, r_junk.text
+        assert [s["item_id"] for s in r_junk.json()["stats"]] == [artifact_id]
 
 
 # ---------------------------------------------------------------------------
@@ -468,3 +609,108 @@ def test_keywords_and_metrics_prefer_db_counts(db_catalog_client):
     assert metrics["item_count"] == 3
     assert metrics["context_count"] == 2
     assert metrics["keyword_count"] == 3
+
+
+# --- db_health branch coverage -----------------------------------------------
+
+
+def test_db_health_ok_when_engine_responds(monkeypatch):
+    """``/db/health`` returns 200 ok when ``get_engine().connect()`` works."""
+    from fastapi.testclient import TestClient
+    from sqlalchemy import create_engine
+    from sqlalchemy.pool import StaticPool
+
+    from app.core import config as config_module
+    from app.db import reset_engine
+    from app.main import create_app
+    from app.model_loader import reset_singleton
+
+    monkeypatch.setenv("RECSYS_ARTIFACT_DIR", str(__import__("pathlib").Path(__file__).parent))
+    config_module.reset_settings_cache()
+    reset_singleton()
+    eng = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    monkeypatch.setattr("app.db.get_engine", lambda: eng)
+    reset_engine()
+    try:
+        with TestClient(create_app()) as c:
+            r = c.get("/db/health")
+            assert r.status_code == 200
+            body = r.json()
+            assert body["status"] == "ok"
+    finally:
+        eng.dispose()
+
+
+def test_db_health_returns_503_when_engine_raises(monkeypatch):
+    """``/db/health`` returns 503 when the SELECT 1 throws."""
+    from fastapi.testclient import TestClient
+
+    from app.core import config as config_module
+    from app.db import reset_engine
+    from app.main import create_app
+    from app.model_loader import reset_singleton
+
+    class _BoomEngine:
+        def connect(self):
+            raise RuntimeError("simulated outage")
+
+    monkeypatch.setenv("RECSYS_ARTIFACT_DIR", str(__import__("pathlib").Path(__file__).parent))
+    config_module.reset_settings_cache()
+    reset_singleton()
+    monkeypatch.setattr("app.db.get_engine", lambda: _BoomEngine())
+    reset_engine()
+    with TestClient(create_app()) as c:
+        r = c.get("/db/health")
+        assert r.status_code == 503
+
+
+def test_live_positive_users_per_item_db_id_space(monkeypatch):
+    """Deprecated helper still works and returns DB-id-keyed data."""
+    from app.services.db_query import live_positive_users_per_item
+
+    # The conftest's `client` fixture doesn't seed LegacyInteraction, so
+    # we use a fresh in-memory engine here.
+    from contextlib import contextmanager
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    from app import db as db_module
+    from app.core import config as config_module
+    from app.models_db import Base, LegacyInteraction
+    from app.services import db_query as dbq_module
+
+    eng = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(eng)
+    SessionLocal = sessionmaker(bind=eng, expire_on_commit=False)
+
+    with SessionLocal() as s:
+        s.add(LegacyInteraction(item_id=10, legacy_user_id=1, rating=5, imported_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc)))
+        s.add(LegacyInteraction(item_id=10, legacy_user_id=2, rating=4, imported_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc)))
+        s.add(LegacyInteraction(item_id=20, legacy_user_id=1, rating=2, imported_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc)))  # below default
+        s.commit()
+
+    @contextmanager
+    def fs():
+        sess = SessionLocal()
+        try:
+            yield sess
+            sess.commit()
+        finally:
+            sess.close()
+
+    config_module.reset_settings_cache()
+    monkeypatch.setattr(db_module, "is_db_enabled", lambda: True)
+    monkeypatch.setattr(db_module, "session_scope", fs)
+    monkeypatch.setattr(dbq_module, "is_db_enabled", lambda: True)
+    monkeypatch.setattr(dbq_module, "session_scope", fs)
+
+    out = live_positive_users_per_item()
+    # Item 10 has two positive users; item 20 has none (only a 2-star rating).
+    assert out[10] == {"legacy:1", "legacy:2"}
+    assert 20 not in out
+    eng.dispose()

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 from contextlib import contextmanager
+from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy import create_engine
@@ -77,6 +78,12 @@ def test_cosine_no_shared_users(loader):
     assert sim == 0.0
 
 
+def test_cosine_empty_item_users_returns_zero():
+    from app.services.cf_service import _cosine
+
+    assert _cosine({}, 1, 2, 50.0) == 0.0
+
+
 def test_cosine_with_shrink(loader):
     from app.services.cf_service import _cosine
     sim = _cosine(loader.cf_item_users, item_id("ระบำพรหมาสตร์"), item_id("โขน"), 50.0)
@@ -138,10 +145,10 @@ def live_db_for_cf(monkeypatch, loader):
         "โขน": item_id("โขน"),
         "ลิเก": item_id("ลิเก"),
     }
-    aid_to_django = {}
+    aid_to_db = {}
     with SessionLocal() as s:
         for i, (name, aid) in enumerate(name_to_aid.items(), start=801):
-            aid_to_django[aid] = i
+            aid_to_db[aid] = i
             s.add(Item(id=i, name=name, is_active=True, artifact_item_id=aid))
         s.commit()
 
@@ -165,7 +172,7 @@ def live_db_for_cf(monkeypatch, loader):
     monkeypatch.setattr(dbq_module, "session_scope", fake_scope)
     db_module.reset_engine()
     config_module.reset_settings_cache()
-    yield SessionLocal, aid_to_django
+    yield SessionLocal, aid_to_db
     eng.dispose()
 
 
@@ -174,7 +181,7 @@ def test_live_like_brings_user_into_itemknn(loader, live_db_for_cf):
     ItemKNN scores for items that share a user with the liked item's
     synthetic user (rather than falling back to popularity)."""
     from app.models_db import Like
-    SessionLocal, aid_to_django = live_db_for_cf
+    SessionLocal, aid_to_db = live_db_for_cf
     # user:u1 positively rated ระบำ in the static artifact. We have
     # anon:anon-fresh like-ing โขน — which shares user:u1 with ระบำ
     # in the static CF index. So โขน should not be in anon:anon-fresh's
@@ -182,7 +189,7 @@ def test_live_like_brings_user_into_itemknn(loader, live_db_for_cf):
     aid_rabam = item_id("ระบำพรหมาสตร์")
     aid_khon = item_id("โขน")
     with SessionLocal() as s:
-        s.add(Like(user_key="anon:anon-fresh", item_id=aid_to_django[aid_khon]))
+        s.add(Like(user_key="anon:anon-fresh", item_id=aid_to_db[aid_khon]))
         s.commit()
 
     cands = [
@@ -196,16 +203,39 @@ def test_live_like_brings_user_into_itemknn(loader, live_db_for_cf):
     assert scores[aid_rabam] > 0.0
 
 
+def test_merged_cf_index_includes_live_positive_users(loader, live_db_for_cf):
+    from app.models_db import LegacyInteraction
+    from app.services.cf_service import _merged_cf_index
+
+    SessionLocal, aid_to_db = live_db_for_cf
+    aid_khon = item_id("โขน")
+    with SessionLocal() as session:
+        session.add(
+            LegacyInteraction(
+                legacy_user_id="live-merge",
+                item_id=aid_to_db[aid_khon],
+                rating=5,
+                imported_at=datetime.now(timezone.utc),
+            )
+        )
+        session.commit()
+
+    item_users, rating_weight = _merged_cf_index(loader)
+
+    assert "legacy:live-merge" in item_users[aid_khon]
+    assert rating_weight[f"legacy:live-merge::{aid_khon}"] == pytest.approx(1.0)
+
+
 def test_live_history_keeps_user_out_of_popularity_fallback(loader, live_db_for_cf):
     """If a user has at least one live like, _get_user_history must
     surface it so we don't fall back to raw popularity scores."""
     from app.services.cf_service import _get_user_history
     from app.models_db import Like
 
-    SessionLocal, aid_to_django = live_db_for_cf
+    SessionLocal, aid_to_db = live_db_for_cf
     aid_khon = item_id("โขน")
     with SessionLocal() as s:
-        s.add(Like(user_key="anon:another", item_id=aid_to_django[aid_khon]))
+        s.add(Like(user_key="anon:another", item_id=aid_to_db[aid_khon]))
         s.commit()
 
     hist = _get_user_history(loader, "anon:another")

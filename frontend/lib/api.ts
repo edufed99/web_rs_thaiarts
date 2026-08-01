@@ -7,7 +7,10 @@
 import type {
   ActionRequestIn,
   ContextListOut,
+  DashboardOut,
+  EngagementListOut,
   HealthOut,
+  HistoryListOut,
   ItemDeleteOut,
   ItemActionOut,
   ItemCommit,
@@ -22,7 +25,12 @@ import type {
   ItemOut,
   ItemReassignOut,
   ItemUpdate,
+  ItemViewOut,
   KeywordListOut,
+  LikedItemsOut,
+  RatedItemsOut,
+  SavedItemsOut,
+  UserSummaryOut,
   LegacyStatsOut,
   MetricsOut,
   ModelConfigOut,
@@ -35,9 +43,10 @@ import type {
   UserOut,
   UserProfileUpdate,
   UserSignup,
+  ViewRequestIn,
 } from "./types";
 
-import { getAuthHeaders } from "./auth";
+import { getAuthHeaders, getCurrentUser } from "./auth";
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:8001";
 
@@ -123,10 +132,16 @@ export async function getItems(opts?: {
   if (opts?.limit !== undefined) params.set("limit", String(opts.limit));
   if (opts?.offset !== undefined) params.set("offset", String(opts.offset));
   if (opts?.contextId !== undefined) params.set("context", String(opts.contextId));
-  // Backend's ``resolve_user_key`` prefers the JWT bearer token when present,
-  // so we always send ``Authorization`` here. The legacy ``anon:<uuid>``
-  // query param is only used as a fallback for fully anonymous callers.
-  if (opts?.userKey) params.set("user_key", opts.userKey);
+  // The backend's ``resolve_user_key`` prefers the JWT bearer token when
+  // present and only falls back to the legacy ``anon:<uuid>`` query param
+  // for fully anonymous callers. For anonymous users we deliberately omit
+  // ``user_key`` so the catalog endpoint skips the per-row live-user-state
+  // SELECT — anon users have no personalised likes / saves / ratings to
+  // surface, and the extra query was a measurable hot-path cost on the
+  // home → /items search flow.
+  if (opts?.userKey && getCurrentUser() != null) {
+    params.set("user_key", opts.userKey);
+  }
   const url = `${baseUrl()}/items${params.toString() ? `?${params.toString()}` : ""}`;
   const res = await fetch(url, {
     headers: { ...getAuthHeaders(), ...(opts?.extraHeaders ?? {}) },
@@ -140,7 +155,12 @@ export async function getItem(
   opts?: { userKey?: string; extraHeaders?: Record<string, string> },
 ): Promise<ItemOut> {
   const params = new URLSearchParams();
-  if (opts?.userKey) params.set("user_key", opts.userKey);
+  // Only forward user_key for authenticated members — anonymous callers
+  // would 401 on the backend auth check and gain nothing from the per-row
+  // user_state lookup anyway.
+  if (opts?.userKey && getCurrentUser() != null) {
+    params.set("user_key", opts.userKey);
+  }
   const url = `${baseUrl()}/items/${itemId}${params.toString() ? `?${params.toString()}` : ""}`;
   const res = await fetch(url, {
     headers: { ...getAuthHeaders(), ...(opts?.extraHeaders ?? {}) },
@@ -162,21 +182,61 @@ export async function getItemLegacyStats(itemId: number): Promise<LegacyStatsOut
   return handle<LegacyStatsOut>(res);
 }
 
-/** Convenience: fetch legacy stats for many items in parallel. */
+/**
+ * Batch live-engagement counters (likes + saves + positive ratings) for the
+ * given artifact item ids. Used by the public homepage to rank the "popular
+ * performances" section by actual user engagement rather than the legacy
+ * rating aggregate. Returns the same shape as the backend
+ * ``EngagementListOut`` — sorted by ``engagement_score`` desc, with one
+ * zero row per requested id that has no engagement at all.
+ */
+export async function getItemEngagementBatch(
+  itemIds: number[],
+  opts?: { range?: "all" | "7d" | "30d" | "90d" | "365d" },
+): Promise<EngagementListOut> {
+  if (itemIds.length === 0) {
+    return { engagements: [], source: "postgres" };
+  }
+  const params = new URLSearchParams({ ids: itemIds.join(",") });
+  if (opts?.range && opts.range !== "all") params.set("range", opts.range);
+  const res = await fetch(`${baseUrl()}/items/engagement?${params.toString()}`, {
+    cache: "no-store",
+  });
+  return handle<EngagementListOut>(res);
+}
+
+interface LegacyStatsBatchOut {
+  stats: LegacyStatsOut[];
+}
+
+/**
+ * Batch form of ``getItemLegacyStats``. Hits the ``/legacy-stats`` endpoint
+ * which does a single round-trip for up to 200 ids, avoiding the N+1 fan-out
+ * that the parallel helper above caused on grids (it also kept relying on
+ * the per-id route, which only returned zeros before the id-translation fix).
+ *
+ * Unknown ids and network failures degrade to a zero-stat entry so the UI
+ * can keep rendering rather than fail the whole grid.
+ */
 export async function getItemLegacyStatsBatch(
   itemIds: number[],
 ): Promise<Map<number, LegacyStatsOut>> {
-  const results = await Promise.all(
-    itemIds.map(async (id) => {
-      try {
-        const stats = await getItemLegacyStats(id);
-        return [id, stats] as const;
-      } catch {
-        return [id, { item_id: id, count: 0, avg_rating: 0, source: "disabled" as const }] as const;
-      }
-    }),
-  );
-  return new Map(results);
+  if (itemIds.length === 0) return new Map();
+  const res = await fetch(`${baseUrl()}/legacy-stats?ids=${itemIds.join(",")}`, {
+    cache: "no-store",
+  });
+  let body: LegacyStatsBatchOut;
+  try {
+    body = await handle<LegacyStatsBatchOut>(res);
+  } catch {
+    return new Map(
+      itemIds.map((id) => [
+        id,
+        { item_id: id, count: 0, avg_rating: 0, source: "disabled" as const },
+      ]),
+    );
+  }
+  return new Map(body.stats.map((s) => [s.item_id, s]));
 }
 
 export async function getMetrics(): Promise<MetricsOut> {
@@ -203,6 +263,22 @@ export async function getRequestTrend(months: number = 12): Promise<RequestTrend
 export async function getModelConfig(): Promise<ModelConfigOut> {
   const res = await fetch(`${baseUrl()}/metrics/config`, { cache: "no-store" });
   return handle<ModelConfigOut>(res);
+}
+
+/**
+ * Full admin dashboard payload from ``GET /metrics/dashboard``. Admin-only —
+ * the backend rejects this call without a JWT for an ``is_admin=True`` user.
+ * Falls back to a zeroed payload with ``source: "disabled"`` when the DB
+ * layer is off.
+ */
+export async function getDashboard(
+  range: "7d" | "30d" | "90d" | "365d" = "30d",
+): Promise<DashboardOut> {
+  const res = await fetch(`${baseUrl()}/metrics/dashboard?range=${range}`, {
+    headers: { ...getAuthHeaders() },
+    cache: "no-store",
+  });
+  return handle<DashboardOut>(res);
 }
 
 export async function postRecommendations(
@@ -308,7 +384,100 @@ export async function putRating(
   return handle<ItemActionOut>(res);
 }
 
+/**
+ * Log an item view (ADR-002 §3.1).
+ *
+ * Fire-and-forget on purpose: this is telemetry, so a failure must never
+ * surface to the user or break the page being measured. Unlike every other
+ * call in this file it resolves to `null` on error instead of throwing.
+ *
+ * The backend dedupes repeats per (user, item) inside a 30-minute window,
+ * so callers don't need to guard against re-renders.
+ */
+export async function postView(
+  body: ViewRequestIn,
+  extraHeaders: Record<string, string> = {},
+): Promise<ItemViewOut | null> {
+  try {
+    const res = await fetch(`${baseUrl()}/actions/view`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...extraHeaders },
+      body: JSON.stringify({
+        user_key: body.user_key,
+        item_id: body.item_id,
+        request_id: body.request_id ?? null,
+        context_id: body.context_id ?? null,
+      }),
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as ItemViewOut;
+  } catch {
+    return null;
+  }
+}
+
 // --- Auth + Admin ingest ----------------------------------------------------
+
+// --- Member summary (GET /me/*) -------------------------------------------
+
+function memberParams(
+  userKey: string,
+  extra: Record<string, string | number | undefined> = {},
+): string {
+  const params = new URLSearchParams();
+  params.set("user_key", userKey);
+  for (const [k, v] of Object.entries(extra)) {
+    if (v !== undefined && v !== null && v !== "") params.set(k, String(v));
+  }
+  return params.toString();
+}
+
+export async function getMeSummary(
+  userKey: string,
+  extraHeaders: Record<string, string> = {},
+): Promise<UserSummaryOut> {
+  const url = `${baseUrl()}/me/summary?${memberParams(userKey)}`;
+  const res = await fetch(url, { headers: { ...extraHeaders }, cache: "no-store" });
+  return handle<UserSummaryOut>(res);
+}
+
+export async function getMeHistory(
+  userKey: string,
+  limit = 20,
+  extraHeaders: Record<string, string> = {},
+): Promise<HistoryListOut> {
+  const url = `${baseUrl()}/me/history?${memberParams(userKey, { limit })}`;
+  const res = await fetch(url, { headers: { ...extraHeaders }, cache: "no-store" });
+  return handle<HistoryListOut>(res);
+}
+
+export async function getMeSaved(
+  userKey: string,
+  extraHeaders: Record<string, string> = {},
+): Promise<SavedItemsOut> {
+  const url = `${baseUrl()}/me/saved?${memberParams(userKey)}`;
+  const res = await fetch(url, { headers: { ...extraHeaders }, cache: "no-store" });
+  return handle<SavedItemsOut>(res);
+}
+
+export async function getMeLiked(
+  userKey: string,
+  extraHeaders: Record<string, string> = {},
+): Promise<LikedItemsOut> {
+  const url = `${baseUrl()}/me/liked?${memberParams(userKey)}`;
+  const res = await fetch(url, { headers: { ...extraHeaders }, cache: "no-store" });
+  return handle<LikedItemsOut>(res);
+}
+
+export async function getMeRated(
+  userKey: string,
+  extraHeaders: Record<string, string> = {},
+): Promise<RatedItemsOut> {
+  const url = `${baseUrl()}/me/rated?${memberParams(userKey)}`;
+  const res = await fetch(url, { headers: { ...extraHeaders }, cache: "no-store" });
+  return handle<RatedItemsOut>(res);
+}
 
 export async function postSignup(body: UserSignup): Promise<TokenOut> {
   const res = await fetch(`${baseUrl()}/auth/signup`, {
@@ -438,4 +607,24 @@ export async function uploadItemImage(
 
 export function getBaseUrl(): string {
   return baseUrl();
+}
+
+/**
+ * Turn a backend-relative media path into an absolute URL the browser can
+ * fetch. The backend serves uploads from the same host as the API root, but
+ * the frontend runs on a different port (``localhost:3000`` vs
+ * ``127.0.0.1:8001``). Without this prefix, ``<img src="/uploads/...">`` or
+ * CSS ``url("/uploads/...")`` would hit the wrong origin and 404.
+ *
+ * Already-absolute URLs (``http://...``, ``https://...``, ``data:...``) are
+ * returned unchanged so legacy test fixtures keep working.
+ */
+export function resolveImageUrl(path: string | null | undefined): string | null {
+  if (!path) return null;
+  const trimmed = path.trim();
+  if (trimmed.length === 0) return null;
+  if (/^(https?:|data:|blob:)/i.test(trimmed)) return trimmed;
+  if (trimmed.startsWith("//")) return `${new URL(baseUrl()).protocol}${trimmed}`;
+  if (trimmed.startsWith("/")) return `${baseUrl()}${trimmed}`;
+  return `${baseUrl()}/${trimmed}`;
 }

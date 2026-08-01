@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import Link from "next/link";
 
 import { getItemLegacyStats } from "@/lib/api";
+import { resolvedImageUrl, PerformanceCardMedia } from "@/components/PerformanceCardMedia";
 import type { ItemOut, LegacyStatsOut } from "@/lib/types";
 
 interface Props {
@@ -51,12 +51,13 @@ export default function PopularPerformanceCard({
   const badge = variant === "seasonal"
     ? (topContexts[0] ?? "ช่วงเวลาแนะนำ")
     : "ยอดนิยมในระบบ";
+  const priceText =
+    item.price_text && /บาท/.test(item.price_text)
+      ? item.price_text
+      : item.price_text
+        ? `${item.price_text} บาท`
+        : "";
 
-  // Decide how to render the rating row.
-  // - Loading (stats === null && !failed) → shimmer placeholder.
-  // - Loaded but count == 0 → "ยังไม่มีรีวิว" (neutral, truthful).
-  // - Loaded with count > 0 → real stars + real number.
-  // - Failed → "ไม่สามารถโหลดสถิติ" warning.
   const renderRating = () => {
     if (statsFailed) {
       return <span className="muted">ไม่สามารถโหลดสถิติ</span>;
@@ -67,11 +68,23 @@ export default function PopularPerformanceCard({
     if (stats.count === 0) {
       return <span className="muted">ยังไม่มีรีวิว</span>;
     }
-    const rating = stats.avg_rating.toFixed(1);
+    const rating = stats.avg_rating;
+    const clamped = Math.max(0, Math.min(5, rating));
+    const fillPct = (clamped / 5) * 100;
     return (
-      <div>
-        <span className="popular-stars" aria-hidden="true">★★★★★</span>{" "}
-        <strong>{rating}</strong>{" "}
+      <div className="popular-rating">
+        <span
+          className="popular-stars"
+          aria-label={`คะแนน ${rating.toFixed(1)} จาก 5`}
+        >
+          <span className="popular-stars-bg" aria-hidden="true">★★★★★</span>
+          <span
+            className="popular-stars-fg"
+            aria-hidden="true"
+            style={{ width: `${fillPct}%` }}
+          >★★★★★</span>
+        </span>
+        <strong>{rating.toFixed(1)}</strong>
         <span className="muted">({stats.count} รีวิว)</span>
       </div>
     );
@@ -79,30 +92,40 @@ export default function PopularPerformanceCard({
 
   return (
     <article className="popular-card">
-      <div
-        className="popular-card-media"
-        style={
-          item.image_url
-            ? {
-                backgroundImage: `linear-gradient(135deg, rgba(6, 27, 60, 0.08), rgba(197, 145, 59, 0.12)), url("${item.image_url}")`,
-              }
-            : undefined
-        }
+      <PerformanceCardMedia
+        imageUrl={resolvedImageUrl(item.image_url)}
+        categoryGroup={item.category_group}
+        title={item.name}
+        variant="card"
       />
       <div className="popular-card-body">
         <span className="popular-badge">{badge}</span>
-        <h3 style={{ margin: 0, color: "#102044", fontSize: "1.35rem", lineHeight: 1.35 }}>
-          {item.name}
-        </h3>
+        <h3 className="popular-card-title">{item.name}</h3>
         {renderRating()}
-        {description ? (
-          <p className="description" style={{ margin: 0 }}>
-            {description}
-          </p>
-        ) : null}
-        <Link className="secondary" href={`/items/${item.id}`} style={{ justifySelf: "start" }}>
-          รายละเอียด
-        </Link>
+        {description ? <p className="popular-card-desc">{description}</p> : null}
+        <div className="popular-card-meta">
+          {item.performers_count ? (
+            <span className="popular-meta-row" title="จำนวนผู้แสดง">
+              <span className="popular-meta-icon" aria-hidden="true">👥</span>
+              <span className="popular-meta-label">ผู้แสดง :</span>
+              <span className="popular-meta-value">{item.performers_count} คน</span>
+            </span>
+          ) : null}
+          {item.duration_minutes ? (
+            <span className="popular-meta-row" title="ระยะเวลาการแสดง">
+              <span className="popular-meta-icon" aria-hidden="true">⏱</span>
+              <span className="popular-meta-label">ระยะการแสดง :</span>
+              <span className="popular-meta-value">{item.duration_minutes} นาที</span>
+            </span>
+          ) : null}
+          {priceText ? (
+            <span className="popular-meta-row" title="ราคา">
+              <span className="popular-meta-icon" aria-hidden="true">💰</span>
+              <span className="popular-meta-label">ราคา :</span>
+              <span className="popular-meta-value">{priceText}</span>
+            </span>
+          ) : null}
+        </div>
       </div>
     </article>
   );

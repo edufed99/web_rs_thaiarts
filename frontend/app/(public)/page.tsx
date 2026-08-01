@@ -1,48 +1,127 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import React, { useEffect, useMemo, useState } from "react";
 
-import { ApiClientError, getContexts, getItems, getKeywords } from "@/lib/api";
-import type { ContextOut, ItemOut, KeywordOut, UserOut } from "@/lib/types";
-
-import { ErrorState } from "@/components/ErrorState";
-import { LoadingState } from "@/components/LoadingState";
 import PopularPerformanceCard from "@/components/PopularPerformanceCard";
 import {
   AUTH_CHANGED_EVENT,
   getCurrentUser,
-  getReadableUserName,
-  isAdmin,
   STORAGE_KEY,
 } from "@/lib/auth";
-import { groupContexts } from "@/lib/contextGroups";
+import {
+  getContexts,
+  getItemEngagementBatch,
+  getItemLegacyStatsBatch,
+  getItems,
+  getMetrics,
+} from "@/lib/api";
 import { getUserKey } from "@/lib/user";
+import type { ContextOut, EngagementOut, ItemOut, LegacyStatsOut, UserOut } from "@/lib/types";
+
+// ---------------------------------------------------------------------------
+// Static marketing copy — kept verbatim because the user wants images and
+// these "framing" strings to remain frozen until manually updated.
+// ---------------------------------------------------------------------------
+
+// 3-step "how it works" — pure marketing copy.
+const HOW_STEPS = [
+  {
+    n: "1",
+    icon: "♡",
+    title: "เลือกบริบทและความสนใจ",
+    desc: "ระบุโอกาส งบประมาณ จำนวนผู้แสดง และรูปแบบที่ต้องการ",
+  },
+  {
+    n: "2",
+    icon: "AI",
+    title: "AI วิเคราะห์ข้อมูล",
+    desc: "ระบบวิเคราะห์ความเหมาะสมจากฐานข้อมูลชุดการแสดงและบริบทงาน",
+  },
+  {
+    n: "3",
+    icon: "♧",
+    title: "ค้นพบชุดการแสดงที่เหมาะสม",
+    desc: "รับคำแนะนำที่ตรงกับความต้องการ พร้อมรายละเอียดครบถ้วน",
+  },
+] as const;
+
+// Hardcoded image paths. The user has not yet replaced /img/home/* with
+// real uploads, so we keep using the marketing assets paired by index.
+const POPULAR_IMAGES = [
+  "/img/home/popular-1.png",
+  "/img/home/popular-2.png",
+  "/img/home/popular-3.png",
+  "/img/home/popular-4.png",
+] as const;
+const CATEGORY_IMAGES = [
+  "/img/home/category-1.png",
+  "/img/home/category-2.png",
+  "/img/home/category-3.png",
+  "/img/home/category-4.png",
+  "/img/home/category-5.png",
+  "/img/home/category-6.png",
+] as const;
+const OCCASION_IMAGES = [
+  "/img/home/occasion-1.png",
+  "/img/home/occasion-2.png",
+  "/img/home/occasion-3.png",
+  "/img/home/occasion-4.png",
+  "/img/home/occasion-5.png",
+] as const;
+
+// ---------------------------------------------------------------------------
+// Live data shape populated by the page's single useEffect.
+// ---------------------------------------------------------------------------
+
+interface LiveData {
+  items: ItemOut[];
+  contexts: ContextOut[];
+  metrics: { item_count: number; context_count: number } | null;
+  legacy: Map<number, LegacyStatsOut>;
+  engagement: Map<number, EngagementOut>;
+  error: string | null;
+}
+
+const EMPTY_LIVE: LiveData = {
+  items: [],
+  contexts: [],
+  metrics: null,
+  legacy: new Map(),
+  engagement: new Map(),
+  error: null,
+};
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
 
 export default function HomePage() {
-  const [contexts, setContexts] = useState<ContextOut[]>([]);
-  const [keywords, setKeywords] = useState<KeywordOut[]>([]);
-  const [items, setItems] = useState<ItemOut[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [errorCode, setErrorCode] = useState<string | undefined>(undefined);
-  const [reloadKey, setReloadKey] = useState(0);
+  const router = useRouter();
   const [user, setUser] = useState<UserOut | null>(null);
-  const [admin, setAdmin] = useState(false);
-  const [selectedTaxonomyTags, setSelectedTaxonomyTags] = useState<SelectedTaxonomyTag[]>([]);
-  const [taxonomySearch, setTaxonomySearch] = useState("");
-  const [selectedKeywordLevel1, setSelectedKeywordLevel1] = useState("");
-  const [selectedKeywordLevel2, setSelectedKeywordLevel2] = useState("");
-  const [selectedKeywordLevel3, setSelectedKeywordLevel3] = useState("");
-  const [taxonomyOpen, setTaxonomyOpen] = useState(false);
-  const [taxonomyModalOpen, setTaxonomyModalOpen] = useState(false);
+  const [live, setLive] = useState<LiveData>(EMPTY_LIVE);
+  const [liveReady, setLiveReady] = useState(false);
+  const [heroSearch, setHeroSearch] = useState("");
 
+  // Client-side search submit — avoids a full HTML form post so the home
+  // → /items navigation reuses Next.js's preloaded chunks (catalogue grid
+  // / skeletons / Suspense boundary) instead of tearing the document down
+  // and re-running the boot pipeline from scratch. Anonymous callers get
+  // the same fast path; getItems() will skip the user_key param when no
+  // member is logged in (see lib/api.ts).
+  const onHeroSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const q = heroSearch.trim();
+    router.push(q ? `/items?q=${encodeURIComponent(q)}` : "/items");
+  };
+
+  // Auth state — ref counts on login/logout so the CTA banner can hide for
+  // returning users. Mirrors the pattern from member pages.
   useEffect(() => {
     function syncAuth() {
-      const currentUser = getCurrentUser();
-      setUser(currentUser);
-      setAdmin(Boolean(currentUser?.is_admin) || isAdmin());
+      setUser(getCurrentUser());
     }
-
     syncAuth();
     function onStorage(e: StorageEvent) {
       if (e.key === STORAGE_KEY) syncAuth();
@@ -55,597 +134,403 @@ export default function HomePage() {
     };
   }, []);
 
+  // Live data — three endpoints fired in parallel, then a 4th call for the
+  // batch legacy stats (so the popular card can show real ratings) and a
+  // 5th call for live engagement (likes + saves + positive ratings). The
+  // page stays usable even if any one of them fails — we render graceful
+  // placeholders rather than blowing the page up.
   useEffect(() => {
     let cancelled = false;
-    setError(null);
-    const userKey = getUserKey();
-    Promise.all([getContexts(), getItems({ limit: 8, userKey }), getKeywords(undefined, 1000)])
-      .then(([c, itemList, keywordList]) => {
-        if (cancelled) return;
-        setContexts(c.contexts);
-        setItems(itemList.items);
-        setKeywords(keywordList.keywords);
-      })
-      .catch((e: unknown) => {
-        if (cancelled) return;
-        if (e instanceof ApiClientError) {
-          setError(e.message);
-          setErrorCode(e.code);
-        } else {
-          setError(e instanceof Error ? e.message : "Unknown error");
-        }
+    setLiveReady(false);
+
+    Promise.allSettled([
+      // Send the anon user_key so the catalog endpoint can apply live
+      // personalization. We ask for 200 items so the category bucket
+      // counts are accurate — the homepage renders the top 6 categories
+      // by item count, which would be wrong if we capped at 50.
+      getItems({ limit: 200, userKey: getUserKey() || undefined }),
+      getContexts(),
+      getMetrics(),
+    ]).then(([itemsRes, contextsRes, metricsRes]) => {
+      if (cancelled) return;
+      const err =
+        (itemsRes.status === "rejected" && itemsRes.reason instanceof Error
+          ? itemsRes.reason.message
+          : null) ??
+        (contextsRes.status === "rejected" && contextsRes.reason instanceof Error
+          ? contextsRes.reason.message
+          : null) ??
+        (metricsRes.status === "rejected" && metricsRes.reason instanceof Error
+          ? metricsRes.reason.message
+          : null);
+
+      const items = itemsRes.status === "fulfilled" ? itemsRes.value.items : [];
+      const contexts = contextsRes.status === "fulfilled" ? contextsRes.value.contexts : [];
+      const metrics =
+        metricsRes.status === "fulfilled"
+          ? { item_count: metricsRes.value.item_count, context_count: metricsRes.value.context_count }
+          : null;
+
+      // Stage 2 — fetch both engagement (primary ranking signal for
+      // popular) AND legacy stats (still shown on the card as the rating
+      // summary). Both are batch endpoints; we kick them off in parallel.
+      const ids = items.map((item) => item.id);
+      const engagementP = getItemEngagementBatch(ids).catch((e: unknown) => {
+        if (cancelled) return { engagements: [], source: "disabled" as const };
+        return { engagements: [], source: "disabled" as const };
       });
+      const legacyP = getItemLegacyStatsBatch(ids).catch((e: unknown) => new Map());
+
+      Promise.all([engagementP, legacyP]).then(([engRes, legacyMap]) => {
+        if (cancelled) return;
+        const engagementMap = new Map<number, EngagementOut>();
+        for (const row of engRes.engagements) {
+          engagementMap.set(row.item_id, row);
+        }
+        setLive({
+          items,
+          contexts,
+          metrics,
+          legacy: legacyMap,
+          engagement: engagementMap,
+          error: err,
+        });
+        setLiveReady(true);
+      });
+    });
+
     return () => {
       cancelled = true;
     };
-  }, [reloadKey]);
+  }, []);
 
-  const keywordTree = useMemo(() => buildKeywordTaxonomy(keywords), [keywords]);
-  const level1Node = keywordTree.find((node) => node.label === selectedKeywordLevel1);
-  const level2Options = level1Node?.children ?? [];
-  const level2Node = level2Options.find((node) => node.label === selectedKeywordLevel2);
-  const level3Options = level2Node?.children ?? [];
-  const level3Node = level3Options.find((node) => node.label === selectedKeywordLevel3);
-  const keywordOptions = level3Node?.keywords ?? [];
-  const selectedTaxonomyQuery = selectedTaxonomyTags.map((tag) => tag.query).join("|");
-  const selectedTagKeys = useMemo(
-    () => new Set(selectedTaxonomyTags.map((tag) => tag.key)),
-    [selectedTaxonomyTags],
-  );
-  const taxonomySuggestions = useMemo(
-    () => getTaxonomySuggestions(keywords, taxonomySearch, selectedTagKeys),
-    [keywords, taxonomySearch, selectedTagKeys],
-  );
-  function addTaxonomyTag(tag: SelectedTaxonomyTag) {
-    setSelectedTaxonomyTags((current) =>
-      current.some((selected) => selected.key === tag.key) ? current : [...current, tag],
-    );
-    setTaxonomySearch("");
-    setTaxonomyOpen(false);
-    setTaxonomyModalOpen(false);
-  }
+  // -------------------------- Derived data -----------------------------
 
-  function removeTaxonomyTag(key: string) {
-    setSelectedTaxonomyTags((current) => current.filter((tag) => tag.key !== key));
-  }
+  // Popular cards: top 4 by live engagement_score desc.
+  //
+  // "Engagement" = likes + saves + positive (rating ≥ 4) ratings — every
+  // action a real user can take in the system, weighted equally. This is
+  // the metric the product team asked for: items users actually
+  // engaged with, not legacy ratings or the catalog match-percent
+  // suitability heuristic. We tie-break by positive-rating count desc
+  // (visible "this got 5-star love"), then match_percent desc (catalog
+  // completeness heuristic), then id desc (stable order).
+  const popularTop4 = useMemo(() => {
+    return rankPopularItems(live.items, live.engagement, 4, { includeZeroScore: true });
+  }, [live.items, live.engagement]);
 
-  if (error) {
-    return (
-      <ErrorState
-        title="เชื่อมต่อ backend ไม่ได้"
-        message={error}
-        code={errorCode}
-        onRetry={() => setReloadKey((k) => k + 1)}
-      />
-    );
-  }
-  if (!items) {
-    return <LoadingState message="กำลังเชื่อมต่อ backend..." />;
-  }
+  // Category tiles: top 6 distinct `category_group` values by item count.
+  // Item.category_group is the live field; the static homepage currently
+  // hardcodes region-themed labels that don't map 1:1, so we render whatever
+  // the corpus actually contains.
+  const categoryTop6 = useMemo(() => {
+    const buckets = new Map<string, { count: number; sample_id: number }>();
+    for (const item of live.items) {
+      const key = (item.category_group || "").trim() || "อื่นๆ";
+      const cur = buckets.get(key);
+      if (cur) cur.count += 1;
+      else buckets.set(key, { count: 1, sample_id: item.id });
+    }
+    return Array.from(buckets.entries())
+      .map(([name, info]) => ({ name, count: info.count, sample_id: info.sample_id }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "th"))
+      .slice(0, 6);
+  }, [live.items]);
 
-  const popularItems = items.slice(0, 4);
-  // Group contexts by item so the seasonal band can show the real top-context
-  // for each card instead of the hardcoded "วันเข้าพรรษา" pill.
-  const contextById = new Map<number, ContextOut>(contexts.map((c) => [c.id, c]));
-  const itemTopContexts = (item: ItemOut): string[] =>
-    item.contexts
-      .map((c) => contextById.get(c.id)?.name ?? c.name)
-      .filter(Boolean)
-      .slice(0, 2);
+  // Occasion cards: the 7 main context groups from the live catalog
+  // ("งานมงคล", "งานเทศกาล", ...). Pick top 5 by total active_item_count
+  // summed across each group's sub-contexts.
+  const occasionTop5 = useMemo(() => {
+    const groups = new Map<string, { count: number; sample_name: string }>();
+    for (const ctx of live.contexts) {
+      const key = (ctx.group || "").trim();
+      if (!key) continue;
+      const cur = groups.get(key);
+      const inc = ctx.active_item_count ?? 0;
+      if (cur) {
+        cur.count += inc;
+      } else {
+        groups.set(key, { count: inc, sample_name: ctx.name });
+      }
+    }
+    return Array.from(groups.entries())
+      .map(([name, info]) => ({ name, count: info.count, sample: info.sample_name }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "th"))
+      .slice(0, 5);
+  }, [live.contexts]);
 
-  // The "seasonal band" used to advertise a Thai-calendar integration that
-  // never shipped. We now show the contexts with the most active items,
-  // sourced from the live ``GET /contexts`` payload.
-  const topContexts = [...contexts]
-    .filter((c) => c.active_item_count > 0)
-    .sort((a, b) => b.active_item_count - a.active_item_count)
-    .slice(0, 2);
-  const topContextNames = topContexts.map((c) => c.name);
-  const seasonalHeading = topContextNames.length > 0
-    ? `แนะนำชุดการแสดงจากบริบทยอดนิยม: ${topContextNames.join(", ")}`
-    : "แนะนำชุดการแสดงจากบริบทยอดนิยม";
-  const seasonalSubtitle = topContexts.length > 0
-    ? `อ้างอิงจากจำนวนรายการที่เปิดใช้งานในระบบ (${topContexts
-        .map((c) => `${c.name}: ${c.active_item_count} รายการ)`)
-        .join(" / ")})`
-    : "ยังไม่มีข้อมูลบริบทจาก backend";
-
-  // Pick seasonal items by picking items that share at least one of the top
-  // contexts; fall back to popular items if none match.
-  const topContextIds = new Set(topContexts.map((c) => c.id));
-  const seasonalCandidates = items.filter((item) =>
-    item.contexts.some((c) => topContextIds.has(c.id)),
-  );
-  const seasonalItems = seasonalCandidates.length > 0
-    ? seasonalCandidates.slice(0, 4)
-    : popularItems;
-
-  const contextGroups = groupContexts(contexts);
-  const readableUserName = user ? getReadableUserName(user) : "";
+  // Stats tile numbers.
+  const itemCount = live.metrics?.item_count ?? live.items.length;
+  const totalItemsLabel = itemCount > 0 ? new Intl.NumberFormat("th-TH").format(itemCount) : "—";
+  // Number of distinct main groups (NOT sub-contexts). The static copy was
+  // "7 บริบทงาน" which matched the 7 main groups, so we keep that semantic.
+  const groupCount = useMemo(() => {
+    const groups = new Set<string>();
+    for (const ctx of live.contexts) if (ctx.group) groups.add(ctx.group);
+    return groups.size;
+  }, [live.contexts]);
+  const groupLabel = groupCount > 0 ? new Intl.NumberFormat("th-TH").format(groupCount) : "—";
 
   return (
-    <div className="section-stack">
-      <section className="portal-hero">
-        <div className="portal-hero-media">
-          <div className="portal-hero-copy">
-            <p className="eyebrow hero-badge">Research prototype</p>
-            <h1>ค้นหาชุดการแสดงไทยที่เหมาะกับงานของคุณ</h1>
-          </div>
-        </div>
-
-        <form className="portal-search-card" action="/items">
-          <div className="portal-search-intro">
-            <strong>ค้นหาชุดการแสดง</strong>
-            <span>เลือกโอกาสที่ใช้แสดงหรือเลือกคุณลักษณะจาก keyword taxonomy</span>
-          </div>
-          <div className="portal-search-fields">
-            <label className="field">
-              <span>โอกาสที่ใช้แสดง</span>
-              <select name="context">
-                <option value="">เลือกโอกาสที่ใช้แสดง</option>
-                {contextGroups.map((group) => (
-                  <optgroup key={group.label} label={group.label}>
-                    {group.contexts.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-            </label>
-            <div className="field taxonomy-field">
-              <span>เลือกคุณลักษณะการแสดงจากคำค้น</span>
-              <input type="hidden" name="q" value={selectedTaxonomyQuery} />
-              <div className="taxonomy-search-row">
-                <div className="taxonomy-combobox">
-                  <div className="taxonomy-input-shell">
-                    <input
-                      type="search"
-                      value={taxonomySearch}
-                      onChange={(e) => {
-                        setTaxonomySearch(e.target.value);
-                        setTaxonomyOpen(true);
-                      }}
-                      onClick={() => setTaxonomyOpen(true)}
-                      onFocus={() => setTaxonomyOpen(true)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && taxonomySuggestions.length > 0) {
-                          e.preventDefault();
-                          addTaxonomyTag(taxonomySuggestions[0]);
-                        }
-                      }}
-                      placeholder={selectedTaxonomyTags.length ? "เพิ่มคุณลักษณะ..." : "พิมพ์ เช่น ราช โขน พิธี ภาคใต้"}
-                      disabled={keywordTree.length === 0}
-                      aria-label="พิมพ์ค้นหาคุณลักษณะการแสดง"
-                    />
-                  </div>
-                  {taxonomyOpen && taxonomySearch.trim() ? (
-                    <div className="taxonomy-menu">
-                      <div className="taxonomy-menu-head">
-                        <strong>คำศัพท์มาตรฐานที่ตรงกับคำค้น</strong>
-                        {selectedTaxonomyTags.length > 0 ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedTaxonomyTags([]);
-                              setTaxonomySearch("");
-                              setSelectedKeywordLevel1("");
-                              setSelectedKeywordLevel2("");
-                              setSelectedKeywordLevel3("");
-                            }}
-                          >
-                            ล้าง
-                          </button>
-                        ) : null}
-                      </div>
-
-                      {taxonomySuggestions.length > 0 ? (
-                        <div className="taxonomy-suggestion-list">
-                          {taxonomySuggestions.map((tag) => (
-                            <button
-                              key={tag.key}
-                              type="button"
-                              className="taxonomy-suggestion"
-                              onClick={() => addTaxonomyTag(tag)}
-                            >
-                              <strong>{tag.label}</strong>
-                              <span>{level1LabelForPath(tag.path)}</span>
-                            </button>
-                          ))}
-                        </div>
-                      ) : null}
-
-                      {taxonomySuggestions.length === 0 ? (
-                        <p className="taxonomy-empty">ไม่พบคำศัพท์มาตรฐานที่ตรงกับคำค้นนี้</p>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-                <button
-                  type="button"
-                  className="taxonomy-browse-button"
-                  onClick={() => setTaxonomyModalOpen(true)}
-                  disabled={keywordTree.length === 0}
-                >
-                  เลือกจากหมวดหมู่
-                </button>
-              </div>
-              {selectedTaxonomyTags.length > 0 ? (
-                <div className="taxonomy-selected-list" aria-label="คุณลักษณะที่เลือก">
-                  {selectedTaxonomyTags.map((tag) => (
-                    <span key={tag.key} className="taxonomy-chip" title={tag.path || tag.label}>
-                      {tag.label}
-                      <button
-                        type="button"
-                        onClick={() => removeTaxonomyTag(tag.key)}
-                        aria-label={`ลบ ${tag.label}`}
-                      >
-                        ×
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-
-              {taxonomyModalOpen ? (
-                <div
-                  className="taxonomy-modal-backdrop"
-                  role="presentation"
-                  onClick={() => setTaxonomyModalOpen(false)}
-                >
-                  <div
-                    className="taxonomy-modal"
-                    role="dialog"
-                    aria-modal="true"
-                    aria-labelledby="taxonomy-modal-title"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="taxonomy-modal-head">
-                      <div>
-                        <strong id="taxonomy-modal-title">เลือกจากหมวดหมู่ Keyword Taxonomy</strong>
-                        <span>ไล่เลือก Level 1-3 แล้วเลือกคำศัพท์มาตรฐานที่ต้องการ</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setTaxonomyModalOpen(false)}
-                        aria-label="ปิดหน้าต่างเลือกหมวดหมู่"
-                      >
-                        ×
-                      </button>
-                    </div>
-
-                    <div className="taxonomy-browser-grid">
-                      <TaxonomyOptionList
-                        title="Level 1"
-                        options={keywordTree.map((node) => node.label)}
-                        selected={selectedKeywordLevel1}
-                        onSelect={(value) => {
-                          setSelectedKeywordLevel1(value);
-                          setSelectedKeywordLevel2("");
-                          setSelectedKeywordLevel3("");
-                        }}
-                      />
-
-                      <TaxonomyOptionList
-                        title="Level 2"
-                        options={level2Options.map((node) => node.label)}
-                        selected={selectedKeywordLevel2}
-                        onSelect={(value) => {
-                          setSelectedKeywordLevel2(value);
-                          setSelectedKeywordLevel3("");
-                        }}
-                        emptyText={selectedKeywordLevel1 ? "ไม่มี Level 2" : "เลือก Level 1 ก่อน"}
-                      />
-
-                      <TaxonomyOptionList
-                        title="Level 3"
-                        options={level3Options.map((node) => node.label)}
-                        selected={selectedKeywordLevel3}
-                        onSelect={(value) => setSelectedKeywordLevel3(value)}
-                        emptyText={selectedKeywordLevel2 ? "ไม่มี Level 3" : "เลือก Level 2 ก่อน"}
-                      />
-
-                      <TaxonomyOptionList
-                        title="Keyword"
-                        options={keywordOptions.map((keyword) => keyword.name)}
-                        selected=""
-                        onSelect={(value) => {
-                          const keyword = keywordOptions.find((item) => item.name === value);
-                          if (keyword) addTaxonomyTag(tagFromKeyword(keyword));
-                        }}
-                        emptyText={selectedKeywordLevel3 ? "ไม่มีคำศัพท์ในหมวดนี้" : "เลือก Level 3 ก่อน"}
-                      />
-                    </div>
-
-                    <div className="taxonomy-modal-actions">
-                      {selectedKeywordLevel1 ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            addTaxonomyTag(
-                              tagFromTaxonomyLevel(
-                                [selectedKeywordLevel1, selectedKeywordLevel2, selectedKeywordLevel3],
-                              ),
-                            )
-                          }
-                        >
-                          เพิ่มหมวดที่เลือก
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        className="taxonomy-text-button"
-                        onClick={() => {
-                          setSelectedKeywordLevel1("");
-                          setSelectedKeywordLevel2("");
-                          setSelectedKeywordLevel3("");
-                        }}
-                      >
-                        ล้างการเลือกหมวด
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-            <button type="submit">ค้นหา</button>
-          </div>
-        </form>
-      </section>
-
-      <section className="personalized-panel">
-        <div>
-          <p className="eyebrow">Personalized mode</p>
-          <h2 style={{ margin: 0, color: "#23386b" }}>คำแนะนำเฉพาะคุณ</h2>
-          <p className="muted" style={{ marginBottom: 0 }}>
-            {user
-              ? `คุณเข้าสู่ระบบเป็น ${readableUserName} แล้ว ระบบจะใช้การบันทึก ถูกใจ คะแนน และประวัติเดิมเพื่อปรับคำแนะนำให้ตรงขึ้น`
-              : "เลือกโอกาสและคุณลักษณะที่สนใจเพื่อให้ระบบจัดอันดับชุดการแสดงให้เหมาะกับคุณ และเมื่อเข้าสู่ระบบ ระบบจะใช้การบันทึก ถูกใจ และคะแนนเพื่อปรับคำแนะนำให้ตรงขึ้น"}
+    <div className="home home-mockup">
+      <section className="home-hero">
+        <div className="home-hero-text">
+          <h1>
+            ค้นหาชุดการแสดงที่ใช่
+            <br />
+            สำหรับทุกโอกาส
+          </h1>
+          <p className="home-hero-sub">
+            สำรวจนาฏศิลป์ไทยกว่า {totalItemsLabel !== "—" ? `${totalItemsLabel} ชุด` : "100 ชุด"}
+            พร้อมข้อมูลผู้แสดง ระยะเวลา และราคา
           </p>
-        </div>
-        <div className="actions" style={{ marginTop: 0 }}>
-          <Link className="primary" href={user ? "/recommend" : "/login?next=/recommend"}>
-            {user ? "ไปที่คำแนะนำเฉพาะคุณ" : "เริ่มรับคำแนะนำ"}
-          </Link>
-          {user ? (
-            <Link className="secondary" href="/profile">ข้อมูลผู้ใช้</Link>
-          ) : (
-            <Link className="secondary" href="/login">เข้าสู่ระบบ</Link>
-          )}
-        </div>
-      </section>
-
-      <section className="home-section-head">
-        <div>
-          <p className="eyebrow">Popular performances</p>
-          <h2>ชุดการแสดงยอดนิยม</h2>
-          <p>รายการที่ได้รับความสนใจจากผู้ใช้ในระบบ เหมาะสำหรับเริ่มสำรวจโดยยังไม่ใช้ข้อมูลเฉพาะบุคคล</p>
-        </div>
-        <Link className="secondary" href="/items">ดูทั้งหมด</Link>
-      </section>
-
-      <section className="popular-performance-grid">
-        {popularItems.map((item) => (
-          <PopularPerformanceCard
-            key={item.id}
-            item={item}
-            variant="popular"
-          />
-        ))}
-      </section>
-
-      <section className="seasonal-band">
-        <div className="seasonal-head">
-          <div>
-            <h2>{seasonalHeading}</h2>
-            <p className="muted" style={{ margin: "8px 0 0" }}>
-              {seasonalSubtitle}
-            </p>
-          </div>
-          <div className="seasonal-pill-stack" aria-label="บริบทยอดนิยม">
-            {topContextNames.length > 0 ? (
-              topContextNames.map((name) => (
-                <span key={name} className="context-pill">{name}</span>
-              ))
-            ) : (
-              <span className="context-pill subtle">ไม่มีข้อมูล</span>
-            )}
-          </div>
-        </div>
-        <div className="seasonal-grid">
-          {seasonalItems.map((item) => (
-            <PopularPerformanceCard
-              key={item.id}
-              item={item}
-              variant="seasonal"
-              topContexts={itemTopContexts(item)}
+          <form className="home-search" role="search" onSubmit={onHeroSearchSubmit}>
+            <span className="home-search-icon" aria-hidden="true">⌕</span>
+            <input
+              type="search"
+              name="q"
+              value={heroSearch}
+              onChange={(e) => setHeroSearch(e.target.value)}
+              placeholder="ค้นหาชื่อชุดการแสดง หรือโอกาสที่ต้องการ..."
+              aria-label="ค้นหาชุดการแสดง"
             />
-          ))}
+            <button type="submit" aria-label="ค้นหา">⌕</button>
+          </form>
+        </div>
+        <div className="home-hero-art" aria-hidden="true">
+          <img src="/img/hero-chatgpt-gold-lines.png" alt="" />
         </div>
       </section>
 
-      {admin ? (
-        <section data-testid="admin-cta" className="panel">
-          <p className="eyebrow">Researcher / Admin</p>
-          <h2 style={{ marginTop: 0 }}>ศูนย์บริหารข้อมูลและติดตามระบบ</h2>
-          <p className="muted">
-            เพิ่มการแสดงใหม่ ตรวจ catalog และใช้ Layer A+B grounding เพื่อช่วยเลือกคำสำคัญ
-          </p>
-          <div className="actions">
-            <Link className="primary" href="/dashboard">เปิด Dashboard ผู้วิจัย</Link>
-            <Link className="primary" href="/admin/items/new">เพิ่มการแสดงใหม่</Link>
-            <Link className="secondary" href="/admin/items">จัดการแคตตาล็อก</Link>
+      {user ? null : (
+        <section className="home-cta">
+          <div className="home-cta-media" aria-hidden="true">
+            <img src="/img/home/cta-loy-krathong.png" alt="" />
+          </div>
+          <div className="home-cta-text">
+            <h2>รับคำแนะนำที่ตรงกับความต้องการของคุณ</h2>
+            <p>สมัครสมาชิกฟรี เพื่อรับคำแนะนำเฉพาะคุณ และเข้าถึงชุดการแสดงพิเศษก่อนใคร</p>
+            <Link href="/signup" className="site-button primary">สมัครสมาชิกฟรี</Link>
+            <small>ไม่มีค่าใช้จ่าย • ยกเลิกได้ทุกเมื่อ</small>
           </div>
         </section>
-      ) : null}
-
-    </div>
-  );
-}
-
-interface SelectedTaxonomyTag {
-  key: string;
-  label: string;
-  path: string;
-  query: string;
-}
-
-function getTaxonomySuggestions(
-  keywords: KeywordOut[],
-  search: string,
-  selectedKeys: Set<string>,
-): SelectedTaxonomyTag[] {
-  const needle = search.trim().toLowerCase();
-  if (!needle) return [];
-
-  return keywords
-    .filter((keyword) => {
-      if (selectedKeys.has(keywordTagKey(keyword))) return false;
-      const haystack = `${keyword.name} ${keyword.taxonomy_path}`.toLowerCase();
-      return haystack.includes(needle);
-    })
-    .slice(0, 8)
-    .map(tagFromKeyword);
-}
-
-function tagFromKeyword(keyword: KeywordOut): SelectedTaxonomyTag {
-  return {
-    key: keywordTagKey(keyword),
-    label: keyword.name,
-    path: keyword.taxonomy_path,
-    query: keyword.name,
-  };
-}
-
-function tagFromTaxonomyLevel(parts: string[]): SelectedTaxonomyTag {
-  const labels = parts.filter(Boolean);
-  const label = labels[labels.length - 1] || "keyword taxonomy";
-  const path = labels.join(" > ");
-  return {
-    key: `taxonomy:${path}`,
-    label,
-    path,
-    query: label,
-  };
-}
-
-function keywordTagKey(keyword: KeywordOut): string {
-  return `keyword:${keyword.id}`;
-}
-
-function level1LabelForPath(path: string): string {
-  const level1 = path
-    .split(">")
-    .map((part) => part.trim())
-    .find(Boolean);
-  return level1 ? `หมวดหลัก: ${level1}` : "keyword taxonomy";
-}
-
-function TaxonomyOptionList({
-  title,
-  options,
-  selected,
-  onSelect,
-  emptyText = "ไม่มีตัวเลือก",
-}: {
-  title: string;
-  options: string[];
-  selected: string;
-  onSelect: (value: string) => void;
-  emptyText?: string;
-}) {
-  return (
-    <div className="taxonomy-level-panel">
-      <div className="taxonomy-level-title">{title}</div>
-      {options.length > 0 ? (
-        <div className="taxonomy-option-grid">
-          {options.map((option) => (
-            <button
-              key={option}
-              type="button"
-              className={option === selected ? "taxonomy-option active" : "taxonomy-option"}
-              onClick={() => onSelect(option)}
-            >
-              {option}
-            </button>
-          ))}
-        </div>
-      ) : (
-        <p className="taxonomy-empty">{emptyText}</p>
       )}
+
+      <section className="home-section">
+        <SectionHead title="ชุดการแสดงยอดนิยม" href="/popular" />
+        {!liveReady ? (
+          <SkeletonGrid count={4} />
+        ) : popularTop4.length === 0 ? (
+          <EmptyState text={live.error ? "ไม่สามารถโหลดข้อมูลจากเซิร์ฟเวอร์" : "ยังไม่มีชุดการแสดงในระบบ"} />
+        ) : (
+          <div className="home-card-grid" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
+            {popularTop4.map((item, idx) => (
+              <div key={item.id} className="popular-slot">
+                <PopularPerformanceCard item={item} variant="popular" />
+                {/* Images are hardcoded — overlay the marketing thumbnail on
+                    top of the component's media area so the live name/price
+                    show while the photo stays put. */}
+                <img
+                  src={POPULAR_IMAGES[idx] ?? POPULAR_IMAGES[0]}
+                  alt=""
+                  aria-hidden="true"
+                  className="popular-slot-thumb"
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="home-stats" aria-label="สถิติภาพรวม">
+        <StatTile
+          icon="♜"
+          value={liveReady && itemCount > 0 ? `${totalItemsLabel}+` : totalItemsLabel}
+          label="ชุดการแสดง"
+          sub="คัดสรรจากฐานข้อมูลนาฏศิลป์ไทย"
+        />
+        <StatTile
+          icon="♙"
+          value={liveReady && groupCount > 0 ? `${groupLabel}` : "—"}
+          label="กลุ่มงาน"
+          sub="ครอบคลุมทุกโอกาสสำคัญ"
+        />
+        <StatTile
+          icon="AI"
+          value="AI"
+          label="แนะนำเฉพาะคุณ"
+          sub="ค้นหาชุดการแสดงที่ตรงกับงาน งบประมาณ และความต้องการ"
+        />
+      </section>
+
+      <section className="home-section">
+        <SectionHead title="สำรวจตามหมวดหมู่" href="/items" />
+        {!liveReady ? (
+          <SkeletonGrid count={6} variant="square" />
+        ) : categoryTop6.length === 0 ? (
+          <EmptyState text="ยังไม่มีข้อมูลหมวดหมู่" />
+        ) : (
+          <div className="home-tile-grid">
+            {categoryTop6.map((cat, idx) => (
+              <Link
+                key={cat.name}
+                href={`/items?q=${encodeURIComponent(cat.name)}`}
+                className="home-category-tile"
+              >
+                <img
+                  src={CATEGORY_IMAGES[idx] ?? CATEGORY_IMAGES[0]}
+                  alt=""
+                  aria-hidden="true"
+                />
+                <strong>{cat.name}</strong>
+                <small>{formatCount(cat.count)} รายการในหมวดนี้</small>
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="home-section">
+        <SectionHead title="เลือกตามโอกาสสำคัญ" href="/items" />
+        {!liveReady ? (
+          <SkeletonGrid count={5} variant="square" />
+        ) : occasionTop5.length === 0 ? (
+          <EmptyState text="ยังไม่มีข้อมูลโอกาส" />
+        ) : (
+          <div className="home-occasion-grid">
+            {occasionTop5.map((occ, idx) => (
+              <Link
+                key={occ.name}
+                href={`/items?q=${encodeURIComponent(occ.name)}`}
+                className="home-occasion-card"
+              >
+                <img
+                  src={OCCASION_IMAGES[idx] ?? OCCASION_IMAGES[0]}
+                  alt=""
+                  aria-hidden="true"
+                />
+                <span className="home-occasion-icon" aria-hidden="true">{chipIcon(occ.name)}</span>
+                <h3>{occ.name}</h3>
+                <p>{formatCount(occ.count)} ชุดการแสดงตามโอกาสนี้</p>
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="home-section">
+        <SectionHead title="ระบบแนะนำทำงานอย่างไร" />
+        <ol className="home-how">
+          {HOW_STEPS.map((step) => (
+            <HowStep
+              key={step.n}
+              n={step.n}
+              icon={step.icon}
+              title={step.title}
+              desc={step.desc}
+            />
+          ))}
+        </ol>
+      </section>
+
     </div>
   );
 }
 
-interface KeywordTaxonomyLevel3 {
-  label: string;
-  keywords: KeywordOut[];
+// ---------------------------------------------------------------------------
+// Local presentation helpers (kept inline — small + page-specific)
+// ---------------------------------------------------------------------------
+
+function SectionHead({ title, href }: { title: string; href?: string }) {
+  return (
+    <div className="home-section-head">
+      <h2><span aria-hidden="true">❖</span>{title}</h2>
+      {href ? <Link href={href}>ดูทั้งหมด ›</Link> : null}
+    </div>
+  );
 }
 
-interface KeywordTaxonomyLevel2 {
-  label: string;
-  children: KeywordTaxonomyLevel3[];
+function StatTile({ icon, value, label, sub }: { icon: string; value: string; label: string; sub: string }) {
+  return (
+    <div className="home-stat">
+      <span className="home-stat-icon" aria-hidden="true">{icon}</span>
+      <div>
+        <strong>{value}</strong>
+        <span>{label}</span>
+        <p>{sub}</p>
+      </div>
+    </div>
+  );
 }
 
-interface KeywordTaxonomyLevel1 {
-  label: string;
-  children: KeywordTaxonomyLevel2[];
+function HowStep({ n, icon, title, desc }: { n: string; icon: string; title: string; desc: string }) {
+  return (
+    <li className="home-how-step">
+      <span className="home-how-number">{n}</span>
+      <span className="home-how-icon" aria-hidden="true">{icon}</span>
+      <div>
+        <h3>{title}</h3>
+        <p>{desc}</p>
+      </div>
+    </li>
+  );
 }
 
-function buildKeywordTaxonomy(keywords: KeywordOut[]): KeywordTaxonomyLevel1[] {
-  const tree = new Map<string, Map<string, Map<string, KeywordOut[]>>>();
-  for (const keyword of keywords) {
-    const [level1, level2, level3] = taxonomyLevelsFor(keyword);
-    if (!tree.has(level1)) tree.set(level1, new Map());
-    const level2Map = tree.get(level1)!;
-    if (!level2Map.has(level2)) level2Map.set(level2, new Map());
-    const level3Map = level2Map.get(level2)!;
-    level3Map.set(level3, [...(level3Map.get(level3) ?? []), keyword]);
-  }
+function SkeletonGrid({ count, variant }: { count: number; variant?: "square" }) {
+  return (
+    <div className={`home-card-grid ${variant === "square" ? "home-tile-grid" : ""}`} aria-hidden="true">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="popular-slot">
+          <div className="popular-card popular-card--skeleton" />
+        </div>
+      ))}
+    </div>
+  );
+}
 
-  return Array.from(tree.entries())
-    .map(([level1, level2Map]) => ({
-      label: level1,
-      children: Array.from(level2Map.entries())
-        .map(([level2, level3Map]) => ({
-          label: level2,
-          children: Array.from(level3Map.entries())
-            .map(([level3, groupKeywords]) => ({
-              label: level3,
-              keywords: groupKeywords.sort((a, b) => a.name.localeCompare(b.name, "th")),
-            }))
-            .sort((a, b) => a.label.localeCompare(b.label, "th")),
-        }))
-        .sort((a, b) => a.label.localeCompare(b.label, "th")),
-    }))
+function EmptyState({ text }: { text: string }) {
+  return (
+    <div className="home-empty">
+      <p>{text}</p>
+    </div>
+  );
+}
+
+// Tiny intl formatter — th-TH locale adds thousands separators.
+function formatCount(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return "0";
+  return new Intl.NumberFormat("th-TH").format(n);
+}
+
+function rankPopularItems(
+  items: ItemOut[],
+  engagement: Map<number, EngagementOut>,
+  limit: number,
+  opts?: { includeZeroScore?: boolean },
+): ItemOut[] {
+  const scoreFor = (id: number): number => engagement.get(id)?.engagement_score ?? 0;
+  const ratingFor = (id: number): number => engagement.get(id)?.rating_count ?? 0;
+  return [...items]
+    .filter((item) => (opts?.includeZeroScore ? true : scoreFor(item.id) > 0))
     .sort((a, b) => {
-      if (a.label === "คำศัพท์ทั่วไป") return 1;
-      if (b.label === "คำศัพท์ทั่วไป") return -1;
-      return a.label.localeCompare(b.label, "th");
-    });
+      const ds = scoreFor(b.id) - scoreFor(a.id);
+      if (ds !== 0) return ds;
+      const dr = ratingFor(b.id) - ratingFor(a.id);
+      if (dr !== 0) return dr;
+      const dm = (b.match_percent ?? 0) - (a.match_percent ?? 0);
+      if (dm !== 0) return dm;
+      return b.id - a.id;
+    })
+    .slice(0, limit);
 }
 
-function taxonomyLevelsFor(keyword: KeywordOut): [string, string, string] {
-  const parts = (keyword.taxonomy_path || "")
-    .split(">")
-    .map((part) => part.trim())
-    .filter(Boolean);
-
-  if (parts.length === 0) {
-    return ["คำศัพท์ทั่วไป", "คำค้นจากรายการการแสดง", "คำสำคัญมาตรฐาน"];
-  }
-
-  return [
-    parts[0] || "คำศัพท์ทั่วไป",
-    parts[1] || "คำค้นจากรายการการแสดง",
-    parts[2] || "คำสำคัญมาตรฐาน",
-  ];
-}
-
-function SeasonalPerformanceCard({ item, index }: { item: ItemOut; index: number }) {
-  // DEPRECATED — replaced by components/PopularPerformanceCard.tsx which
-  // fetches real legacy stats. Kept as a stub for one release to avoid
-  // breaking any leftover imports; remove in next refactor.
-  void item;
-  void index;
-  return null;
+// Same icon mapping the original page used — keeps the visual rhythm of
+// the chip badges consistent with the rest of the public pages.
+function chipIcon(label: string): string {
+  if (label.includes("เทศกาล")) return "✣";
+  if (label.includes("เผยแพร่")) return "❋";
+  if (label.includes("ราชพิธี")) return "♜";
+  if (label.includes("อวมงคล")) return "♢";
+  if (label.includes("มงคล")) return "✦";
+  return "♧";
 }

@@ -5,8 +5,8 @@ Read-only browse endpoints backed by the static catalog artifact.
 
 Two list modes:
 
-* **Browse mode** (default) — paginated search across name, description
-  and keyword names. Returns up to ``limit`` items.
+* **Browse mode** (default) — paginated search across item name first,
+  then category group, then description. Returns up to ``limit`` items.
 * **Ranked mode** (``?context=<id>``) — returns the top-10 items that
   pass the eligibility gate for the selected sub-context, sorted by
   ``match_percent`` descending (legacy ``item_list`` behaviour). Each
@@ -14,7 +14,10 @@ Two list modes:
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+import hashlib
+import threading
+import time
+from typing import Any, List, Optional
 
 import pandas as pd
 from fastapi import APIRouter, Depends, Query
@@ -25,10 +28,10 @@ from ..db import session_scope
 from ..model_loader import ArtifactLoader, get_singleton
 from ..models_db import Context, Item, ItemContext, ItemKeyword, Keyword, TaxonomyNode, User
 from ..schemas.context import ContextOut
-from ..schemas.item import ItemListOut, ItemOut, UserState
+from ..schemas.item import EngagementListOut, EngagementOut, ItemListOut, ItemOut, UserState
 from ..schemas.keyword import KeywordOut
 from ..services._ids import stable_id
-from ..services.db_query import live_user_state_for_items
+from ..services.db_query import live_item_engagement, live_user_state_for_items
 from ..services.eligibility import context_name_for_id
 from ..services.suitability import catalog_match_percent, suitability_label
 from ._user_key import get_current_user_dep, resolve_user_key
@@ -39,6 +42,15 @@ router = APIRouter(tags=["catalog"])
 # Legacy top-10 cap used by ``item_list`` when a context is selected.
 RANKED_MODE_LIMIT = 10
 
+# Cache TTL for the joined ``items + contexts + keywords + taxonomy_paths``
+# snapshot used by ``/items`` and ``/items/{id}``. The catalog corpus is
+# admin-edited, not user-driven, so 60s is well below the "feels stale"
+# threshold and absorbs the per-request join + recursive taxonomy walk
+# that the public home → /items search flow was paying on every request.
+_DB_ROWS_CACHE_TTL_SECONDS = 60.0
+_db_rows_cache: dict[str, Any] = {"data": None, "expires_at": 0.0, "signature": None}
+_db_rows_lock = threading.Lock()
+
 
 @router.get(
     "/items",
@@ -46,14 +58,20 @@ RANKED_MODE_LIMIT = 10
     summary="List active items",
     description=(
         "Returns a paginated list of active catalog items. Supports an "
-        "optional `search` substring match against `name`, `description`, "
-        "`keyword_names`, and `taxonomy_path`, an optional `context` for the legacy "
-        "top-10 ranked mode, and an optional `user_key` to populate "
-        "each item's `user_state`."
+        "optional `search` that matches item `name` first, then "
+        "`category_group`, then `description`, an optional "
+        "`context` for the legacy top-10 ranked mode, and an optional "
+        "`user_key` to populate each item's `user_state`."
     ),
 )
 def list_items(
-    search: Optional[str] = Query(None, description="Case-insensitive substring filter on name/description/keywords."),
+    search: Optional[str] = Query(
+        None,
+        description=(
+            "Case-insensitive substring filter. Matches name first, falls "
+            "back to category_group, then description. performance_type is not searched."
+        ),
+    ),
     limit: int = Query(20, ge=1, le=200, description="Max items to return (1-200). Ignored when `context` is set (top-10)."),
     offset: int = Query(0, ge=0, description="Number of items to skip for pagination. Ignored when `context` is set."),
     context: Optional[int] = Query(
@@ -73,7 +91,17 @@ def list_items(
     user: Optional[User] = Depends(get_current_user_dep),
     loader: ArtifactLoader = Depends(get_singleton),
 ) -> ItemListOut:
-    effective_user_key = resolve_user_key(user=user, body_user_key=user_key)
+    # Anonymous callers (no JWT, no ``user_key`` query param) are a
+    # first-class case for the public home → /items search flow — they
+    # have no personalised likes / saves / ratings to surface, so we
+    # skip the JWT/fallback auth dance and pass an empty ``user_key``
+    # straight through. ``live_user_state_for_items`` already short-
+    # circuits on falsy ``user_key`` so the per-row LIKE / saved /
+    # rating SELECT is never issued for anonymous traffic.
+    if user is None and not user_key:
+        effective_user_key = ""
+    else:
+        effective_user_key = resolve_user_key(user=user, body_user_key=user_key)
 
     db_items = _db_item_rows()
     if db_items is not None:
@@ -82,19 +110,7 @@ def list_items(
             return _ranked_by_context_db(active_items, context, effective_user_key, loader)
         terms = _search_terms(search)
         if terms:
-            active_items = [
-                row
-                for row in active_items
-                if _matches_all_terms(
-                    terms,
-                    [
-                        row["name"],
-                        row["description"],
-                        *(k["name"] for k in row["keywords"]),
-                        *(k.get("taxonomy_path") or "" for k in row["keywords"]),
-                    ],
-                )
-            ]
+            active_items = _filter_rows_by_search_priority(active_items, terms)
         total = len(active_items)
         page = active_items[offset : offset + limit]
         artifact_ids = [int(row["artifact_item_id"]) for row in page]
@@ -117,20 +133,7 @@ def list_items(
     # Browse mode: optional substring search + pagination.
     terms = _search_terms(search)
     if terms:
-        active = active[
-            active.apply(
-                lambda row: _matches_all_terms(
-                    terms,
-                    [
-                        row.get("name") or "",
-                        row.get("description") or "",
-                        *(row.get("keyword_names") or []),
-                        *(row.get("taxonomy_paths") or []),
-                    ],
-                ),
-                axis=1,
-            )
-        ]
+        active = _filter_dataframe_by_search_priority(active, terms)
 
     total = int(len(active))
     page = active.iloc[offset : offset + limit]
@@ -143,6 +146,93 @@ def list_items(
         ],
         total=total,
     )
+
+
+@router.get(
+    "/items/engagement",
+    response_model=EngagementListOut,
+    summary="Live engagement counters per item (public homepage ranking)",
+    description=(
+        "Returns ``{engagements, source}`` where ``engagements`` is a row "
+        "per requested artifact item id, sorted by ``engagement_score`` "
+        "desc. The score sums three live-action signals from the live "
+        "``likes``, ``saved_items``, and ``ratings`` tables (only ratings "
+        ">= ``positive_threshold`` count — low ratings reflect "
+        "dissatisfaction and are intentionally excluded). Anonymous — the "
+        "homepage uses this to rank the \"ชุดการแสดงยอดนิยม\" cards and to "
+        "surface real like / save / rating counts. Returns ``source="
+        "'disabled'`` and an empty list when the DB layer is off."
+    ),
+)
+def items_engagement(
+    ids: str = Query(
+        ...,
+        description=(
+            "Comma-separated artifact item ids, max 200. Same id space as "
+            "``ItemOut.id``. Mirrors the ``/legacy-stats`` batch route."
+        ),
+    ),
+    range: str = Query(
+        "all",
+        description="Popularity window. Accepted: all, 7d, 30d, 90d, 365d.",
+    ),
+):
+    raw = [chunk.strip() for chunk in ids.split(",")]
+    parsed: List[int] = []
+    for chunk in raw:
+        if not chunk:
+            continue
+        try:
+            parsed.append(int(chunk))
+        except ValueError:
+            continue
+    seen = set()
+    unique = [i for i in parsed if not (i in seen or seen.add(i))][:200]
+
+    from ..db import is_db_enabled
+
+    if not is_db_enabled() or not unique:
+        return EngagementListOut(engagements=[], source="disabled")
+
+    agg = live_item_engagement(item_ids=unique, window_days=_parse_engagement_range_days(range))
+    rows: List[EngagementOut] = []
+    for aid in unique:
+        v = agg.get(int(aid))
+        if v is None:
+            # Items with no engagement at all — return a zero row so the
+            # client always has a 1:1 mapping for the requested ids.
+            rows.append(
+                EngagementOut(
+                    item_id=int(aid),
+                    like_count=0,
+                    save_count=0,
+                    rating_count=0,
+                    engagement_score=0,
+                )
+            )
+        else:
+            rows.append(
+                EngagementOut(
+                    item_id=int(aid),
+                    like_count=int(v["like_count"]),
+                    save_count=int(v["save_count"]),
+                    rating_count=int(v["rating_count"]),
+                    engagement_score=int(v["engagement_score"]),
+                )
+            )
+
+    # Sort by engagement desc so callers can render the homepage top-N
+    # directly off this response without re-sorting.
+    rows.sort(key=lambda r: (-r.engagement_score, r.item_id))
+    return EngagementListOut(engagements=rows, source="postgres")
+
+
+def _parse_engagement_range_days(raw: str) -> Optional[int]:
+    text = (raw or "all").strip().lower()
+    if text in {"", "all", "all-time", "alltime"}:
+        return None
+    accepted = {"7d": 7, "30d": 30, "90d": 90, "365d": 365}
+    return accepted.get(text)
 
 
 @router.get(
@@ -162,7 +252,13 @@ def get_item(
     user: Optional[User] = Depends(get_current_user_dep),
     loader: ArtifactLoader = Depends(get_singleton),
 ) -> ItemOut:
-    effective_user_key = resolve_user_key(user=user, body_user_key=user_key)
+    # Same anonymous short-circuit as ``list_items`` — see the comment
+    # there. Empty ``user_key`` is safe because ``live_user_state_for_items``
+    # returns ``{}`` on falsy input.
+    if user is None and not user_key:
+        effective_user_key = ""
+    else:
+        effective_user_key = resolve_user_key(user=user, body_user_key=user_key)
     db_row = _db_item_row(int(item_id))
     if db_row is not None:
         state_map = live_user_state_for_items(effective_user_key, [int(item_id)])
@@ -189,59 +285,183 @@ def _matches_all_terms(terms: list[str], values: list[Any]) -> bool:
     return all(any(_matches_term(term, value) for value in value_texts) for term in terms)
 
 
+_SEARCH_FIELD_PRIORITY = ("name", "category_group", "description")
+
+
+def _filter_rows_by_search_priority(rows: list[dict[str, Any]], terms: list[str]) -> list[dict[str, Any]]:
+    for field in _SEARCH_FIELD_PRIORITY:
+        matches = [row for row in rows if _matches_all_terms(terms, [row.get(field)])]
+        if matches:
+            return matches
+    return []
+
+
+def _filter_dataframe_by_search_priority(df: pd.DataFrame, terms: list[str]) -> pd.DataFrame:
+    for field in _SEARCH_FIELD_PRIORITY:
+        if field not in df.columns:
+            continue
+        mask = df.apply(lambda row: _matches_all_terms(terms, [row.get(field)]), axis=1)
+        matches = df[mask]
+        if not matches.empty:
+            return matches
+    return df.iloc[0:0]
+
+
 def _matches_term(term: str, value: str) -> bool:
     if not term:
         return True
-    start = value.find(term)
-    while start != -1:
-        if _is_acceptable_match_boundary(term, value, start):
-            return True
-        start = value.find(term, start + 1)
-    return False
-
-
-def _is_acceptable_match_boundary(term: str, value: str, start: int) -> bool:
-    end = start + len(term)
-    if not _is_thai_text(term):
-        return True
-    # Keep short Thai keyword search permissive: "โขน" should still match
-    # compact titles such as "โขนเรื่อง..." where Thai writing omits spaces.
-    if len(term) <= 3:
-        return True
-    if end >= len(value):
-        return True
-    return not _is_thai_char(value[end])
-
-
-def _is_thai_text(value: str) -> bool:
-    return any(_is_thai_char(ch) for ch in value)
-
-
-def _is_thai_char(ch: str) -> bool:
-    return "\u0e00" <= ch <= "\u0e7f"
+    return term in value
 
 
 def _db_item_rows() -> Optional[list[dict[str, Any]]]:
-    """Return active-capable catalog rows from Postgres, or None on fallback."""
+    """Return active-capable catalog rows from Postgres, or None on fallback.
+
+    The first call joins 4 tables (items, contexts, keywords, taxonomy_nodes)
+    and walks the taxonomy tree recursively to build the per-keyword path
+    strings. On the public home → /items search path every request was
+    paying that cost, so we memoise the result in-process for
+    ``_DB_ROWS_CACHE_TTL_SECONDS``. Admin edits land on the next refresh
+    after the TTL expires; that delay is acceptable for a browse page
+    where the catalog corpus is admin-curated, not user-driven.
+    """
+    signature = _db_catalog_signature()
+    now = time.monotonic()
+    cached = _db_rows_cache["data"]
+    if (
+        cached is not None
+        and _db_rows_cache["expires_at"] > now
+        and (signature is None or _db_rows_cache.get("signature") == signature)
+    ):
+        return cached
+
+    # Lock around the actual build so a stampede of concurrent first
+    # requests doesn't fire 4 SELECTs + the recursive taxonomy walk in
+    # parallel. Slow-path callers wait on the lock and then read the
+    # cache that the first caller populates.
+    with _db_rows_lock:
+        now = time.monotonic()
+        cached = _db_rows_cache["data"]
+        if (
+            cached is not None
+            and _db_rows_cache["expires_at"] > now
+            and (signature is None or _db_rows_cache.get("signature") == signature)
+        ):
+            return cached
+        # Inside the lock we hold the post-TTL stale entry until the
+        # rebuild either succeeds or fails. Clear it now so a build
+        # failure (DB disabled / network blip) doesn't leave callers
+        # stuck on the previous corpus indefinitely.
+        _db_rows_cache["data"] = None
+        _db_rows_cache["expires_at"] = 0.0
+        _db_rows_cache["signature"] = None
+        try:
+            with session_scope() as session:
+                if session is None:
+                    return None
+                item_rows = session.execute(select(Item).order_by(Item.id)).scalars().all()
+                item_ids = [int(item.id) for item in item_rows]
+                contexts_by_item = _db_contexts_by_item(session, item_ids)
+                keywords_by_item = _db_keywords_by_item(session, item_ids)
+        except Exception:  # noqa: BLE001 - catalog must still work in artifact-only mode
+            return None
+
+        result = [
+            _db_item_to_row(
+                item,
+                contexts=contexts_by_item.get(int(item.id), []),
+                keywords=keywords_by_item.get(int(item.id), []),
+            )
+            for item in item_rows
+        ]
+        _db_rows_cache["data"] = result
+        _db_rows_cache["expires_at"] = now + _DB_ROWS_CACHE_TTL_SECONDS
+        _db_rows_cache["signature"] = signature
+        return result
+
+
+def invalidate_db_item_rows_cache() -> None:
+    """Drop the live DB catalog cache after admin writes.
+
+    External PostgreSQL edits are also detected by ``_db_catalog_signature``
+    on the next read, but in-process admin writes can invalidate directly and
+    avoid one signature comparison round-trip.
+    """
+    with _db_rows_lock:
+        _db_rows_cache["data"] = None
+        _db_rows_cache["expires_at"] = 0.0
+        _db_rows_cache["signature"] = None
+
+
+def _db_catalog_signature() -> Optional[str]:
+    """Hash the live PostgreSQL catalog shape used by ``/items``.
+
+    The cache is only safe when items, their context/keyword links, and the
+    display names behind those links are unchanged. The catalog is small, so a
+    few ordered light-weight SELECTs are cheap and make external DBeaver/SQL
+    edits visible without a backend restart.
+    """
     try:
         with session_scope() as session:
             if session is None:
                 return None
-            item_rows = session.execute(select(Item).order_by(Item.id)).scalars().all()
-            item_ids = [int(item.id) for item in item_rows]
-            contexts_by_item = _db_contexts_by_item(session, item_ids)
-            keywords_by_item = _db_keywords_by_item(session, item_ids)
-    except Exception:  # noqa: BLE001 - catalog must still work in artifact-only mode
+            chunks: list[tuple[str, list[Any]]] = [
+                (
+                    "items",
+                    session.execute(
+                        select(
+                            Item.id,
+                            Item.artifact_item_id,
+                            Item.name,
+                            Item.description,
+                            Item.category_group,
+                            Item.performance_type,
+                            Item.performers_count,
+                            Item.duration_minutes,
+                            Item.price_text,
+                            Item.image_url,
+                            Item.video_url,
+                            Item.is_active,
+                        ).order_by(Item.id)
+                    ).all(),
+                ),
+                (
+                    "contexts",
+                    session.execute(
+                        select(Context.id, Context.name, Context.group_name, Context.description)
+                        .order_by(Context.id)
+                    ).all(),
+                ),
+                (
+                    "keywords",
+                    session.execute(
+                        select(Keyword.id, Keyword.name, Keyword.taxonomy_node_id)
+                        .order_by(Keyword.id)
+                    ).all(),
+                ),
+                (
+                    "item_contexts",
+                    session.execute(
+                        select(ItemContext.item_id, ItemContext.context_id, ItemContext.validity_status)
+                        .order_by(ItemContext.item_id, ItemContext.context_id)
+                    ).all(),
+                ),
+                (
+                    "item_keywords",
+                    session.execute(
+                        select(ItemKeyword.item_id, ItemKeyword.keyword_id, ItemKeyword.source)
+                        .order_by(ItemKeyword.item_id, ItemKeyword.keyword_id)
+                    ).all(),
+                ),
+            ]
+    except Exception:  # noqa: BLE001 - catalog must still fall back gracefully
         return None
 
-    return [
-        _db_item_to_row(
-            item,
-            contexts=contexts_by_item.get(int(item.id), []),
-            keywords=keywords_by_item.get(int(item.id), []),
-        )
-        for item in item_rows
-    ]
+    digest = hashlib.sha256()
+    for label, rows in chunks:
+        digest.update(label.encode("utf-8"))
+        for row in rows:
+            digest.update(repr(tuple(row)).encode("utf-8", errors="replace"))
+    return digest.hexdigest()
 
 
 def _db_item_row(artifact_item_id: int) -> Optional[dict[str, Any]]:

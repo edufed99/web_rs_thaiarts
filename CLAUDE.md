@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working in this
 
 `web_rs_thaiarts` (this repo) holds a **new web application** that refactors the legacy Django prototype at `../web_appRS/thai_arts_webapp/`. The legacy project is **read-only** — never edit, overwrite, or commit into it.
 
-The new app uses **Next.js + TypeScript** (frontend) and **Python FastAPI** (backend). The recommendation algorithm (Eligibility-Gated Hybrid: CBF + CF ItemKNN + Hybrid WeightedSum) is ported 1:1 from the legacy code, but the runtime architecture is rebuilt so the web app **never reads CSV or calls Python scripts at request time** — only prebuilt artifacts.
+The new app uses **Next.js + TypeScript** (frontend) and **Python FastAPI** (backend). The recommendation algorithm is Eligibility-Gated Hybrid (CBF + CF ItemKNN + Hybrid WeightedSum), with the accepted serving-v2 amendments in `docs/adr.md`: item embeddings use name + description only, cold start is CBF-only, and negative ratings use monotonic additive demotion. The runtime architecture is rebuilt so the web app **never reads CSV or calls Python scripts at request time** — only prebuilt artifacts.
 
 See `docs/adr.md` for the full Architecture Decision Record.
 
@@ -110,8 +110,12 @@ When working on this repo, respect these:
 3. **The pipeline is offline.** It is the only code that touches source CSVs.
 4. **The legacy project at `../web_appRS/thai_arts_webapp/` is read-only.**
    `git diff` against its HEAD must remain clean after any work here.
-5. **Algorithm must match the legacy port.** Don't tweak eligibility, CBF,
-   CF, hybrid, or explanation behavior unless the ADR is updated first.
+5. **Algorithm behavior is governed by the ADR.** Don't tweak eligibility,
+   CBF, CF, hybrid, or explanation behavior unless the ADR is updated first.
+6. **Google OAuth clients remain separate.** `google_oauth_client.json` is the
+   admin Gmail sender; `google_login_client.json` is member OpenID Connect.
+   Member callbacks must never persist Google access/refresh tokens or place
+   the application JWT in a query string.
 
 ## API endpoints
 

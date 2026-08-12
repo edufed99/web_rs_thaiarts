@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "build_timestamp": "2026-07-29T15:52:23.309952+00:00",
+  "build_timestamp": "2026-08-12T07:16:10.830633+00:00",
   "source_root": "C:\\Users\\Pichaya\\Downloads\\web_appRS\\old code\\4.recommendation\\input",
   "item_count": 115,
   "context_count": 25,
@@ -8,8 +8,12 @@
   "positive_user_count": 156,
   "unique_item_user_edges": 87,
   "embedding_dim": 1024,
+  "embedding_text_fields": [
+    "name",
+    "description"
+  ],
   "synthetic_embeddings": false,
-  "config_hash": "3b7bf287ae67",
+  "config_hash": "32ebbe8320a5",
   "artifact_layout": {
     "models_dir": "artifacts/models/",
     "outputs_dir": "artifacts/outputs/"
@@ -17,7 +21,7 @@
   "best_model_config_path": "artifacts/outputs/best_model_config.json",
   "best_model_config": {
     "schema_version": "1.0.0",
-    "generated_at": "2026-07-29T15:52:23.305442+00:00",
+    "generated_at": "2026-08-12T07:16:10.824630+00:00",
     "experiment_output_dir": "C:\\Users\\Pichaya\\Downloads\\web_appRS1\\old code\\4.recommendation\\output",
     "selection_metric": "nDCG_mean",
     "selected_model": {

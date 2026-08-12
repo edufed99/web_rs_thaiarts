@@ -120,6 +120,45 @@ def test_find_user_by_id_missing(db_session):
     assert user_query.find_user_by_id(999) is None
 
 
+def test_google_identity_creates_and_reuses_member(db_session):
+    created, action = user_query.resolve_google_identity(
+        subject_id="google-1",
+        email="new.member@gmail.com",
+        display_name="New Member",
+        avatar_url="https://example/avatar.png",
+    )
+    assert action == "created"
+    assert created.is_admin is False
+    assert created.auth_provider == "google"
+    assert created.email_verified is True
+    again, action = user_query.resolve_google_identity(
+        subject_id="google-1", email="new.member@gmail.com"
+    )
+    assert action == "existing"
+    assert again.id == created.id
+
+
+def test_google_identity_links_one_existing_email(db_session):
+    old = user_query.create_user(
+        "existing", "$2b$12$aa", email="existing@gmail.com", is_admin=False
+    )
+    linked, action = user_query.resolve_google_identity(
+        subject_id="google-linked", email="EXISTING@gmail.com"
+    )
+    assert action == "linked"
+    assert linked.id == old.id
+    assert linked.auth_provider == "password+google"
+
+
+def test_google_identity_refuses_ambiguous_shared_email(db_session):
+    user_query.create_user("one", "hash", email="shared@gmail.com", is_admin=False)
+    user_query.create_user("two", "hash", email="shared@gmail.com", is_admin=False)
+    with pytest.raises(user_query.AmbiguousGoogleEmailError):
+        user_query.resolve_google_identity(
+            subject_id="google-shared", email="shared@gmail.com"
+        )
+
+
 def test_disabled_db_short_circuits(monkeypatch):
     monkeypatch.setattr(user_query, "is_db_enabled", lambda: False)
     assert user_query.find_user_by_username("any") is None

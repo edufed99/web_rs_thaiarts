@@ -24,8 +24,7 @@ def build_explanation(
     has_keyword_match = bool(matched_keywords)
     has_keyword_query = bool([name for name in selected_keyword_names if str(name).strip()])
     has_content_signal = cbf_score > 0
-    # A positive CF score is not sufficient evidence of personal history:
-    # cold-start users receive popularity scores through the same field.  Only
+    # A positive CF score alone is not sufficient explanation evidence. Only
     # mention past behaviour when the recommendation service supplies a
     # grounded action + trait sentence.
     clean_history_reason = str(history_reason or "").strip().rstrip(".")

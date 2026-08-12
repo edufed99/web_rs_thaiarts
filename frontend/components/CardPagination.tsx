@@ -10,6 +10,8 @@ interface CardPaginationProps {
   onPageChange: (page: number) => void;
   pageSize?: number;
   scrollTargetId?: string;
+  ariaLabel?: string;
+  itemLabel?: string;
 }
 
 export function CardPagination({
@@ -18,6 +20,8 @@ export function CardPagination({
   onPageChange,
   pageSize = CARD_PAGE_SIZE,
   scrollTargetId,
+  ariaLabel = "เปลี่ยนหน้ารายการชุดการแสดง",
+  itemLabel = "รายการ",
 }: CardPaginationProps) {
   const totalPages = Math.ceil(totalItems / pageSize);
   if (totalPages <= 1) return null;
@@ -39,9 +43,9 @@ export function CardPagination({
   }
 
   return (
-    <nav className="card-pagination" aria-label="เปลี่ยนหน้ารายการชุดการแสดง">
+    <nav className="card-pagination" aria-label={ariaLabel}>
       <p className="card-pagination-summary">
-        แสดง {start}–{end} จาก {totalItems} รายการ
+        แสดง {start}–{end} จาก {totalItems} {itemLabel}
       </p>
       <div className="card-pagination-controls">
         <button

@@ -15,6 +15,7 @@ import type {
   DashboardOut,
   GmailOAuthStartOut,
   GmailOAuthStatusOut,
+  GoogleLoginExchange,
   EngagementListOut,
   HealthOut,
   HistoryListOut,
@@ -634,6 +635,28 @@ export async function postSignup(body: UserSignup): Promise<TokenOut> {
 
 export async function postLogin(body: UserLogin): Promise<TokenOut> {
   const res = await fetch(`${baseUrl()}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  return handle<TokenOut>(res);
+}
+
+export function googleLoginStartUrl(nextPath = "/recommend"): string {
+  const target = new URL(baseUrl());
+  // The Google client redirects to localhost. Keep the start request on the
+  // same hostname so the HttpOnly OAuth state cookie reaches the callback.
+  if (target.hostname === "127.0.0.1") target.hostname = "localhost";
+  target.pathname = "/auth/google/login/start";
+  target.search = new URLSearchParams({ next: nextPath }).toString();
+  return target.toString();
+}
+
+export async function postGoogleLoginExchange(
+  body: GoogleLoginExchange,
+): Promise<TokenOut> {
+  const res = await fetch(`${baseUrl()}/auth/google/login/exchange`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

@@ -51,7 +51,7 @@ export function SiteFooter() {
         <div className="site-footer-col">
           <h3>ติดต่อเรา</h3>
           <ul className="contact">
-            <li>✉ <a href="mailto:adminrstpa@gmail.com">adminrstpa@gmail.com</a></li>
+            <li>✉ <a href="mailto:dpatt148@gmail.com">dpatt148@gmail.com</a></li>
             <li>📍 Faculty of Arts Education, Bunditpatanasilpa Institute of Fine Arts, Ministry of Culture</li>
           </ul>
         </div>

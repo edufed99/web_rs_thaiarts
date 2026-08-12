@@ -19,7 +19,7 @@ def _settings(tmp_path, **overrides):
         "gmail_oauth_refresh_token": "",
         "gmail_oauth_redirect_uri": "http://localhost:8001/auth/google/callback",
         "gmail_oauth_token_file": tmp_path / "gmail-token.json",
-        "gmail_sender_email": "adminrstpa@gmail.com",
+        "gmail_sender_email": "dpatt148@gmail.com",
         "frontend_base_url": "http://localhost:3000",
         "password_reset_token_minutes": 30,
         "smtp_host": "",
@@ -193,7 +193,7 @@ def test_admin_oauth_helpers_do_not_expose_secrets(tmp_path, monkeypatch):
     monkeypatch.setattr(admin.gmail_oauth, "authorized", lambda: False)
     monkeypatch.setattr(admin.mailer, "delivery_configured", lambda: False)
     status = admin.gmail_oauth_status(admin_user=object())
-    assert status.sender_email == "adminrstpa@gmail.com"
+    assert status.sender_email == "dpatt148@gmail.com"
     assert "secret" not in status.model_dump()
 
     monkeypatch.setattr(admin.gmail_oauth, "start_authorization", lambda: "https://accounts.example/auth")

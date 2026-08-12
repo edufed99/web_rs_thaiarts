@@ -11,11 +11,15 @@ client's declared ``Content-Type``.
 from __future__ import annotations
 
 import imghdr
+import io
 import logging
 import os
 import uuid
 from pathlib import Path
 from typing import Optional, Tuple
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 from fastapi import UploadFile
 
@@ -37,6 +41,78 @@ _IMGHDR_TO_EXT = {
     "png": ".png",
     "webp": ".webp",
 }
+
+
+def is_allowed_remote_image_url(url: str, allowed_hosts: set[str]) -> bool:
+    """Return whether an HTTPS image URL belongs to an explicitly trusted host."""
+    parsed = urlparse((url or "").strip())
+    return (
+        parsed.scheme == "https"
+        and parsed.hostname is not None
+        and parsed.hostname.lower() in {host.lower() for host in allowed_hosts}
+    )
+
+
+def save_remote_image(
+    url: str,
+    dest_dir: Path,
+    *,
+    prefix: str,
+    max_bytes: int,
+    allowed_mime: set,
+    allowed_hosts: set[str],
+    public_subdir: str = "profiles",
+) -> Tuple[str, str, int, str]:
+    """Download a trusted remote image and store it as an ordinary upload.
+
+    The host allow-list and size bound keep this helper unsuitable as a
+    general-purpose URL fetcher. Google profile photos are mirrored locally so
+    browsers never need to load a third-party image from the profile page.
+    """
+    if not is_allowed_remote_image_url(url, allowed_hosts):
+        raise InvalidRequestError(
+            "Remote image host is not allowed",
+            extra={"code": "remote_image_host_not_allowed"},
+        )
+    request = Request(
+        url,
+        headers={"Accept": "image/*", "User-Agent": "ThaiPerform/1.0"},
+    )
+    try:
+        with urlopen(request, timeout=10) as response:
+            final_url = response.geturl()
+            if not is_allowed_remote_image_url(final_url, allowed_hosts):
+                raise InvalidRequestError(
+                    "Remote image redirected to an untrusted host",
+                    extra={"code": "remote_image_redirect_not_allowed"},
+                )
+            declared_size = response.headers.get("Content-Length")
+            if declared_size and int(declared_size) > max_bytes:
+                raise InvalidRequestError(
+                    f"Image too large (max {max_bytes // (1024 * 1024)} MB)",
+                    extra={"code": "image_too_large", "max_bytes": max_bytes},
+                )
+            payload = response.read(max_bytes + 1)
+    except InvalidRequestError:
+        raise
+    except (HTTPError, URLError, OSError, TypeError, ValueError) as exc:
+        raise InvalidRequestError(
+            "Remote profile image could not be downloaded",
+            extra={"code": "remote_image_download_failed"},
+        ) from exc
+    if len(payload) > max_bytes:
+        raise InvalidRequestError(
+            f"Image too large (max {max_bytes // (1024 * 1024)} MB)",
+            extra={"code": "image_too_large", "max_bytes": max_bytes},
+        )
+    return save_upload(
+        UploadFile(filename="remote-profile-image", file=io.BytesIO(payload)),
+        dest_dir,
+        prefix=prefix,
+        max_bytes=max_bytes,
+        allowed_mime=allowed_mime,
+        public_subdir=public_subdir,
+    )
 
 
 def sniff_mime(file: UploadFile) -> Tuple[Optional[str], Optional[str]]:

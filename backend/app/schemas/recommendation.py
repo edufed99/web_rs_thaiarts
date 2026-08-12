@@ -55,7 +55,10 @@ class ScoresOut(BaseModel):
     """Per-model component scores that were fused into the hybrid ranking."""
 
     cbf: float = Field(..., description="Content-based score (cosine + keyword boost).")
-    cf: float = Field(..., description="Collaborative-filtering score (ItemKNN or popularity).")
+    cf: float = Field(
+        ...,
+        description="ItemKNN collaborative-filtering score; zero during cold start.",
+    )
     hybrid: float = Field(..., description="Final fused hybrid score.")
 
 

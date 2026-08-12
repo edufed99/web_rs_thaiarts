@@ -93,6 +93,108 @@ def test_verify_password_empty_inputs():
     assert verify_password("anything", "") is False
 
 
+def test_google_login_start_sets_state_cookie(client, monkeypatch):
+    from app.routers import auth as auth_router
+
+    monkeypatch.setattr(
+        auth_router.google_login_oauth,
+        "start_authorization",
+        lambda next_path: ("https://accounts.example/authorize", "state-123"),
+    )
+    response = client.get(
+        "/auth/google/login/start?next=/profile", follow_redirects=False
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "https://accounts.example/authorize"
+    assert "thaiperform_google_login_state=state-123" in response.headers["set-cookie"]
+
+
+def test_google_login_callback_issues_one_time_code(client, monkeypatch):
+    from app.routers import auth as auth_router
+    from app.services.google_login_oauth import GoogleIdentity
+
+    identity = GoogleIdentity("sub", "person@gmail.com", "Person", "")
+    monkeypatch.setattr(
+        auth_router.google_login_oauth,
+        "complete_authorization",
+        lambda *_: (identity, "/profile"),
+    )
+    monkeypatch.setattr(
+        auth_router.user_query,
+        "resolve_google_identity",
+        lambda **_: (SimpleNamespace(id=17), "created"),
+    )
+    monkeypatch.setattr(auth_router.user_query, "set_last_login", lambda *_: None)
+    monkeypatch.setattr(
+        auth_router.google_login_oauth, "issue_login_code", lambda *_: "exchange-code"
+    )
+    client.cookies.set(
+        auth_router.google_login_oauth.STATE_COOKIE,
+        "state-123",
+        path="/auth/google/login/callback",
+    )
+    response = client.get(
+        "/auth/google/login/callback?code=google-code&state=state-123",
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert "code=exchange-code" in response.headers["location"]
+    assert "next=%2Fprofile" in response.headers["location"]
+
+
+def test_google_login_callback_rejects_mismatched_state(client):
+    response = client.get(
+        "/auth/google/login/callback?code=google-code&state=wrong",
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert "error=invalid_google_state" in response.headers["location"]
+
+
+def test_google_avatar_cache_does_not_overwrite_member_upload(monkeypatch):
+    from app.routers import auth as auth_router
+
+    monkeypatch.setattr(
+        auth_router.user_query,
+        "get_member_profile",
+        lambda *_: {"avatar_url": "/uploads/profiles/member-choice.jpg"},
+    )
+    called = []
+    monkeypatch.setattr(
+        auth_router.storage,
+        "save_remote_image",
+        lambda *_args, **_kwargs: called.append(True),
+    )
+
+    auth_router._mirror_google_avatar(
+        SimpleNamespace(id=5),
+        "https://lh3.googleusercontent.com/a/google-photo",
+    )
+
+    assert called == []
+
+
+def test_google_login_exchange_returns_app_jwt(client, monkeypatch):
+    from app.routers import auth as auth_router
+
+    signup_response = client.post(
+        "/auth/signup",
+        json={"username": "google_member", "password": "secret123"},
+    )
+    user_id = signup_response.json()["user"]["id"]
+    monkeypatch.setattr(
+        auth_router.google_login_oauth,
+        "consume_login_code",
+        lambda *_: (user_id, "/recommend"),
+    )
+    response = client.post(
+        "/auth/google/login/exchange", json={"code": "x" * 24}
+    )
+    assert response.status_code == 200
+    assert response.json()["user"]["id"] == user_id
+    assert response.json()["access_token"]
+
+
 def test_hash_password_non_string_raises():
     with pytest.raises(TypeError):
         hash_password(123)  # type: ignore[arg-type]

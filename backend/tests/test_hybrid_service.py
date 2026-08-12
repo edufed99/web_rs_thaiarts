@@ -62,15 +62,16 @@ def test_alpha_default_from_settings():
     assert fused2[1] > fused2[2]
 
 
-def test_negative_penalty_scales_by_rating():
-    scores = {1: 1.0, 2: 0.5, 3: 0.2}
+def test_negative_penalty_subtracts_rating_severity():
+    scores = {1: 1.0, 2: 0.5, 3: -0.2, 4: 0.8}
     adjusted = apply_negative_penalty(
-        scores, {2: 3, 3: 1}, alpha=1.0,
+        scores, {2: 3, 3: 1}, strength=1.0,
     )
-    # factor = (rating/5)^1
     assert adjusted[1] == 1.0  # not penalized
-    assert adjusted[2] == pytest.approx(0.5 * (3/5))
-    assert adjusted[3] == pytest.approx(0.2 * (1/5))
+    assert adjusted[2] == pytest.approx(0.5 - (1 / 3))
+    assert adjusted[3] == pytest.approx(-0.2 - 1.0)
+    assert adjusted[3] < scores[3]  # negative scores are demoted, never raised
+    assert adjusted[4] == scores[4]
 
 
 def test_negative_penalty_no_negatives_is_noop():
@@ -84,10 +85,22 @@ def test_negative_penalty_ignores_unknown_items():
     assert adjusted == scores
 
 
-def test_negative_penalty_with_alpha_exponent():
+def test_negative_penalty_strength_scales_subtraction():
     scores = {1: 1.0}
-    adjusted = apply_negative_penalty(scores, {1: 2}, alpha=2.0)
-    assert adjusted[1] == pytest.approx(1.0 * (2/5)**2)
+    adjusted = apply_negative_penalty(scores, {1: 2}, strength=2.0)
+    assert adjusted[1] == pytest.approx(1.0 - (2.0 * 2 / 3))
+
+
+def test_negative_penalty_never_increases_scores():
+    scores = {1: 2.0, 2: 0.0, 3: -2.0}
+    adjusted = apply_negative_penalty(scores, {1: 3, 2: 2, 3: 1})
+    assert all(adjusted[item_id] <= score for item_id, score in scores.items())
+
+
+def test_negative_penalty_ignores_non_negative_ratings():
+    scores = {1: 0.5, 2: -0.5}
+    adjusted = apply_negative_penalty(scores, {1: 4, 2: 5})
+    assert adjusted == scores
 
 
 def test_empty_inputs_returns_empty():

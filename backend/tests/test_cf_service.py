@@ -30,17 +30,14 @@ def candidates(loader):
     ]
 
 
-def test_no_history_falls_back_to_popularity(loader, candidates):
+def test_no_history_returns_zero_cf_for_cbf_only_cold_start(loader, candidates):
     scores = score_items_by_itemknn(loader, "user:unknown", candidates)
-    # All items have different popularity
-    for cid in {c["item_id"] for c in candidates}:
-        assert cid in scores
-    assert all(v >= 0 for v in scores.values())
+    assert scores == {c["item_id"]: 0.0 for c in candidates}
 
 
-def test_no_user_key_returns_popularity(loader, candidates):
+def test_no_user_key_returns_zero_cf(loader, candidates):
     scores = score_items_by_itemknn(loader, None, candidates)
-    assert all(v >= 0 for v in scores.values())
+    assert scores == {c["item_id"]: 0.0 for c in candidates}
 
 
 def test_known_user_gets_itemknn(loader):
@@ -179,7 +176,7 @@ def live_db_for_cf(monkeypatch, loader):
 def test_live_like_brings_user_into_itemknn(loader, live_db_for_cf):
     """A fresh anon:<uuid> user with one live like should get non-zero
     ItemKNN scores for items that share a user with the liked item's
-    synthetic user (rather than falling back to popularity)."""
+    synthetic user (rather than remaining in CBF-only cold start)."""
     from app.models_db import Like
     SessionLocal, aid_to_db = live_db_for_cf
     # user:u1 positively rated ระบำ in the static artifact. We have
@@ -226,9 +223,9 @@ def test_merged_cf_index_includes_live_positive_users(loader, live_db_for_cf):
     assert rating_weight[f"legacy:live-merge::{aid_khon}"] == pytest.approx(1.0)
 
 
-def test_live_history_keeps_user_out_of_popularity_fallback(loader, live_db_for_cf):
+def test_live_history_keeps_user_out_of_cbf_only_cold_start(loader, live_db_for_cf):
     """If a user has at least one live like, _get_user_history must
-    surface it so we don't fall back to raw popularity scores."""
+    surface it so ItemKNN can contribute a CF signal."""
     from app.services.cf_service import _get_user_history
     from app.models_db import Like
 

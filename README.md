@@ -120,6 +120,21 @@ See `docs/adr.md` for the full Architecture Decision Record.
 
 ---
 
+## Google sign-in for members
+
+Member sign-in uses its own Google Cloud Web OAuth client, separate from the
+admin Gmail sender. Keep the downloaded client outside Git at
+`backend/data/secrets/google_login_client.json` and configure:
+
+```env
+RECSYS_GOOGLE_LOGIN_CLIENT_FILE=data/secrets/google_login_client.json
+RECSYS_GOOGLE_LOGIN_REDIRECT_URI=http://localhost:8001/auth/google/login/callback
+```
+
+The Google client must allow `http://localhost:3000` as a JavaScript origin
+and the exact redirect URI above. Apply migrations with
+`python -m alembic -c alembic.ini upgrade head` from `backend/`.
+
 ## Run the pipeline (artifact generation)
 
 The pipeline is the **only** code that reads source CSVs. It produces 7
@@ -185,7 +200,7 @@ Config (env vars, all prefixed `RECSYS_`):
 | `RECSYS_ITEMKNN_SHRINK` | 50.0 | Cosine shrinkage |
 | `RECSYS_POSITIVE_THRESHOLD` | 4 | Min rating for "liked" |
 | `RECSYS_RATING_FLOOR` | 0.01 | Normalized rating floor |
-| `RECSYS_NEGATIVE_PENALTY_ALPHA` | 1.0 | Negative penalty exponent |
+| `RECSYS_NEGATIVE_PENALTY_ALPHA` | 1.0 | Additive negative-rating penalty strength (legacy env name) |
 | `RECSYS_MIN_CANDS` | 10 | Min candidate pool size |
 | `RECSYS_MAX_CANDS` | (none) | Max candidate pool size |
 | `RECSYS_DEFAULT_TOP_K` | 10 | Default top-K |
@@ -272,7 +287,7 @@ See `docs/adr.md` §11 for the full out-of-scope list.
 ## Migration rules (followed)
 
 - ✅ Read code from the legacy `thai_arts_webapp/` to understand logic
-- ✅ Preserved the algorithm 1:1 (eligibility, CBF, CF ItemKNN, hybrid, explanation)
+- ✅ Eligibility-gated CBF + ItemKNN + WeightedSum, with documented serving-v2 behavior (name+description item embeddings, CBF-only cold start, monotonic negative demotion)
 - ✅ Did not overwrite or modify the legacy project (`git diff` clean)
 - ✅ All new code lives under `C:\Users\Pichaya\Downloads\web_appRS1\`
 - ✅ Backend never reads CSV at serving time; only loads prebuilt artifacts

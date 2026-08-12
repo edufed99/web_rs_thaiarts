@@ -2,7 +2,13 @@
 
 **Status:** Accepted
 **Date:** 2026-07-28
-**Scope:** Replace the Django-based `thai_arts_webapp` runtime architecture with a Next.js + FastAPI split, while preserving the recommendation algorithm unchanged.
+**Scope:** Replace the Django-based `thai_arts_webapp` runtime architecture with a Next.js + FastAPI split, with the serving-v2 amendments recorded below.
+
+**Serving-v2 amendment (2026-08-12):** The accepted serving behavior intentionally
+uses paper-faithful item passages (`name + description`), an all-zero CF vector
+for cold-start requests (therefore CBF-only ordering), and a monotonic additive
+negative-rating demotion. Eligibility, ItemKNN scoring for users with history,
+z-score calibration, and Hybrid-WeightedSum remain unchanged.
 
 ---
 
@@ -104,7 +110,7 @@ The deliverable of this refactor is a **new** project at `web_appRS1/` (root) th
 **Hard rule (broadened 2026-07-28):** no Python file under `backend/` reads CSV at serving time **or at admin-ingest time**. The pipeline reads CSVs and writes artifacts; the backend reads artifacts.
 
 **Runtime-embedding exception (admin ingest only):** an authenticated admin may submit a new item via `POST /admin/items`. To keep recommendations fresh without re-running the pipeline, the backend:
-1. Computes a fresh embedding for the new item using `multilingual-e5-large-instruct` via `services/embedding.encode_item_text` (~2-3 s on CPU).
+1. Computes a fresh embedding from the item **name + description only** using `multilingual-e5-large-instruct` via `services/embedding.encode_item_text` (~2-3 s on CPU). Contexts remain eligibility evidence and keywords remain explicit boost evidence; neither is included in the dense item passage.
 2. Inserts the row into Postgres (`items`, `item_contexts`, `item_keywords`).
 3. Calls `ArtifactLoader.append_item(...)` under `get_lock()` to mutate the in-memory catalog + embedding matrix + CF index in place.
 
@@ -385,8 +391,8 @@ backend/tests/
 | **Artifact staleness.** If source CSVs change, recommendations go stale silently. | `metadata.json` carries `build_timestamp` and `config_hash`; `/health` exposes them; `README.md` documents how to re-run the pipeline. |
 | **Cold start latency.** Loading `artifacts.parquet` + npz on first request is slower than DB. | Use FastAPI `lifespan` to load once at startup, not per-request. Target < 2 s for 1k items. |
 | **Sentence-transformers still needed at pipeline time** to embed new items. | Pipeline is offline; no serving-time impact. Document `pip install sentence-transformers` as a pipeline-only dep. |
-| **No user personalization at runtime** in this MVP (the legacy `personalized_recommendations_from_history` is deferred). | **RESOLVED.** See §11 (live personalization is now in scope). CF merges live `likes` / `ratings` from Postgres on top of the static artifact via `live_positive_users_per_item_artifact()` + `live_user_positive_items()`. |
-| **Language mismatch on negative penalty.** Legacy `apply_negative_penalty` requires live user ratings per request. | **RESOLVED.** `recommendation_service.generate_recommendations` calls `apply_negative_penalty(hybrid, live_user_negative_ratings(user_key), alpha=negative_penalty_alpha)` exactly as `recommender.services.apply_negative_penalty` does. |
+| **No user personalization at runtime** in this MVP (the legacy `personalized_recommendations_from_history` is deferred). | **RESOLVED.** See §11 (live personalization is now in scope). CF merges live `likes` / `ratings` from Postgres on top of the static artifact via `live_positive_users_per_item_artifact()` + `live_user_positive_items()`. A user with no positive history receives an all-zero CF vector rather than popularity fallback, so ordering is CBF-only. |
+| **Negative-score inversion under multiplicative penalty.** Multiplying a negative z-calibrated Hybrid score by a factor below one raises it toward zero. | **RESOLVED in serving-v2.** `apply_negative_penalty` subtracts `strength * (positive_threshold - rating) / (positive_threshold - 1)`, clamped to `[0, strength]`. A penalized score can never exceed its unadjusted score. |
 | **Item id bridge (artifact vs Django id).** The pipeline's `stable_id("item", name)` and the imported Django `items.id` live in different id spaces, so any DB join was silently empty. | **RESOLVED.** Migration `0002_artifact_item_id` adds `items.artifact_item_id` (backfilled from `items.name` via the same `stable_id`) and `db_query.live_positive_users_per_item_artifact()` joins through it. |
 | **Two systems coexisting.** During transition both Django and FastAPI may run on different ports. | Use ports 8080 (backend) and 3000 (frontend). Django stays at 8000. Document in README. |
 | **Coverage threshold may be brittle** as new code lands. | Pre-commit hook (out of scope here) could enforce; for now, CI is manual `pytest` run. |
@@ -408,6 +414,7 @@ The following are explicitly **not** part of this refactor:
    - **JWT-vs-anon translation.** All write endpoints (`/actions/*`, `/admin/*`) require `Authorization: Bearer <jwt>`. The `User` resolves to `user_key = "user:<id>"`. Catalog browse (`GET /items`, `GET /items/{id}`) and `POST /recommendations` accept either: a JWT (server picks it) **or** an opaque `user_key` body/query that starts with `anon:`. Mismatch (JWT + non-anon body) raises 401. Implemented in `routers/_user_key.py:resolve_user_key`.
    - **JWT secret** defaults to `"dev-only-change-me"` for tests; **rotate before any production deployment** via `RECSYS_JWT_SECRET` env var. HS256 — no JWKS needed.
    - **Password reset.** Reset links carry a random one-time token; only SHA-256 is stored, tokens expire after 30 minutes, and username + email must match. SMTP credentials are environment-only. Email verification at signup and 2FA remain out of scope.
+   - **Google member sign-in (2026-08-12).** A separate Web OAuth client requests only `openid email profile`; it is never reused for Gmail sending. Authorization Code + PKCE and a browser-bound state cookie protect the callback. The callback sends the frontend an opaque, 120-second, single-use exchange code rather than putting the application JWT in the URL. Google `sub` is the durable identity. A unique existing email is linked to the same user ID (preserving Like/Save/Rating history); a shared email is rejected as ambiguous; new Google users are always non-admin. The local in-memory state/code store is appropriate for this single-process deployment and must move to Redis or another shared TTL store before multi-instance deployment.
 2. ~~**Live user personalization** (`personalized_recommendations_from_history`, like / save / rate actions).~~ **In scope as of 2026-07-28.** Tables `likes` / `saved_items` / `ratings` / `interaction_logs` exist; the `/actions/*` endpoints persist writes; `cf_service` merges live history into the ItemKNN index; `recommendation_service` applies `apply_negative_penalty` for negative ratings.
 3. **Migration of existing PostgreSQL data.** The Django DB stays where it is; the new system reads CSVs and rebuilds artifacts from scratch. (Live-action tables are owned by Alembic; legacy `legacy_interactions` data is migrated once via `pipelines/migrate_sqlite_to_postgres.py`.)
 4. **CI/CD, Docker, deployment scripts.** Manual `uvicorn` and `npm run dev` only. (Docker compose for the local Postgres is the only exception.)

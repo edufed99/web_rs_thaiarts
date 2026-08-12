@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-import { ApiClientError, postLogin, postSignup } from "@/lib/api";
+import { ApiClientError, googleLoginStartUrl, postLogin, postSignup } from "@/lib/api";
 import { storeToken } from "@/lib/auth";
 
 export interface AuthFormProps {
@@ -15,6 +15,10 @@ export function AuthForm({ mode }: AuthFormProps) {
   const router = useRouter();
   const search = useSearchParams();
   const requestedNextPath = (search?.get("next") ?? "").trim();
+  const safeNextPath =
+    requestedNextPath.startsWith("/") && !requestedNextPath.startsWith("//")
+      ? requestedNextPath
+      : "/recommend";
 
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -45,7 +49,7 @@ export function AuthForm({ mode }: AuthFormProps) {
       // protected page that initiated login, or /recommend by default.
       const nextPath = out.user.is_admin
         ? "/admin"
-        : requestedNextPath || "/recommend";
+        : safeNextPath;
       router.replace(nextPath);
     } catch (e) {
       setError(e instanceof ApiClientError ? e.message : String(e));
@@ -85,6 +89,37 @@ export function AuthForm({ mode }: AuthFormProps) {
         <p className="muted" style={{ margin: "0.25rem 0 0 0", fontSize: "0.9rem" }}>
           {subtitle}
         </p>
+      </div>
+
+      <a
+        href={googleLoginStartUrl(safeNextPath)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: "0.65rem",
+          minHeight: 48,
+          border: "1px solid #c8ccd4",
+          borderRadius: 8,
+          background: "#fff",
+          color: "#24324a",
+          fontWeight: 800,
+          textDecoration: "none",
+        }}
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+          <path fill="#4285F4" d="M22.6 12.2c0-.7-.1-1.5-.2-2.2H12v4.2h6c-.3 1.3-1 2.4-2.1 3.1V20h3.4c2-1.9 3.3-4.6 3.3-7.8Z" />
+          <path fill="#34A853" d="M12 23c3 0 5.5-1 7.3-3l-3.4-2.7c-.9.6-2.2 1-3.9 1-3 0-5.5-2-6.4-4.7H2.1v2.7A11 11 0 0 0 12 23Z" />
+          <path fill="#FBBC05" d="M5.6 13.6a6.5 6.5 0 0 1 0-4.2V6.7H2.1a11 11 0 0 0 0 9.6l3.5-2.7Z" />
+          <path fill="#EA4335" d="M12 4.7c1.8 0 3.3.6 4.6 1.8L19.7 3A10.5 10.5 0 0 0 12 0 11 11 0 0 0 2.1 6.7l3.5 2.7C6.5 6.7 9 4.7 12 4.7Z" />
+        </svg>
+        ดำเนินการต่อด้วย Google
+      </a>
+
+      <div className="muted" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ height: 1, flex: 1, background: "#ddd5c5" }} />
+        <span>หรือใช้ชื่อผู้ใช้และรหัสผ่าน</span>
+        <span style={{ height: 1, flex: 1, background: "#ddd5c5" }} />
       </div>
 
       <label className="field">

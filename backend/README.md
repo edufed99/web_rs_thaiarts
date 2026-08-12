@@ -70,6 +70,13 @@ the full list. Common ones:
 | `RECSYS_HYBRID_ALPHA` | 0.7 | CBF weight in hybrid |
 | `RECSYS_CBF_KEYWORD_BOOST` | 0.05 | Additive boost on keyword hit |
 | `RECSYS_CORS_ORIGINS` | `["http://localhost:3000"]` | Allowed CORS origins |
+| `RECSYS_GOOGLE_LOGIN_CLIENT_FILE` | `data/secrets/google_login_client.json` | Private Web OAuth client for member login |
+| `RECSYS_GOOGLE_LOGIN_REDIRECT_URI` | `http://localhost:8001/auth/google/login/callback` | Exact Google member callback URI |
+
+Member Google login uses Authorization Code + PKCE through
+`/auth/google/login/start`, `/auth/google/login/callback`, and
+`/auth/google/login/exchange`. It is separate from the admin Gmail sender
+OAuth flow and requests only `openid email profile`.
 
 ## Layout
 
@@ -88,7 +95,7 @@ backend/
 │   ├── services/              Algorithm + DB queries
 │   │   ├── eligibility.py     context + keyword filter
 │   │   ├── cbf_service.py     E5 cosine + keyword boost
-│   │   ├── cf_service.py      ItemKNN + popularity + live-DB merge
+│   │   ├── cf_service.py      ItemKNN + zero-CF cold start + live-DB merge
 │   │   ├── hybrid_service.py  z-score weighted sum
 │   │   ├── db_query.py        live DB queries (live_positive_users_per_item)
 │   │   └── recommendation_service.py

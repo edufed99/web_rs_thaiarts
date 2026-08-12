@@ -494,8 +494,8 @@ def generate_recommendations(
     )
     hybrid = weighted_sum(cbf, cf, settings=settings)
 
-    # 4b. Negative-rating penalty: items the user rated below the positive
-    #     threshold (live DB only — mirrors legacy services.apply_negative_penalty).
+    # 4b. Negative-rating penalty: monotonically demote items the user rated
+    #     below the positive threshold (live DB only).
     negative_ratings: Dict[int, int] = {}
     if request.user_key:
         negative_ratings = live_user_negative_ratings(
@@ -503,7 +503,10 @@ def generate_recommendations(
         )
     if negative_ratings:
         hybrid = apply_negative_penalty(
-            hybrid, negative_ratings, alpha=settings.negative_penalty_alpha
+            hybrid,
+            negative_ratings,
+            strength=settings.negative_penalty_alpha,
+            positive_threshold=settings.positive_threshold,
         )
 
     # 5. Rank by (hybrid, cbf, name) desc, take top_k
@@ -619,7 +622,10 @@ def generate_recommendations(
             "itemknn_shrink": float(settings.itemknn_shrink),
             "max_cands": settings.max_cands,
             "best_model_config_loaded": bool(loader.best_model_config),
-            "negative_penalty_alpha": float(settings.negative_penalty_alpha),
+            # The env/config field retains its legacy ``*_ALPHA`` name for
+            # compatibility; under the monotonic formula it is the additive
+            # penalty strength rather than an exponent.
+            "negative_penalty_strength": float(settings.negative_penalty_alpha),
             "user_key_provided": bool(request.user_key),
             "db_enabled": bool(is_db_enabled()),
             "user_state_resolved": bool(request.user_key and is_db_enabled()),

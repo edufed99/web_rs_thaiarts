@@ -45,18 +45,31 @@ def _zscore(values: np.ndarray) -> np.ndarray:
 def apply_negative_penalty(
     scores: Dict[int, float],
     negative_item_ratings: Dict[int, int],
-    alpha: float = 1.0,
+    strength: float = 1.0,
+    positive_threshold: int = 4,
 ) -> Dict[int, float]:
-    """
-    Mirrors recommender.services.apply_negative_penalty: multiply by
-    (raw_rating / 5) ** alpha for each negatively-rated item.
+    """Monotonically demote items carrying an explicit negative rating.
+
+    Hybrid scores are z-calibrated and may be negative, so multiplying by a
+    factor below one can accidentally *increase* a score (for example,
+    ``-1 * 0.2 == -0.2``).  Instead subtract a severity-scaled amount:
+
+    ``adjusted = score - strength * (positive_threshold - rating) /
+    (positive_threshold - 1)``
+
+    With the default positive threshold of 4, ratings 1/2/3 receive severity
+    1, 2/3, and 1/3 respectively.  The clamped severity guarantees that an
+    adjusted score never exceeds its original score.
     """
     if not negative_item_ratings:
         return dict(scores)
+    penalty_strength = max(float(strength), 0.0)
+    denominator = max(int(positive_threshold) - 1, 1)
     adjusted = dict(scores)
     for item_id, raw_rating in negative_item_ratings.items():
         if item_id not in adjusted:
             continue
-        factor = (raw_rating / 5.0) ** alpha
-        adjusted[item_id] = adjusted[item_id] * factor
+        severity = (int(positive_threshold) - int(raw_rating)) / denominator
+        severity = min(max(float(severity), 0.0), 1.0)
+        adjusted[item_id] = adjusted[item_id] - (penalty_strength * severity)
     return adjusted

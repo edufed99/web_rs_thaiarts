@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import hashlib
+import re
 import secrets
 from typing import List, Optional, Tuple
 
@@ -29,6 +30,10 @@ from ..models_db import PasswordResetToken, User, UserProfile
 
 PASSWORD_RESET_MARKER = "must_reset|"
 LEGACY_NAME_MARKER = "legacy:"
+
+
+class AmbiguousGoogleEmailError(RuntimeError):
+    """Raised when an email maps to multiple local research accounts."""
 
 
 # --- Private helpers --------------------------------------------------------
@@ -47,6 +52,20 @@ def _strip_internal_display_markers(value: str, fallback: str = "") -> str:
 def _find_by_username(session: Session, username: str) -> Optional[User]:
     stmt = select(User).where(User.username == username)
     return session.execute(stmt).scalar_one_or_none()
+
+
+def _available_google_username(session: Session, email: str) -> str:
+    local = (email.split("@", 1)[0] or "google_user").lower()
+    base = re.sub(r"[^a-z0-9_.-]+", "_", local).strip("._-") or "google_user"
+    if len(base) < 3:
+        base = f"google_{base}"
+    base = base[:55]
+    candidate = base
+    suffix = 2
+    while _find_by_username(session, candidate) is not None:
+        candidate = f"{base}_{suffix}"
+        suffix += 1
+    return candidate
 
 
 def _count_users(session: Session) -> int:
@@ -180,6 +199,8 @@ def update_user_profile(
                 profile.updated_at = datetime.now(timezone.utc)
         if password_hash is not None:
             user.password_hash = password_hash
+            if getattr(user, "google_subject_id", None):
+                user.auth_provider = "password+google"
             # Imported accounts use a display-name prefix as their legacy
             # password-reset flag. Once the password is changed, remove the
             # internal markers from both profile mirrors.
@@ -295,6 +316,91 @@ def find_user_by_id(user_id: int) -> Optional[User]:
     with session_scope() as session:
         stmt = select(User).where(User.id == user_id)
         return session.execute(stmt).scalar_one_or_none()
+
+
+def resolve_google_identity(
+    *,
+    subject_id: str,
+    email: str,
+    display_name: str = "",
+    avatar_url: str = "",
+) -> Tuple[Optional[User], str]:
+    """Find, safely link, or create the local account for a Google identity.
+
+    An existing unique email is linked so its recommendation history remains
+    attached to the same user ID. Shared fixture emails are never guessed.
+    Google-created accounts are always ordinary members, never bootstrap admins.
+    """
+    if not is_db_enabled():
+        return None, "disabled"
+    subject = (subject_id or "").strip()
+    normalized_email = (email or "").strip().lower()
+    if not subject or not normalized_email:
+        return None, "invalid"
+    with session_scope() as session:
+        existing_subject = session.execute(
+            select(User).where(User.google_subject_id == subject)
+        ).scalar_one_or_none()
+        if existing_subject is not None:
+            existing_subject.email_verified = True
+            profile = _get_or_create_profile(session, existing_subject)
+            if avatar_url and not profile.avatar_url:
+                profile.avatar_url = avatar_url.strip()
+            session.flush()
+            session.refresh(existing_subject)
+            return existing_subject, "existing"
+
+        email_matches = list(
+            session.execute(
+                select(User).where(func.lower(User.email) == normalized_email)
+            ).scalars()
+        )
+        if len(email_matches) > 1:
+            raise AmbiguousGoogleEmailError(
+                "This email is shared by multiple local accounts"
+            )
+        if len(email_matches) == 1:
+            user = email_matches[0]
+            if user.google_subject_id and user.google_subject_id != subject:
+                raise AmbiguousGoogleEmailError(
+                    "This email is already linked to another Google identity"
+                )
+            user.google_subject_id = subject
+            user.auth_provider = "password+google"
+            user.email_verified = True
+            profile = _get_or_create_profile(session, user)
+            if avatar_url and not profile.avatar_url:
+                profile.avatar_url = avatar_url.strip()
+            session.flush()
+            session.refresh(user)
+            return user, "linked"
+
+        username = _available_google_username(session, normalized_email)
+        name = (display_name or "").strip() or username
+        user = User(
+            username=username,
+            email=normalized_email,
+            password_hash=f"!google:{secrets.token_urlsafe(32)}",
+            google_subject_id=subject,
+            auth_provider="google",
+            email_verified=True,
+            display_name=name,
+            is_admin=False,
+        )
+        session.add(user)
+        session.flush()
+        session.add(
+            UserProfile(
+                user_id=int(user.id),
+                display_name=name,
+                avatar_url=(avatar_url or "").strip(),
+                role="user",
+                user_group="user",
+            )
+        )
+        session.flush()
+        session.refresh(user)
+        return user, "created"
 
 
 def list_users(limit: int = 100) -> List[User]:

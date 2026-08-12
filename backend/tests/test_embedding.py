@@ -145,7 +145,7 @@ def test_build_item_text_matches_pipeline_format():
         ["ผู้หญิง", "ชุดไทย"],
         ["งานบวช"],
     )
-    assert s == "ระบำ แสดงแบบดั้งเดิม ผู้หญิง ชุดไทย งานบวช"
+    assert s == "ระบำ แสดงแบบดั้งเดิม"
 
 
 def test_build_item_text_skips_empty_parts():
@@ -154,7 +154,7 @@ def test_build_item_text_skips_empty_parts():
         ["k"],
         [],
     )
-    assert s == "X k"
+    assert s == "X"
 
 
 def test_encode_item_text_calls_encode_text(fake_model):

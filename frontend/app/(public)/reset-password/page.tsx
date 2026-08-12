@@ -20,6 +20,8 @@ function PasswordResetForm() {
   const [email, setEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -101,14 +103,22 @@ function PasswordResetForm() {
         </>
       ) : (
         <>
-          <label className="field">
-            <span>รหัสผ่านใหม่</span>
-            <input required type="password" minLength={8} maxLength={128} autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
-          </label>
-          <label className="field">
-            <span>ยืนยันรหัสผ่านใหม่</span>
-            <input required type="password" minLength={8} maxLength={128} autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} />
-          </label>
+          <PasswordField
+            id="reset-new-password"
+            label="รหัสผ่านใหม่"
+            value={newPassword}
+            visible={showNewPassword}
+            onChange={setNewPassword}
+            onToggle={() => setShowNewPassword((current) => !current)}
+          />
+          <PasswordField
+            id="reset-confirm-password"
+            label="ยืนยันรหัสผ่านใหม่"
+            value={confirmPassword}
+            visible={showConfirmPassword}
+            onChange={setConfirmPassword}
+            onToggle={() => setShowConfirmPassword((current) => !current)}
+          />
         </>
       )}
 
@@ -124,6 +134,65 @@ function PasswordResetForm() {
         <Link href="/login" style={{ color: "#8a5b17", fontWeight: 800 }}>กลับไปหน้าเข้าสู่ระบบ</Link>
       </div>
     </form>
+  );
+}
+
+
+interface PasswordFieldProps {
+  id: string;
+  label: string;
+  value: string;
+  visible: boolean;
+  onChange: (value: string) => void;
+  onToggle: () => void;
+}
+
+
+function PasswordField({
+  id,
+  label,
+  value,
+  visible,
+  onChange,
+  onToggle,
+}: PasswordFieldProps) {
+  return (
+    <div className="field auth-password-field">
+      <label htmlFor={id}>{label}</label>
+      <div className="auth-password-control">
+        <input
+          id={id}
+          required
+          type={visible ? "text" : "password"}
+          minLength={8}
+          maxLength={128}
+          autoComplete="new-password"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        <button
+          type="button"
+          className="auth-password-toggle"
+          aria-label={visible ? `ซ่อน${label}` : `แสดง${label}`}
+          aria-pressed={visible}
+          onClick={onToggle}
+        >
+          <svg
+            className="auth-password-toggle-icon"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            aria-hidden="true"
+          >
+            <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
+            <circle cx="12" cy="12" r="2.75" />
+            {visible ? <path d="m4 4 16 16" /> : null}
+          </svg>
+          <span>{visible ? "ซ่อน" : "แสดง"}</span>
+        </button>
+      </div>
+    </div>
   );
 }
 

@@ -127,7 +127,7 @@ def test_build_explanation_history_signal_only():
     assert text == "แนะนำเพราะคุณเคยให้คะแนนสูงแก่การแสดงประเภทโขนและละคร."
 
 
-def test_build_explanation_does_not_treat_popularity_as_personal_history():
+def test_build_explanation_requires_grounded_personal_history():
     text = build_explanation(
         item={},
         context_name="งานบวช",

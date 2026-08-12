@@ -354,6 +354,8 @@ export interface UserOut {
   display_name: string;
   is_admin: boolean;
   role: MemberRole;
+  auth_provider: string;
+  email_verified: boolean;
   created_at: string | null;
   last_login_at: string | null;
 }
@@ -445,6 +447,10 @@ export interface TokenOut {
   token_type: "bearer" | string;
   expires_in_seconds: number;
   user: UserOut;
+}
+
+export interface GoogleLoginExchange {
+  code: string;
 }
 
 export interface KeywordProposal {

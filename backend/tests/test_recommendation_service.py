@@ -254,13 +254,13 @@ def live_db_for_rec(monkeypatch, loader):
 
 def test_negative_penalty_lowers_hybrid_for_negatively_rated_items(loader, live_db_for_rec):
     """When a user has a low rating for one of the candidates, that item's
-    hybrid score must be reduced by the negative-penalty factor."""
+    hybrid score must be reduced by a monotonic severity subtraction."""
     from app.models_db import Rating
     SessionLocal, aid_to_db = live_db_for_rec
     aid_rabam = item_id("ระบำพรหมาสตร์")
     aid_khon = item_id("โขน")
 
-    # baseline (no user_key) — pure popularity path
+    # baseline (no user_key) — CBF-only cold-start path
     base = generate_recommendations(
         loader,
         RecommendationRequestIn(
@@ -293,9 +293,9 @@ def test_negative_penalty_lowers_hybrid_for_negatively_rated_items(loader, live_
 
     # ระบำ untouched → score should match baseline (within ranking ties).
     assert pen_rabam == pytest.approx(base_rabam, rel=1e-6)
-    # โขน was penalised by factor (1/5)**1.0 = 0.2 → score strictly lower.
+    # Rating 1 has severity 1.0, so the default strength subtracts 1.0.
     assert pen_khon < base_khon
-    assert pen_khon == pytest.approx(base_khon * 0.2, rel=1e-6)
+    assert pen_khon == pytest.approx(base_khon - 1.0, rel=1e-6)
 
 
 def test_response_metadata_reports_personalization(loader, live_db_for_rec):

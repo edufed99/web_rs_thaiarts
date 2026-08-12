@@ -3,7 +3,7 @@ services/cf_service.py — Port of recommender/cf_itemknn.py.
 
 Collaborative filtering using a precomputed ItemKNN index. Items the user
 already positively interacted with get a score of zero. Users with no
-history fall back to popularity scores (item → number of positive users).
+history receive an all-zero CF vector so the hybrid ranking reduces to CBF.
 
 Live evidence
 -------------
@@ -44,8 +44,8 @@ def score_items_by_itemknn(
 
     If the user has positive history in the artifact's CF index **or** in
     the live DB, compute cosine-based ItemKNN scores (with shrinkage) and
-    take the top-K neighbours. Otherwise, fall back to popularity (=
-    number of positive users per item).
+    take the top-K neighbours. Otherwise, return zero for every candidate;
+    z-score calibration then contributes no CF signal (CBF-only cold start).
     """
     settings = settings or Settings()
     candidate_ids: Set[int] = {int(item["item_id"]) for item in candidate_items}
@@ -54,7 +54,7 @@ def score_items_by_itemknn(
 
     user_history = _get_user_history(loader, user_key)
     if not user_history:
-        return _popularity_scores(loader, candidate_ids, candidate_ids)
+        return {cid: 0.0 for cid in candidate_ids}
 
     item_users, rating_weight = _merged_cf_index(loader)
     scores: Dict[int, float] = {}
@@ -127,11 +127,6 @@ def _get_user_history(loader: ArtifactLoader, user_key: Optional[str]) -> Set[in
     static = set(loader.cf_user_item.get(user_key, []))
     live = live_user_positive_items(user_key)
     return static | live
-
-
-def _popularity_scores(loader: ArtifactLoader, candidate_ids: Set[int], _unused=None) -> Dict[int, float]:
-    item_users, _ = _merged_cf_index(loader)
-    return {cid: float(len(item_users.get(cid, []))) for cid in candidate_ids}
 
 
 def user_rating_weight(loader: ArtifactLoader, user_key: str, item_id: int) -> float:

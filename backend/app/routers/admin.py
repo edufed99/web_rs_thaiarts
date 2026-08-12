@@ -62,6 +62,8 @@ def _admin_user_out(user) -> UserOut:
         display_name=str(user.display_name or ""),
         is_admin=bool(user.is_admin),
         role="super_admin" if bool(user.is_admin) else "user",
+        auth_provider=str(getattr(user, "auth_provider", "password") or "password"),
+        email_verified=bool(getattr(user, "email_verified", False)),
         created_at=user.created_at,
         last_login_at=user.last_login_at,
     )

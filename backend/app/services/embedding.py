@@ -139,11 +139,11 @@ def build_item_text(item: Dict, kw_names: List[str], ctx_names: List[str]) -> st
     """Mirror ``pipelines.train_or_generate_artifacts.build_item_text``.
 
     Must produce byte-identical strings for the same inputs so the new
-    vector is in the same embedding space as the artifact corpus.
+    vector is in the same embedding space as the artifact corpus.  The
+    keyword/context arguments remain for API compatibility but are
+    deliberately excluded: the paper defines item text as name + description.
     """
     parts = [item.get("name", ""), item.get("description", "")]
-    parts.extend(kw_names or [])
-    parts.extend(ctx_names or [])
     return " ".join(p for p in parts if p).strip()
 
 

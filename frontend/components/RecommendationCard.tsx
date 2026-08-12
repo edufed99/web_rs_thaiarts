@@ -12,6 +12,7 @@ import type {
   RecommendationResultOut,
   UserState as UserStateType,
 } from "@/lib/types";
+import { recommendationScoreOutOf100 } from "@/lib/recommendationScore";
 
 // Suitability-pill background by Thai label. Centralised here so the
 // catalog card can reuse the same colour scheme.
@@ -46,6 +47,7 @@ export function RecommendationCard({
 }: RecommendationCardProps) {
   const { rank, item, scores, matched_keywords } = result;
   const explanation = result.explanation;
+  const recommendationScore = recommendationScoreOutOf100(scores.hybrid);
 
   function handleStateChange(next: UserStateType) {
     if (onUserStateChange) onUserStateChange(item.id, next);
@@ -92,20 +94,22 @@ export function RecommendationCard({
                   border: `1px solid ${suitabilityBorder(result.suitability_label)}`,
                   fontWeight: 600,
                 }}
-                title="Display-only match percent — does not affect ranking."
+                title="ระดับความเหมาะสมจากข้อมูลของชุดการแสดง"
               >
-                {result.suitability_label} · {result.match_percent}%
+                {result.suitability_label}
               </span>
               <span
                 style={{
                   fontSize: "0.8rem",
-                  color: "#555",
+                  color: "#17386d",
                   padding: "0.2rem 0.5rem",
                   backgroundColor: "#f0f4ff",
                   borderRadius: "999px",
+                  fontWeight: 600,
                 }}
+                title="คะแนนรวมจากบริบท เนื้อหา และความสนใจ ใช้เพื่อเปรียบเทียบรายการในคำขอนี้ ไม่ใช่ค่าความน่าจะเป็น"
               >
-                hybrid {scores.hybrid.toFixed(3)}
+                คะแนนแนะนำ {recommendationScore}%
               </span>
             </div>
           </header>
@@ -119,19 +123,6 @@ export function RecommendationCard({
           {item.description ? (
             <p className="description" style={{ margin: "0.5rem 0" }}>{item.description}</p>
           ) : null}
-
-          <div
-            style={{
-              display: "flex",
-              gap: "1rem",
-              fontSize: "0.85rem",
-              color: "#555",
-              margin: "0.5rem 0",
-            }}
-          >
-            <span>CBF: <strong>{scores.cbf.toFixed(3)}</strong></span>
-            <span>CF: <strong>{scores.cf.toFixed(3)}</strong></span>
-          </div>
 
           {matched_keywords.length > 0 ? (
             <div style={{ margin: "0.5rem 0" }}>

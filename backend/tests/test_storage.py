@@ -15,6 +15,8 @@ from app.core.config import IMGHDR_TO_MIME
 from app.core.exceptions import InvalidRequestError
 from app.services.storage import (
     delete_upload,
+    is_allowed_remote_image_url,
+    save_remote_image,
     save_upload,
     save_video_upload,
     sniff_mime,
@@ -87,6 +89,54 @@ def test_save_upload_supports_profile_public_subdirectory(tmp_path: Path):
         public_subdir="profiles",
     )
     assert url == f"/uploads/profiles/{filename}"
+
+
+def test_save_remote_image_allows_google_host_and_stores_locally(tmp_path: Path, monkeypatch):
+    from app.services import storage
+
+    class FakeResponse:
+        headers = {"Content-Length": str(len(JPEG_BYTES))}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def geturl(self):
+            return "https://lh3.googleusercontent.com/a/photo"
+
+        def read(self, _limit):
+            return JPEG_BYTES
+
+    monkeypatch.setattr(storage, "urlopen", lambda *_args, **_kwargs: FakeResponse())
+    filename, url, size, mime = save_remote_image(
+        "https://lh3.googleusercontent.com/a/photo",
+        tmp_path,
+        prefix="user-5-google",
+        max_bytes=10_000,
+        allowed_mime={"image/jpeg"},
+        allowed_hosts={"lh3.googleusercontent.com"},
+    )
+    assert url == f"/uploads/profiles/{filename}"
+    assert size == len(JPEG_BYTES)
+    assert mime == "image/jpeg"
+
+
+def test_save_remote_image_rejects_untrusted_host(tmp_path: Path):
+    assert is_allowed_remote_image_url(
+        "https://lh3.googleusercontent.com/a/photo", {"lh3.googleusercontent.com"}
+    )
+    with pytest.raises(InvalidRequestError) as exc:
+        save_remote_image(
+            "http://127.0.0.1/private",
+            tmp_path,
+            prefix="user-5-google",
+            max_bytes=10_000,
+            allowed_mime={"image/jpeg"},
+            allowed_hosts={"lh3.googleusercontent.com"},
+        )
+    assert exc.value.extra["code"] == "remote_image_host_not_allowed"
 
 
 def test_save_upload_rejects_unknown_mime(tmp_path: Path):

@@ -309,10 +309,15 @@ def stable_id(kind: str, name: str) -> int:
 # Embeddings
 # ---------------------------------------------------------------------------
 
-def build_item_text(item: dict, keyword_names: List[str], context_names: List[str]) -> str:
+def build_item_text(item: dict) -> str:
+    """Build the paper-faithful item passage: name + description only.
+
+    Contexts belong to the eligibility gate and mapped keywords provide the
+    explicit CBF boost.  Keeping both out of the dense item representation
+    prevents those signals from being counted a second time by cosine
+    similarity.
+    """
     parts = [item["name"], item.get("description", "")]
-    parts.extend(keyword_names)
-    parts.extend(context_names)
     return " ".join(p for p in parts if p).strip()
 
 
@@ -361,10 +366,8 @@ def compute_embeddings(
     ids = items_df["item_id"].tolist()
     texts = []
     for _, item in items_df.iterrows():
-        kw = item_keywords.get(int(item["item_id"]), [])
-        ctx = item_contexts.get(int(item["item_id"]), [])
         # E5 instruct format does not require a prefix for passages.
-        texts.append(build_item_text(item.to_dict(), kw, ctx))
+        texts.append(build_item_text(item.to_dict()))
 
     vectors = model.encode(
         texts,
@@ -540,6 +543,7 @@ def main() -> int:
         "positive_user_count": int(len(positive_by_user)),
         "unique_item_user_edges": int(len(item_users)),
         "embedding_dim": int(vectors.shape[1]),
+        "embedding_text_fields": ["name", "description"],
         "synthetic_embeddings": bool(args.synthetic_embeddings),
         "config_hash": hashlib.sha256(
             json.dumps(
@@ -547,6 +551,7 @@ def main() -> int:
                     "POSITIVE_THRESHOLD": POSITIVE_THRESHOLD,
                     "RATING_FLOOR": RATING_FLOOR,
                     "EMBEDDING_DIM": EMBEDDING_DIM,
+                    "EMBEDDING_TEXT_FIELDS": ["name", "description"],
                     "seed": args.seed,
                 },
                 sort_keys=True,

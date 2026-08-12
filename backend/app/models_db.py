@@ -273,6 +273,13 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
     email: Mapped[str] = mapped_column(String(320), default="", nullable=False, index=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    google_subject_id: Mapped[Optional[str]] = mapped_column(
+        String(255), unique=True, nullable=True, index=True
+    )
+    auth_provider: Mapped[str] = mapped_column(
+        String(32), default="password", nullable=False
+    )
+    email_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     display_name: Mapped[str] = mapped_column(String(120), default="")
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(

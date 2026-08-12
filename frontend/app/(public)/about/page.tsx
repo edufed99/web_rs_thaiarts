@@ -32,7 +32,7 @@ export default function AboutPage() {
             และรับคำแนะนำชุดการแสดงนาฏศิลป์ไทยจากบริบท ความสนใจ และพฤติกรรมการใช้งาน
           </p>
           <div className="about-actions">
-            <a className="site-button primary" href="mailto:adminrstpa@gmail.com">
+            <a className="site-button primary" href="mailto:dpatt148@gmail.com">
               ส่งอีเมลถึงผู้พัฒนา
             </a>
             <Link className="site-button ghost" href="/">
@@ -58,7 +58,7 @@ export default function AboutPage() {
           <div>
             <h2>ข้อมูลติดต่อ</h2>
             <p>อีเมลสำหรับติดต่อเรื่องระบบ งานวิชาการ หรือข้อเสนอแนะ</p>
-            <a href="mailto:adminrstpa@gmail.com">adminrstpa@gmail.com</a>
+            <a href="mailto:dpatt148@gmail.com">dpatt148@gmail.com</a>
           </div>
         </article>
       </section>

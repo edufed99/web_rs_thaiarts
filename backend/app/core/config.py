@@ -15,7 +15,7 @@ Env vars:
     RECSYS_ITEMKNN_SHRINK        Float — shrinkage term in ItemKNN cosine (default: 50.0)
     RECSYS_POSITIVE_THRESHOLD    Int — minimum rating to count as positive (default: 4)
     RECSYS_RATING_FLOOR          Float — floor for normalized rating (default: 0.01)
-    RECSYS_NEGATIVE_PENALTY_ALPHA Float — exponent on negative rating factor (default: 1.0)
+    RECSYS_NEGATIVE_PENALTY_ALPHA Float — additive negative-rating penalty strength (default: 1.0; legacy env name)
     RECSYS_MIN_CANDS             Int — minimum candidate pool size (default: 10)
     RECSYS_MAX_CANDS             Int or "" — max candidates, "" means no cap (default: "")
     RECSYS_DEFAULT_TOP_K         Int — default top-K for /recommendations (default: 10)
@@ -65,6 +65,11 @@ def _default_gmail_oauth_token_file() -> Path:
     return Path(__file__).resolve().parents[2] / "data" / "secrets" / "gmail_oauth_token.json"
 
 
+def _default_google_login_client_file() -> Path:
+    """Private Google OAuth client used only for member sign-in."""
+    return Path(__file__).resolve().parents[2] / "data" / "secrets" / "google_login_client.json"
+
+
 # Magic-byte MIME → canonical Content-Type mapping. ``imghdr.what``
 # returns strings like ``"jpeg"`` / ``"png"`` / ``"webp"`` that we
 # normalize for client consumption.
@@ -104,6 +109,8 @@ class Settings(BaseSettings):
     itemknn_shrink: float = 50.0
     positive_threshold: int = 4
     rating_floor: float = 0.01
+    # Retain the historical env/field name for deployment compatibility.  The
+    # value is now the additive monotonic penalty strength, not an exponent.
     negative_penalty_alpha: float = 1.0
     min_cands: int = 10
     max_cands: Optional[int] = None  # None = no cap
@@ -139,7 +146,19 @@ class Settings(BaseSettings):
     gmail_oauth_refresh_token: str = ""
     gmail_oauth_redirect_uri: str = "http://localhost:8001/auth/google/callback"
     gmail_oauth_token_file: Path = Field(default_factory=_default_gmail_oauth_token_file)
-    gmail_sender_email: str = "adminrstpa@gmail.com"
+    gmail_sender_email: str = "dpatt148@gmail.com"
+
+    # Member Google sign-in is deliberately isolated from the Gmail sender
+    # OAuth client above. It requests only OpenID profile/email scopes and
+    # never receives permission to read or send mail.
+    google_login_client_file: Optional[Path] = Field(
+        default_factory=_default_google_login_client_file
+    )
+    google_login_client_id: str = ""
+    google_login_client_secret: str = ""
+    google_login_redirect_uri: str = "http://localhost:8001/auth/google/login/callback"
+    google_login_state_ttl_seconds: int = 600
+    google_login_code_ttl_seconds: int = 120
 
     # Live ingest (see ADR §3 — runtime embedding exception)
     e5_model_name: str = "intfloat/multilingual-e5-large-instruct"

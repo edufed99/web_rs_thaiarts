@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import { CardPagination } from "@/components/CardPagination";
 import {
   ApiClientError,
   deleteAdminItem,
@@ -20,6 +21,7 @@ import {
 } from "@/lib/api";
 import { getCurrentUser, isAdmin } from "@/lib/auth";
 import type { ContextOut, ItemOut, KeywordOut, ItemUpdate, UserOut } from "@/lib/types";
+import { useCardPagination } from "@/lib/useCardPagination";
 
 type DataManagementTab = "items" | "users";
 type UserFormMode = "create" | "edit" | null;
@@ -67,6 +69,9 @@ const EMPTY_USER_FIELDS: UserFields = {
   is_admin: false,
 };
 
+const USER_PAGE_SIZE = 5;
+const ITEM_PAGE_SIZE = 5;
+
 export default function AdminItemsListPage() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
@@ -87,6 +92,7 @@ export default function AdminItemsListPage() {
   const [keywordChoices, setKeywordChoices] = useState<KeywordOut[]>([]);
   const [newKeywordNames, setNewKeywordNames] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [deletingItemId, setDeletingItemId] = useState<number | null>(null);
   const [editSaveStatus, setEditSaveStatus] = useState<EditSaveStatus>("idle");
   const [uploadingMedia, setUploadingMedia] = useState<"image" | "video" | null>(null);
   const [activeDataTab, setActiveDataTab] = useState<DataManagementTab>("items");
@@ -97,6 +103,7 @@ export default function AdminItemsListPage() {
   const [userReloadKey, setUserReloadKey] = useState(0);
   const [userFormMode, setUserFormMode] = useState<UserFormMode>(null);
   const [editingUser, setEditingUser] = useState<UserOut | null>(null);
+  const [deletingUserId, setDeletingUserId] = useState<number | null>(null);
   const [userFields, setUserFields] = useState<UserFields>(EMPTY_USER_FIELDS);
   const tableScrollY = useRef(0);
   const saveFeedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -202,6 +209,12 @@ export default function AdminItemsListPage() {
     [items],
   );
 
+  const {
+    page: itemPage,
+    setPage: setItemPage,
+    pageItems: paginatedItems,
+  } = useCardPagination(items, query.trim().toLocaleLowerCase("th"), ITEM_PAGE_SIZE);
+
   const filteredUsers = useMemo(() => {
     const term = userQuery.trim().toLocaleLowerCase("th");
     if (!term) return users;
@@ -212,6 +225,12 @@ export default function AdminItemsListPage() {
         .includes(term),
     );
   }, [userQuery, users]);
+
+  const {
+    page: userPage,
+    setPage: setUserPage,
+    pageItems: paginatedUsers,
+  } = useCardPagination(filteredUsers, userQuery.trim().toLocaleLowerCase("th"), USER_PAGE_SIZE);
 
   const editSequencePosition = useMemo(() => {
     if (!editing) return -1;
@@ -406,6 +425,7 @@ export default function AdminItemsListPage() {
   async function handleDelete(item: ItemOut) {
     const ok = window.confirm(`ลบ "${item.name}" ออกจากฐานข้อมูล catalog?`);
     if (!ok) return;
+    setDeletingItemId(item.id);
     setSaving(true);
     setError(null);
     setNotice(null);
@@ -417,6 +437,7 @@ export default function AdminItemsListPage() {
     } catch (e) {
       setError(e instanceof ApiClientError ? e.message : String(e));
     } finally {
+      setDeletingItemId(null);
       setSaving(false);
     }
   }
@@ -479,6 +500,12 @@ export default function AdminItemsListPage() {
     });
     setNotice(null);
     setError(null);
+    window.requestAnimationFrame(() => {
+      document.getElementById("user-edit-form")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
   }
 
   function updateUserField<K extends keyof UserFields>(key: K, value: UserFields[K]) {
@@ -525,6 +552,7 @@ export default function AdminItemsListPage() {
   async function handleUserDelete(user: UserOut) {
     const ok = window.confirm(`ลบบัญชี “${user.username}” ออกจากระบบ?`);
     if (!ok) return;
+    setDeletingUserId(user.id);
     setSaving(true);
     setError(null);
     setNotice(null);
@@ -539,6 +567,7 @@ export default function AdminItemsListPage() {
     } catch (e) {
       setError(e instanceof ApiClientError ? userManagementError(e) : String(e));
     } finally {
+      setDeletingUserId(null);
       setSaving(false);
     }
   }
@@ -891,7 +920,7 @@ export default function AdminItemsListPage() {
                 </tr>
               </thead>
               <tbody>
-                {items.map((item) => (
+                {paginatedItems.map((item) => (
                   <tr key={item.id}>
                     <td>
                       <strong>{item.name}</strong>
@@ -903,8 +932,18 @@ export default function AdminItemsListPage() {
                     <td><span className="status-pill active">{item.suitability_label || "Active"}</span></td>
                     <td>
                       <div className="row-actions">
-                        <button type="button" onClick={() => beginEdit(item)}>แก้ไข</button>
-                        <button type="button" className="danger" onClick={() => handleDelete(item)}>ลบ</button>
+                        <button type="button" disabled={saving} onClick={() => beginEdit(item)}>แก้ไข</button>
+                        <button
+                          type="button"
+                          className={`danger ${deletingItemId === item.id ? "is-pending" : ""}`}
+                          disabled={saving}
+                          aria-busy={deletingItemId === item.id}
+                          onClick={() => handleDelete(item)}
+                        >
+                          {deletingItemId === item.id ? (
+                            <><span className="row-action-spinner" aria-hidden="true" /> กำลังลบ...</>
+                          ) : "ลบ"}
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -917,6 +956,15 @@ export default function AdminItemsListPage() {
               </tbody>
             </table>
           </div>
+          <CardPagination
+            currentPage={itemPage}
+            totalItems={items.length}
+            onPageChange={setItemPage}
+            pageSize={ITEM_PAGE_SIZE}
+            scrollTargetId="catalog-management-table"
+            ariaLabel="เปลี่ยนหน้าตารางชุดการแสดง"
+            itemLabel="ชุดการแสดง"
+          />
         </div>
 
           <aside className="research-panel admin-edit-panel">
@@ -973,7 +1021,7 @@ export default function AdminItemsListPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredUsers.map((user) => (
+                    {paginatedUsers.map((user) => (
                       <tr key={user.id} className={editingUser?.id === user.id ? "selected-row" : undefined}>
                         <td>
                           <strong>{user.display_name || user.username}</strong>
@@ -988,15 +1036,26 @@ export default function AdminItemsListPage() {
                         <td>{formatAdminDate(user.last_login_at)}</td>
                         <td>
                           <div className="row-actions">
-                            <button type="button" onClick={() => beginUserEdit(user)}>แก้ไข</button>
                             <button
                               type="button"
-                              className="danger"
+                              className={editingUser?.id === user.id ? "is-active" : undefined}
+                              disabled={saving}
+                              aria-pressed={editingUser?.id === user.id}
+                              onClick={() => beginUserEdit(user)}
+                            >
+                              {editingUser?.id === user.id ? "แก้ไขอยู่" : "แก้ไข"}
+                            </button>
+                            <button
+                              type="button"
+                              className={`danger ${deletingUserId === user.id ? "is-pending" : ""}`}
                               disabled={user.id === currentUserId || saving}
+                              aria-busy={deletingUserId === user.id}
                               title={user.id === currentUserId ? "ไม่สามารถลบบัญชีที่กำลังใช้งาน" : undefined}
                               onClick={() => handleUserDelete(user)}
                             >
-                              ลบ
+                              {deletingUserId === user.id ? (
+                                <><span className="row-action-spinner" aria-hidden="true" /> กำลังลบ...</>
+                              ) : "ลบ"}
                             </button>
                           </div>
                         </td>
@@ -1010,10 +1069,19 @@ export default function AdminItemsListPage() {
                   </tbody>
                 </table>
               </div>
+              <CardPagination
+                currentPage={userPage}
+                totalItems={filteredUsers.length}
+                onPageChange={setUserPage}
+                pageSize={USER_PAGE_SIZE}
+                scrollTargetId="user-management-table"
+                ariaLabel="เปลี่ยนหน้าตารางข้อมูลผู้ใช้"
+                itemLabel="บัญชี"
+              />
             </div>
 
             {userFormMode ? (
-              <form className="research-panel admin-edit-panel admin-user-form" onSubmit={handleUserSave}>
+              <form id="user-edit-form" className="research-panel admin-edit-panel admin-user-form" onSubmit={handleUserSave}>
                 <div className="panel-head compact-head">
                   <div>
                     <p className="eyebrow">{userFormMode === "create" ? "New User" : "Edit User"}</p>

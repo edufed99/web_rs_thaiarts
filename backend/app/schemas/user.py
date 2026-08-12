@@ -126,6 +126,10 @@ class GmailOAuthStartOut(BaseModel):
     authorization_url: str
 
 
+class GoogleLoginExchange(BaseModel):
+    code: str = Field(min_length=20, max_length=512)
+
+
 class UserOut(BaseModel):
     id: int
     username: str
@@ -133,6 +137,8 @@ class UserOut(BaseModel):
     display_name: str = ""
     is_admin: bool = False
     role: Literal["user", "super_admin"] = "user"
+    auth_provider: str = "password"
+    email_verified: bool = False
     created_at: Optional[datetime] = None
     last_login_at: Optional[datetime] = None
 

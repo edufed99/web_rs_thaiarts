@@ -89,7 +89,7 @@ export default function EmailSettingsPage() {
         {busy ? "กำลังเปิด Google..." : status?.authorized ? "เชื่อมบัญชี Gmail ใหม่" : "เชื่อมบัญชี Gmail"}
       </button>
       <p style={{ marginTop: "1rem", color: "#5f6470" }}>
-        เมื่อ Google ถาม ให้เลือก <strong>adminrstpa@gmail.com</strong> และกดอนุญาต
+        เมื่อ Google ถาม ให้เลือก <strong>{status?.sender_email || "อีเมลผู้ส่งที่ตั้งค่าไว้"}</strong> และกดอนุญาต
       </p>
     </section>
   );

@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0.0",
-  "generated_at": "2026-07-29T15:52:23.305442+00:00",
+  "generated_at": "2026-08-12T07:16:10.824630+00:00",
   "experiment_output_dir": "C:\\Users\\Pichaya\\Downloads\\web_appRS1\\old code\\4.recommendation\\output",
   "selection_metric": "nDCG_mean",
   "selected_model": {

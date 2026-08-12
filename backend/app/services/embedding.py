@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 import numpy as np
@@ -33,6 +35,15 @@ logger = logging.getLogger("recsys.embedding")
 
 _model: Optional[object] = None  # sentence_transformers.SentenceTransformer
 _lock = threading.Lock()
+_runtime: Dict[str, object] = {
+    "status": "not_loaded",
+    "model": "",
+    "device": "cpu",
+    "loaded_at": None,
+    "load_latency_ms": None,
+    "last_inference_latency_ms": None,
+    "last_error": None,
+}
 
 
 # --- Model lifecycle --------------------------------------------------------
@@ -64,16 +75,34 @@ def _ensure_model():
         name = settings.e5_model_name
         cache_folder = str(settings.e5_local_path) if settings.e5_local_path else None
         logger.info("loading E5 model %s (cache=%s)", name, cache_folder)
-        model = SentenceTransformer(
-            name,
-            device="cpu",
-            cache_folder=cache_folder,
-            trust_remote_code=True,
-        )
-        if hasattr(model, "max_seq_length"):
-            model.max_seq_length = min(model.max_seq_length, settings.e5_max_length)
-        _model = model
-        return _model
+        started = time.perf_counter()
+        _runtime.update({"status": "loading", "model": name, "last_error": None})
+        try:
+            model = SentenceTransformer(
+                name,
+                device="cpu",
+                cache_folder=cache_folder,
+                trust_remote_code=True,
+            )
+            if hasattr(model, "max_seq_length"):
+                model.max_seq_length = min(model.max_seq_length, settings.e5_max_length)
+            _model = model
+            latency = round((time.perf_counter() - started) * 1000, 3)
+            _runtime.update({
+                "status": "ready",
+                "loaded_at": datetime.now(timezone.utc).isoformat(),
+                "load_latency_ms": latency,
+            })
+            logger.info("E5 model ready in %.3f ms", latency)
+            return _model
+        except Exception as exc:
+            _runtime.update({
+                "status": "error",
+                "load_latency_ms": round((time.perf_counter() - started) * 1000, 3),
+                "last_error": str(exc),
+            })
+            logger.exception("E5 model failed to load: %s", exc)
+            raise
 
 
 def reset_model_cache() -> None:
@@ -81,6 +110,26 @@ def reset_model_cache() -> None:
     global _model
     with _lock:
         _model = None
+        _runtime.update({
+            "status": "not_loaded",
+            "model": "",
+            "loaded_at": None,
+            "load_latency_ms": None,
+            "last_inference_latency_ms": None,
+            "last_error": None,
+        })
+
+
+def preload_model() -> Dict[str, object]:
+    """Load E5 and run one warm-up query; returns safe runtime telemetry."""
+    _ensure_model()
+    encode_query("ศิลปะการแสดงไทย")
+    return runtime_status()
+
+
+def runtime_status() -> Dict[str, object]:
+    """Return a copy of model telemetry suitable for health/API responses."""
+    return dict(_runtime)
 
 
 # --- Text construction (must match pipeline) -------------------------------
@@ -112,12 +161,7 @@ def encode_text(text: str) -> np.ndarray:
         raise ValueError("encode_text requires a non-empty str")
     settings = get_settings()
     model = _ensure_model()
-    vec = model.encode(
-        [f"{_passage_prefix(settings.e5_model_name)}{text.strip()}"],
-        normalize_embeddings=True,
-        convert_to_numpy=True,
-        show_progress_bar=False,
-    )[0]
+    vec = _encode(model, f"{_passage_prefix(settings.e5_model_name)}{text.strip()}")
     return vec.astype(np.float32)
 
 
@@ -127,13 +171,32 @@ def encode_query(text: str) -> np.ndarray:
         raise ValueError("encode_query requires a non-empty str")
     settings = get_settings()
     model = _ensure_model()
-    vec = model.encode(
-        [f"{_query_prefix(settings.e5_model_name)}{text.strip()}"],
-        normalize_embeddings=True,
-        convert_to_numpy=True,
-        show_progress_bar=False,
-    )[0]
+    vec = _encode(model, f"{_query_prefix(settings.e5_model_name)}{text.strip()}")
     return vec.astype(np.float32)
+
+
+def _encode(model: object, text: str) -> np.ndarray:
+    started = time.perf_counter()
+    try:
+        vec = model.encode(
+            [text],
+            normalize_embeddings=True,
+            convert_to_numpy=True,
+            show_progress_bar=False,
+        )[0]
+        _runtime.update({
+            "status": "ready",
+            "last_inference_latency_ms": round((time.perf_counter() - started) * 1000, 3),
+            "last_error": None,
+        })
+        return np.asarray(vec)
+    except Exception as exc:
+        _runtime.update({
+            "status": "error",
+            "last_inference_latency_ms": round((time.perf_counter() - started) * 1000, 3),
+            "last_error": str(exc),
+        })
+        raise
 
 
 def encode_item_text(

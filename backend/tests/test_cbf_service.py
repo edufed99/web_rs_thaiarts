@@ -7,7 +7,12 @@ import numpy as np
 import pytest
 
 from app.core.config import Settings
-from app.services.cbf_service import build_query_text, score_items_by_content
+from app.core.exceptions import EmbeddingBackendUnavailableError
+from app.services.cbf_service import (
+    build_query_text,
+    score_items_by_content,
+    score_items_by_content_with_runtime,
+)
 
 from .conftest import item_id
 
@@ -88,6 +93,52 @@ def test_e5_query_encoder_used_for_1024d_artifacts(loader, candidates, monkeypat
     )
     assert called["text"].startswith("งานบวช")
     assert set(scores.keys()) == {c["item_id"] for c in candidates}
+
+
+def test_runtime_response_discloses_e5(loader, candidates, monkeypatch):
+    from app.services import cbf_service
+
+    loader._embeddings = np.ones((len(loader.item_ids), 1024), dtype=np.float32)
+    monkeypatch.setattr(
+        cbf_service,
+        "encode_query",
+        lambda _text: np.ones(1024, dtype=np.float32) / np.sqrt(1024),
+    )
+    outcome = score_items_by_content_with_runtime(
+        loader, candidates, ["ผู้หญิง"], context_name="งานบวช", settings=Settings()
+    )
+    assert outcome.embedding_backend == "e5"
+    assert outcome.embedding_latency_ms >= 0
+
+
+def test_research_mode_never_silently_falls_back(loader, candidates, monkeypatch):
+    from app.services import cbf_service
+
+    loader._embeddings = np.ones((len(loader.item_ids), 1024), dtype=np.float32)
+
+    def unavailable(_text):
+        raise RuntimeError("model cache missing")
+
+    monkeypatch.setattr(cbf_service, "encode_query", unavailable)
+    with pytest.raises(EmbeddingBackendUnavailableError, match="proxy fallback is disabled"):
+        score_items_by_content(
+            loader,
+            candidates,
+            ["ผู้หญิง"],
+            context_name="งานบวช",
+            settings=Settings(research_mode=True),
+        )
+
+
+def test_non_research_mode_reports_proxy_on_e5_failure(loader, candidates, monkeypatch):
+    from app.services import cbf_service
+
+    loader._embeddings = np.ones((len(loader.item_ids), 1024), dtype=np.float32)
+    monkeypatch.setattr(cbf_service, "encode_query", lambda _text: (_ for _ in ()).throw(RuntimeError()))
+    outcome = score_items_by_content_with_runtime(
+        loader, candidates, ["ผู้หญิง"], settings=Settings(research_mode=False)
+    )
+    assert outcome.embedding_backend == "proxy"
 
 
 def test_no_candidates_returns_empty(loader):

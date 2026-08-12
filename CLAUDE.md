@@ -124,6 +124,9 @@ When working on this repo, respect these:
 | GET  | /contexts | List sub-contexts |
 | GET  | /keywords | List keywords (optional `?search=`) |
 | GET  | /metrics | Corpus + CF index stats |
+| GET  | /metrics/requests | Monthly recommendation-request trend (admin) |
+| GET  | /metrics/config | Active recommender config (admin) |
+| GET  | /metrics/dashboard | Admin dashboard payload (14 sections, admin-only JWT) |
 | GET  | /docs, /redoc, /openapi.json | Swagger / ReDoc / schema |
 
 Every endpoint has `summary` + `description` in Swagger.

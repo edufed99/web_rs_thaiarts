@@ -21,13 +21,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from . import __version__
-from .core.config import get_settings
+from .core.config import get_settings, settings_with_artifact_config
 from .core.exceptions import (
     ArtifactsNotLoadedError,
     register_exception_handlers,
 )
 from .model_loader import ArtifactLoader, set_singleton
-from .routers import actions, admin, auth, catalog, health, legacy, metrics, recommendations
+from .services.embedding import preload_model
+from .routers import actions, admin, auth, catalog, health, legacy, member, metrics, recommendations
 
 logger = logging.getLogger("recsys")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -58,6 +59,17 @@ async def lifespan(app: FastAPI):
             int(loader.metadata.get("embedding_dim", 0)),
             settings.artifact_dir,
         )
+        effective = settings_with_artifact_config(settings, loader.best_model_config)
+        if effective.preload_e5 and int(loader.embeddings.shape[1]) == 1024:
+            try:
+                telemetry = preload_model()
+                logger.info(
+                    "E5 preloaded: backend=e5 load_latency_ms=%s warm_latency_ms=%s",
+                    telemetry.get("load_latency_ms"),
+                    telemetry.get("last_inference_latency_ms"),
+                )
+            except Exception as exc:  # recommendations return a strict 503 in research mode
+                logger.error("E5 preload failed; research inference unavailable: %s", exc)
     except ArtifactsNotLoadedError as exc:
         logger.error("Artifacts NOT loaded: %s", exc)
         # Leave singleton unset; routers will surface 503 via /health.
@@ -105,6 +117,7 @@ def create_app() -> FastAPI:
     app.include_router(actions.router)
     app.include_router(auth.router)
     app.include_router(admin.router)
+    app.include_router(member.router)
 
     # Static mount for user-uploaded media (cover images for catalog
     # items). The directory is created in ``lifespan`` so the mount

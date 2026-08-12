@@ -64,11 +64,11 @@ def actions_client(monkeypatch, artifacts_dir):
     }
     by_artifact = {}
     with SessionLocal() as s:
-        for django_id, name in items.items():
+        for db_id, name in items.items():
             aid = _stable_artifact_id(name)
-            by_artifact[aid] = django_id
+            by_artifact[aid] = db_id
             s.add(Item(
-                id=django_id,
+                id=db_id,
                 name=name,
                 is_active=True,
                 artifact_item_id=aid,
@@ -242,6 +242,194 @@ def test_action_records_interaction_log(actions_client):
     with SessionLocal() as s:
         rows = s.query(InteractionLog).all()
     assert any(r.action_type == "like" and r.user_key == "anon:u7" for r in rows)
+
+
+# --- View tests (ADR-002 §3.1) ----------------------------------------------
+
+def _logs(action_type: str | None = None):
+    """Read interaction_logs through a fresh session on the test engine."""
+    from app import db as db_module
+    from app.models_db import InteractionLog
+
+    SessionLocal = sessionmaker(bind=db_module.get_engine(), future=True)
+    with SessionLocal() as s:
+        q = s.query(InteractionLog)
+        if action_type is not None:
+            q = q.filter(InteractionLog.action_type == action_type)
+        return q.all()
+
+
+def test_post_view_logs_once(actions_client):
+    client, by_artifact = actions_client
+    aid = next(iter(by_artifact.keys()))
+    r = client.post("/actions/view", json={"user_key": "anon:v1", "item_id": aid})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["action"] == "viewed"
+    assert body["item_id"] == aid
+    assert body["deduped"] is False
+
+    rows = [x for x in _logs("item_view") if x.user_key == "anon:v1"]
+    assert len(rows) == 1
+
+
+def test_post_view_dedupes_within_window(actions_client):
+    """A refresh must not inflate the count: the second call is a no-op."""
+    client, by_artifact = actions_client
+    aid = next(iter(by_artifact.keys()))
+    payload = {"user_key": "anon:v2", "item_id": aid}
+    first = client.post("/actions/view", json=payload)
+    second = client.post("/actions/view", json=payload)
+    assert first.json()["deduped"] is False
+    assert second.status_code == 200
+    assert second.json()["deduped"] is True
+
+    rows = [x for x in _logs("item_view") if x.user_key == "anon:v2"]
+    assert len(rows) == 1, "dedupe window must suppress the second write"
+
+
+def test_post_view_dedupe_is_per_user_and_item(actions_client):
+    """Dedupe must key on (user, item) — not suppress unrelated views."""
+    client, by_artifact = actions_client
+    aids = list(by_artifact.keys())
+    client.post("/actions/view", json={"user_key": "anon:v3", "item_id": aids[0]})
+    other_item = client.post(
+        "/actions/view", json={"user_key": "anon:v3", "item_id": aids[1]}
+    )
+    other_user = client.post(
+        "/actions/view", json={"user_key": "anon:v4", "item_id": aids[0]}
+    )
+    assert other_item.json()["deduped"] is False
+    assert other_user.json()["deduped"] is False
+    assert len([x for x in _logs("item_view") if x.user_key == "anon:v3"]) == 2
+    assert len([x for x in _logs("item_view") if x.user_key == "anon:v4"]) == 1
+
+
+def test_post_view_dedupe_window_disabled(monkeypatch, actions_client):
+    """``view_dedupe_minutes = 0`` disables suppression entirely."""
+    from app.core import config as config_module
+
+    client, by_artifact = actions_client
+    monkeypatch.setenv("RECSYS_VIEW_DEDUPE_MINUTES", "0")
+    config_module.reset_settings_cache()
+
+    aid = next(iter(by_artifact.keys()))
+    payload = {"user_key": "anon:v5", "item_id": aid}
+    client.post("/actions/view", json=payload)
+    second = client.post("/actions/view", json=payload)
+    assert second.json()["deduped"] is False
+    assert len([x for x in _logs("item_view") if x.user_key == "anon:v5"]) == 2
+    config_module.reset_settings_cache()
+
+
+def test_post_view_attributes_persisted_request_id(actions_client):
+    """A view from a recommendation stores the FK, enabling CTR."""
+    from app import db as db_module
+    from app.models_db import RecommendationRequest
+
+    client, by_artifact = actions_client
+    aid = next(iter(by_artifact.keys()))
+
+    SessionLocal = sessionmaker(bind=db_module.get_engine(), future=True)
+    with SessionLocal() as s:
+        req = RecommendationRequest(
+            selected_context_id=1, candidate_count=5, top_k=3, method="test"
+        )
+        s.add(req)
+        s.commit()
+        req_id = int(req.id)
+
+    r = client.post(
+        "/actions/view",
+        json={"user_key": "anon:v6", "item_id": aid, "request_id": str(req_id)},
+    )
+    assert r.status_code == 200
+    rows = [x for x in _logs("item_view") if x.user_key == "anon:v6"]
+    assert len(rows) == 1
+    assert rows[0].recommendation_request_id == req_id
+
+
+def test_post_view_ignores_uuid_request_id(actions_client):
+    """``request_id`` is a uuid when the recommendation persist failed
+    (recommendation_service.py:391). It is not a foreign key, so it must be
+    dropped rather than raising an integrity error."""
+    client, by_artifact = actions_client
+    aid = next(iter(by_artifact.keys()))
+    r = client.post(
+        "/actions/view",
+        json={
+            "user_key": "anon:v7",
+            "item_id": aid,
+            "request_id": "3f2b1c66-0000-4a1e-9d33-8c7b5a4e2100",
+        },
+    )
+    assert r.status_code == 200, r.text
+    rows = [x for x in _logs("item_view") if x.user_key == "anon:v7"]
+    assert len(rows) == 1
+    assert rows[0].recommendation_request_id is None
+
+
+def test_post_view_ignores_nonexistent_request_id(actions_client):
+    """An integer id that matches no row must not become a dangling FK."""
+    client, by_artifact = actions_client
+    aid = next(iter(by_artifact.keys()))
+    r = client.post(
+        "/actions/view",
+        json={"user_key": "anon:v8", "item_id": aid, "request_id": "987654"},
+    )
+    assert r.status_code == 200, r.text
+    rows = [x for x in _logs("item_view") if x.user_key == "anon:v8"]
+    assert rows[0].recommendation_request_id is None
+
+
+def test_view_unknown_item_returns_404(actions_client):
+    client, _ = actions_client
+    r = client.post(
+        "/actions/view", json={"user_key": "anon:v9", "item_id": 999_999_999}
+    )
+    assert r.status_code == 404
+    assert r.json()["error"]["code"] == "item_not_found"
+
+
+def test_view_excluded_from_user_history(monkeypatch, actions_client):
+    """Views must never surface in the history table (ADR-002 §3.1).
+
+    ``member_query`` binds ``session_scope`` / ``is_db_enabled`` at import
+    time, so the fixture's patches don't reach it — we patch that module
+    explicitly here. Without this the endpoint returns an empty list and the
+    exclusion assertion would pass vacuously.
+    """
+    from app import db as db_module
+    from app.services import member_query as mq_module
+
+    client, by_artifact = actions_client
+    monkeypatch.setattr(mq_module, "is_db_enabled", lambda: True)
+    monkeypatch.setattr(mq_module, "session_scope", db_module.session_scope)
+
+    aid = next(iter(by_artifact.keys()))
+    client.post("/actions/view", json={"user_key": "anon:v10", "item_id": aid})
+    client.post("/actions/like", json={"user_key": "anon:v10", "item_id": aid})
+
+    body = client.get("/me/history", params={"user_key": "anon:v10"}).json()
+    kinds = [e["action_type"] for e in body["items"]]
+    # The 'like' must be present, proving the query really sees the rows...
+    assert kinds == ["like"], body
+    # ...and the item_view row, which exists in the table, must be filtered.
+    assert len([x for x in _logs("item_view") if x.user_key == "anon:v10"]) == 1
+
+
+def test_view_does_not_change_user_state(actions_client):
+    """A view writes no state table — liked/saved/rating stay untouched."""
+    from app.services.actions import fetch_user_state
+
+    client, by_artifact = actions_client
+    aid = next(iter(by_artifact.keys()))
+    client.post("/actions/view", json={"user_key": "anon:v11", "item_id": aid})
+    assert fetch_user_state("anon:v11", aid) == {
+        "liked": False,
+        "saved": False,
+        "rating": 0,
+    }
 
 
 # --- Service-level tests (no HTTP) ------------------------------------------

@@ -7,11 +7,15 @@ into a JSON response shaped ``{"error": {"code", "message"}}``.
 """
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+
+
+logger = logging.getLogger("recsys.exceptions")
 
 
 class DomainError(Exception):
@@ -31,6 +35,13 @@ class ArtifactsNotLoadedError(DomainError):
 
     status_code = 503
     code = "artifacts_not_loaded"
+
+
+class EmbeddingBackendUnavailableError(DomainError):
+    """Raised when strict research inference cannot use the real E5 model."""
+
+    status_code = 503
+    code = "embedding_backend_unavailable"
 
 
 class InvalidRequestError(DomainError):
@@ -132,5 +143,22 @@ def register_exception_handlers(app: FastAPI) -> None:
                 "validation_error",
                 message,
                 {"errors": errors},
+            ),
+        )
+
+    @app.exception_handler(Exception)
+    async def _unexpected_handler(_request: Request, exc: Exception):
+        """Keep unexpected failures observable to cross-origin clients.
+
+        Without an application-level response, Starlette's outer server-error
+        middleware can emit a bare 500 without CORS headers. Browsers then hide
+        the response and surface only ``TypeError: Failed to fetch``.
+        """
+        logger.exception("Unhandled API error", exc_info=exc)
+        return JSONResponse(
+            status_code=500,
+            content=_payload(
+                "internal_server_error",
+                "The server could not complete this request.",
             ),
         )

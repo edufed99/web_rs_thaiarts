@@ -65,6 +65,26 @@ def sniff_mime(file: UploadFile) -> Tuple[Optional[str], Optional[str]]:
     return mime, ext
 
 
+def sniff_video_mime(file: UploadFile) -> Tuple[Optional[str], Optional[str]]:
+    """Return a browser-playable video MIME and extension from magic bytes."""
+    try:
+        file.file.seek(0)
+    except OSError:
+        pass
+    head = file.file.read(_SNIFF_BYTES)
+    try:
+        file.file.seek(0)
+    except OSError:
+        pass
+    if len(head) >= 12 and head[4:8] == b"ftyp":
+        if head[8:12] in {b"qt  ", b"qt\x00\x00"}:
+            return "video/quicktime", ".mov"
+        return "video/mp4", ".mp4"
+    if head.startswith(b"\x1aE\xdf\xa3"):
+        return "video/webm", ".webm"
+    return None, None
+
+
 def save_upload(
     file: UploadFile,
     dest_dir: Path,
@@ -72,6 +92,7 @@ def save_upload(
     prefix: str,
     max_bytes: int,
     allowed_mime: set,
+    public_subdir: str = "items",
 ) -> Tuple[str, str, int, str]:
     """Stream ``file`` to ``dest_dir`` after validating size + MIME.
 
@@ -126,9 +147,69 @@ def save_upload(
         except OSError:
             pass
 
-    public_url = f"/uploads/items/{filename}"
+    safe_subdir = "".join(ch for ch in str(public_subdir) if ch.isalnum() or ch in ("_", "-")) or "items"
+    public_url = f"/uploads/{safe_subdir}/{filename}"
     logger.info(
         "stored upload prefix=%s filename=%s mime=%s size=%d",
+        safe_prefix, filename, mime, written,
+    )
+    return filename, public_url, written, mime
+
+
+def save_video_upload(
+    file: UploadFile,
+    dest_dir: Path,
+    *,
+    prefix: str,
+    max_bytes: int,
+    allowed_mime: set,
+    public_subdir: str = "items",
+) -> Tuple[str, str, int, str]:
+    """Stream an MP4/WebM/MOV upload after validating magic bytes and size."""
+    mime, ext = sniff_video_mime(file)
+    if mime is None or ext is None or mime not in allowed_mime:
+        raise InvalidRequestError(
+            "Video type not supported (allowed: MP4, WebM, MOV)",
+            extra={
+                "code": "video_invalid_type",
+                "declared_content_type": file.content_type or "",
+            },
+        )
+
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    safe_prefix = "".join(ch for ch in str(prefix) if ch.isalnum() or ch in ("_", "-")) or "file"
+    filename = f"{safe_prefix}_{uuid.uuid4().hex}{ext}"
+    dest_path = dest_dir / filename
+
+    written = 0
+    try:
+        with open(dest_path, "wb") as out:
+            while True:
+                chunk = file.file.read(64 * 1024)
+                if not chunk:
+                    break
+                written += len(chunk)
+                if written > max_bytes:
+                    out.close()
+                    try:
+                        dest_path.unlink()
+                    except OSError:
+                        pass
+                    raise InvalidRequestError(
+                        f"Video too large (max {max_bytes // (1024 * 1024)} MB)",
+                        extra={"code": "video_too_large", "max_bytes": max_bytes},
+                    )
+                out.write(chunk)
+    finally:
+        try:
+            file.file.close()
+        except OSError:
+            pass
+
+    safe_subdir = "".join(ch for ch in str(public_subdir) if ch.isalnum() or ch in ("_", "-")) or "items"
+    public_url = f"/uploads/{safe_subdir}/{filename}"
+    logger.info(
+        "stored video upload prefix=%s filename=%s mime=%s size=%d",
         safe_prefix, filename, mime, written,
     )
     return filename, public_url, written, mime

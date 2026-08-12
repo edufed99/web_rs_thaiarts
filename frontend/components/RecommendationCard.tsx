@@ -4,6 +4,10 @@ import React from "react";
 import Link from "next/link";
 
 import { ItemActionBar } from "@/components/ItemActionBar";
+import {
+  PerformanceCardMedia,
+  resolvedImageUrl,
+} from "@/components/PerformanceCardMedia";
 import type {
   RecommendationResultOut,
   UserState as UserStateType,
@@ -37,37 +41,45 @@ export function RecommendationCard({
   result,
   userKey,
   contextId,
-  contextName,
   requestId,
   onUserStateChange,
 }: RecommendationCardProps) {
   const { rank, item, scores, matched_keywords } = result;
-  const explanation = compactRecommendationReason({
-    contextName,
-    matchedKeywords: matched_keywords,
-    cbfScore: scores.cbf,
-    cfScore: scores.cf,
-  });
+  const explanation = result.explanation;
 
   function handleStateChange(next: UserStateType) {
     if (onUserStateChange) onUserStateChange(item.id, next);
   }
 
+  // Carry the recommendation id into the detail page so the view it logs can
+  // be attributed to this recommendation (ADR-002 §3.2). Without it the
+  // click-through rate is uncomputable.
+  const detailHref = requestId
+    ? `/items/${item.id}?from_request=${encodeURIComponent(requestId)}`
+    : `/items/${item.id}`;
+
   return (
     <article className="recommendation-card">
       <div className="recommendation-card-layout">
         <Link
-          href={`/items/${item.id}`}
+          href={detailHref}
           className="recommendation-card-media"
           aria-label={`ดูรายละเอียด ${item.name}`}
-          style={item.image_url ? { backgroundImage: `linear-gradient(135deg, rgba(6, 27, 60, 0.12), rgba(197, 145, 59, 0.18)), url("${item.image_url}")` } : undefined}
-        />
+          style={{ display: "block", textDecoration: "none" }}
+        >
+          <PerformanceCardMedia
+            imageUrl={resolvedImageUrl(item.image_url)}
+            categoryGroup={item.category_group}
+            title={item.name}
+            variant="card"
+          />
+        </Link>
 
         <div className="recommendation-card-content">
           <header style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "0.5rem", gap: "0.5rem" }}>
             <h3 style={{ fontSize: "1.1rem" }}>
               #{rank}{" "}
-              <Link href={`/items/${item.id}`}>{item.name}</Link>
+              <Link href={detailHref}>{item.name}</Link>
             </h3>
             <div style={{ display: "flex", gap: "0.4rem", flexShrink: 0 }}>
               <span
@@ -162,53 +174,4 @@ export function RecommendationCard({
       </div>
     </article>
   );
-}
-
-function compactRecommendationReason({
-  contextName,
-  matchedKeywords,
-  cbfScore,
-  cfScore,
-}: {
-  contextName?: string;
-  matchedKeywords: string[];
-  cbfScore: number;
-  cfScore: number;
-}): string {
-  const cleanContext = (contextName ?? "").trim();
-  const shownKeywords = matchedKeywords
-    .map((keyword) => keyword.trim())
-    .filter(Boolean)
-    .slice(0, 3);
-  const hasContext = cleanContext.length > 0;
-  const hasKeywordMatch = shownKeywords.length > 0;
-  const hasContentSignal = cbfScore > 0;
-  const hasHistorySignal = cfScore > 0;
-
-  let mainReason = "เหมาะกับเงื่อนไขที่เลือก";
-  if (hasContext && hasKeywordMatch) {
-    mainReason = "ตรงบริบทและคำสำคัญ";
-  } else if (hasKeywordMatch) {
-    mainReason = "ตรงคำสำคัญ";
-  } else if (hasContext) {
-    mainReason = "ตรงบริบท";
-  } else if (hasContentSignal) {
-    mainReason = "ใกล้เคียงคำสำคัญ";
-  } else if (hasHistorySignal) {
-    mainReason = "คล้ายกับความสนใจในอดีต";
-  }
-
-  const details: string[] = [];
-  if (hasContext) details.push(`บริบท: "${cleanContext}"`);
-  if (hasKeywordMatch) {
-    details.push(`คำสำคัญ: ${shownKeywords.map((keyword) => `"${keyword}"`).join(", ")}`);
-  }
-
-  const detailText = details.length > 0 ? ` (${details.join("; ")})` : "";
-  const historyText =
-    hasHistorySignal && mainReason !== "คล้ายกับความสนใจในอดีต"
-      ? " และคล้ายกับความสนใจในอดีต"
-      : "";
-
-  return `แนะนำชุดนี้เพราะ${mainReason}${detailText}${historyText}.`;
 }

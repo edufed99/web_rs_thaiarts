@@ -116,6 +116,7 @@ class ItemUpdate(BaseModel):
     is_active: Optional[bool] = None
     context_names: Optional[List[str]] = None
     keyword_ids: Optional[List[int]] = None
+    new_keyword_names: Optional[List[str]] = Field(default=None, max_length=50)
 
 
 class ItemDeleteOut(BaseModel):
@@ -150,3 +151,12 @@ class ItemImageUploadOut(BaseModel):
     size_bytes: int = Field(..., ge=0, description="File size in bytes.")
     mime: str = Field(..., description="Sniffed MIME type (image/jpeg | image/png | image/webp).")
     item_id: int = Field(..., description="Artifact item id the image was attached to.")
+
+
+class ItemVideoUploadOut(BaseModel):
+    """Result of a successful item-video upload."""
+
+    url: str = Field(..., description="Public URL where the video is served (e.g. /uploads/items/abc.mp4).")
+    size_bytes: int = Field(..., ge=0, description="File size in bytes.")
+    mime: str = Field(..., description="Sniffed MIME type (video/mp4 | video/webm | video/quicktime).")
+    item_id: int = Field(..., description="Artifact item id the video was attached to.")

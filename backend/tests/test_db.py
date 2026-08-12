@@ -309,9 +309,9 @@ def test_orm_tables_include_live_action_tables():
     assert {"likes", "saved_items", "ratings", "interaction_logs"}.issubset(table_names)
 
 
-def test_live_user_positive_items_merges_likes_and_high_ratings(sqlite_db_with_live_actions):
+def test_live_user_positive_items_merges_likes_saves_and_high_ratings(sqlite_db_with_live_actions):
     from app.services.db_query import live_user_positive_items
-    from app.models_db import Like, Rating
+    from app.models_db import Like, Rating, SavedItem
 
     eng, by_artifact = sqlite_db_with_live_actions
     aid_khon, aid_rabam, aid_like = (
@@ -323,13 +323,13 @@ def test_live_user_positive_items_merges_likes_and_high_ratings(sqlite_db_with_l
     SessionLocal = sessionmaker(bind=eng, expire_on_commit=False, future=True)
     with SessionLocal() as s:
         s.add(Like(user_key="anon:u1", item_id=by_artifact[aid_khon]))
-        s.add(Like(user_key="anon:u1", item_id=by_artifact[aid_rabam]))
+        s.add(SavedItem(user_key="anon:u1", item_id=by_artifact[aid_rabam]))
         s.add(Rating(user_key="anon:u1", item_id=by_artifact[aid_like], rating=5))
         s.add(Rating(user_key="anon:u1", item_id=by_artifact[aid_khon], rating=2))
         s.commit()
 
     pos = live_user_positive_items("anon:u1")
-    # like on khon + rabam, rating 5 on like, rating 2 on khon is negative.
+    # like on khon, save on rabam, rating 5 on like; rating 2 is negative.
     assert aid_khon in pos
     assert aid_rabam in pos
     assert aid_like in pos

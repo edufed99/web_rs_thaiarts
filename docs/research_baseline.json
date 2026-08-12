@@ -1,0 +1,11 @@
+{
+  "source": "old code/paper.docx",
+  "item_count": 114,
+  "keyword_count": 584,
+  "taxonomy_path_count": 23,
+  "cbf_model": "intfloat/multilingual-e5-large-instruct",
+  "cf_model": "ItemKNN",
+  "hybrid_method": "WeightedSum",
+  "hybrid_alpha": 0.8,
+  "note": "Frozen counts reported by the research paper; do not silently update this baseline when the live catalog changes."
+}

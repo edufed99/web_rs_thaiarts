@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import time
+from types import SimpleNamespace
 from typing import Iterator
 
 import jwt
@@ -59,9 +60,11 @@ def db_enabled(monkeypatch) -> Iterator[Session]:
         finally:
             s.close()
 
-    from app.services import user_query
+    from app.services import member_query, user_query
     monkeypatch.setattr(user_query, "session_scope", _scope)
     monkeypatch.setattr(user_query, "is_db_enabled", lambda: True)
+    monkeypatch.setattr(member_query, "session_scope", _scope)
+    monkeypatch.setattr(member_query, "is_db_enabled", lambda: True)
     yield Session(engine)
     engine.dispose()
 
@@ -139,13 +142,18 @@ def test_decode_token_garbage_raises():
 
 
 def test_signup_creates_user_and_returns_token(client):
-    r = client.post("/auth/signup", json={"username": "alice", "password": "hunter22"})
+    r = client.post(
+        "/auth/signup",
+        json={"username": "alice", "email": " Alice@Example.COM ", "password": "hunter22"},
+    )
     assert r.status_code == 200
     body = r.json()
     assert body["token_type"] == "bearer"
     assert isinstance(body["access_token"], str)
     assert body["user"]["username"] == "alice"
+    assert body["user"]["email"] == "alice@example.com"
     assert body["user"]["is_admin"] is True  # first user = bootstrap admin
+    assert body["user"]["role"] == "super_admin"
 
 
 def test_signup_rejects_short_password(client):
@@ -190,6 +198,75 @@ def test_me_returns_current_user(client):
     r = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 200
     assert r.json()["username"] == "alice"
+    assert r.json()["role"] == "super_admin"
+
+
+def test_member_profile_is_self_editable_but_role_is_forbidden(client):
+    sig = client.post(
+        "/auth/signup",
+        json={"username": "alice", "password": "hunter22", "display_name": "Alice"},
+    ).json()
+    headers = {"Authorization": f"Bearer {sig['access_token']}"}
+
+    before = client.get("/me/profile", headers=headers)
+    assert before.status_code == 200
+    assert before.json()["role"] == "super_admin"
+
+    updated = client.patch(
+        "/me/profile",
+        json={"display_name": "อลิซ", "avatar_url": "https://example.com/a.jpg", "bio": "สนใจนาฏศิลป์"},
+        headers=headers,
+    )
+    assert updated.status_code == 200
+    assert updated.json()["display_name"] == "อลิซ"
+    assert updated.json()["bio"] == "สนใจนาฏศิลป์"
+    assert updated.json()["role"] == "super_admin"
+
+    escalation = client.patch(
+        "/me/profile",
+        json={"role": "user"},
+        headers=headers,
+    )
+    assert escalation.status_code == 422
+    assert client.get("/me/profile", headers=headers).json()["role"] == "super_admin"
+
+
+def test_member_can_upload_and_remove_avatar(client, tmp_path):
+    settings = get_settings()
+    original_upload_dir = settings.upload_dir
+    object.__setattr__(settings, "upload_dir", tmp_path)
+    try:
+        signup = client.post("/auth/signup", json={"username": "avataruser", "password": "hunter22"}).json()
+        headers = {"Authorization": f"Bearer {signup['access_token']}"}
+        png = b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\r" + b"IHDR" + b"\x00" * 13
+        uploaded = client.post(
+            "/me/profile/avatar",
+            files={"file": ("avatar.png", png, "image/png")},
+            headers=headers,
+        )
+        assert uploaded.status_code == 200, uploaded.text
+        url = uploaded.json()["avatar_url"]
+        assert url.startswith("/uploads/profiles/user-")
+        assert (tmp_path / url.removeprefix("/uploads/")).exists()
+
+        removed = client.delete("/me/profile/avatar", headers=headers)
+        assert removed.status_code == 200
+        assert removed.json()["avatar_url"] == ""
+        assert not (tmp_path / url.removeprefix("/uploads/")).exists()
+    finally:
+        object.__setattr__(settings, "upload_dir", original_upload_dir)
+
+
+def test_member_dashboard_requires_auth_and_returns_profile(client):
+    assert client.get("/me/dashboard").status_code == 401
+    sig = client.post("/auth/signup", json={"username": "member", "password": "hunter22"}).json()
+    headers = {"Authorization": f"Bearer {sig['access_token']}"}
+    response = client.get("/me/dashboard", headers=headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["profile"]["username"] == "member"
+    assert body["summary"]["liked_count"] == 0
+    assert body["recent_views"]["items"] == []
 
 
 def test_me_without_token_returns_401(client):
@@ -228,6 +305,305 @@ def test_update_me_changes_password_with_current_password(client):
     assert old_login.status_code == 401
     new_login = client.post("/auth/login", json={"username": "alice", "password": "newpass123"})
     assert new_login.status_code == 200
+
+
+def test_update_me_changes_username_with_current_password(client):
+    sig = client.post("/auth/signup", json={"username": "alice", "password": "hunter22"}).json()
+    token = sig["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    updated = client.patch(
+        "/auth/me",
+        json={"username": "alice-new", "current_password": "hunter22"},
+        headers=headers,
+    )
+
+    assert updated.status_code == 200
+    assert updated.json()["username"] == "alice-new"
+    assert client.post("/auth/login", json={"username": "alice", "password": "hunter22"}).status_code == 401
+    assert client.post("/auth/login", json={"username": "alice-new", "password": "hunter22"}).status_code == 200
+
+
+def test_update_me_username_requires_correct_current_password(client):
+    sig = client.post("/auth/signup", json={"username": "alice", "password": "hunter22"}).json()
+    headers = {"Authorization": f"Bearer {sig['access_token']}"}
+
+    missing = client.patch("/auth/me", json={"username": "alice-new"}, headers=headers)
+    wrong = client.patch(
+        "/auth/me",
+        json={"username": "alice-new", "current_password": "wrong"},
+        headers=headers,
+    )
+
+    assert missing.status_code == 400
+    assert missing.json()["error"]["code"] == "current_password_required"
+    assert wrong.status_code == 401
+    assert wrong.json()["error"]["code"] == "invalid_current_password"
+
+
+def test_update_me_rejects_duplicate_username(client):
+    first = client.post("/auth/signup", json={"username": "alice", "password": "hunter22"}).json()
+    client.post("/auth/signup", json={"username": "bob", "password": "hunter22"})
+
+    duplicate = client.patch(
+        "/auth/me",
+        json={"username": "bob", "current_password": "hunter22"},
+        headers={"Authorization": f"Bearer {first['access_token']}"},
+    )
+
+    assert duplicate.status_code == 400
+    assert duplicate.json()["error"]["code"] == "duplicate_username"
+
+
+def test_update_me_changes_email_with_current_password(client):
+    sig = client.post(
+        "/auth/signup",
+        json={"username": "alice", "email": "old@example.com", "password": "hunter22"},
+    ).json()
+    headers = {"Authorization": f"Bearer {sig['access_token']}"}
+
+    missing_password = client.patch(
+        "/auth/me", json={"email": "new@example.com"}, headers=headers
+    )
+    updated = client.patch(
+        "/auth/me",
+        json={"email": " NEW@example.com ", "current_password": "hunter22"},
+        headers=headers,
+    )
+
+    assert missing_password.status_code == 400
+    assert missing_password.json()["error"]["code"] == "current_password_required"
+    assert updated.status_code == 200
+    assert updated.json()["email"] == "new@example.com"
+
+
+def test_password_reset_email_flow_is_one_time(client, monkeypatch):
+    from app.services import mailer
+
+    captured = {}
+
+    def fake_send(email, username, token):
+        captured.update(email=email, username=username, token=token)
+        return True
+
+    monkeypatch.setattr(mailer, "delivery_configured", lambda: True)
+    monkeypatch.setattr(mailer, "send_password_reset_email", fake_send)
+    client.post(
+        "/auth/signup",
+        json={
+            "username": "legacy-user",
+            "email": "member@example.com",
+            "password": "oldpass123",
+            "display_name": "must_reset|legacy:legacy-user",
+        },
+    )
+
+    requested = client.post(
+        "/auth/password-reset/request",
+        json={"username": "legacy-user", "email": "MEMBER@example.com"},
+    )
+    assert requested.status_code == 200
+    assert requested.json()["accepted"] is True
+    assert requested.json()["credentials_valid"] is True
+    assert requested.json()["email_sent"] is True
+    assert requested.json()["delivery_configured"] is True
+    assert captured["email"] == "member@example.com"
+    assert len(captured["token"]) >= 20
+
+    confirmed = client.post(
+        "/auth/password-reset/confirm",
+        json={
+            "username": "legacy-user",
+            "token": captured["token"],
+            "new_password": "newpass123",
+        },
+    )
+    assert confirmed.status_code == 200
+    assert client.post(
+        "/auth/login", json={"username": "legacy-user", "password": "oldpass123"}
+    ).status_code == 401
+    login = client.post(
+        "/auth/login", json={"username": "legacy-user", "password": "newpass123"}
+    )
+    assert login.status_code == 200
+    assert login.json()["user"]["display_name"] == "legacy-user"
+
+    reused = client.post(
+        "/auth/password-reset/confirm",
+        json={
+            "username": "legacy-user",
+            "token": captured["token"],
+            "new_password": "another123",
+        },
+    )
+    assert reused.status_code == 400
+    assert reused.json()["error"]["code"] == "invalid_reset_token"
+
+
+def test_password_reset_request_reports_invalid_account_details(client, monkeypatch):
+    from app.services import mailer
+
+    sent = []
+    monkeypatch.setattr(mailer, "delivery_configured", lambda: True)
+    monkeypatch.setattr(
+        mailer,
+        "send_password_reset_email",
+        lambda *args: sent.append(args) or True,
+    )
+
+    response = client.post(
+        "/auth/password-reset/request",
+        json={"username": "unknown", "email": "unknown@example.com"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["accepted"] is False
+    assert response.json()["credentials_valid"] is False
+    assert response.json()["email_sent"] is False
+    assert response.json()["message"] == "ชื่อผู้ใช้หรืออีเมลไม่ถูกต้อง กรุณาตรวจสอบข้อมูลอีกครั้ง"
+    assert sent == []
+
+
+def test_undelivered_password_reset_token_is_revoked(client, monkeypatch):
+    from app.services import mailer
+
+    captured = {}
+
+    def failed_send(_email, _username, token):
+        captured["token"] = token
+        return False
+
+    monkeypatch.setattr(mailer, "delivery_configured", lambda: False)
+    monkeypatch.setattr(mailer, "send_password_reset_email", failed_send)
+    client.post(
+        "/auth/signup",
+        json={"username": "alice", "email": "alice@example.com", "password": "hunter22"},
+    )
+    requested = client.post(
+        "/auth/password-reset/request",
+        json={"username": "alice", "email": "alice@example.com"},
+    )
+    assert requested.json()["credentials_valid"] is True
+    assert requested.json()["email_sent"] is False
+    assert requested.json()["accepted"] is False
+
+    rejected = client.post(
+        "/auth/password-reset/confirm",
+        json={"username": "alice", "token": captured["token"], "new_password": "newpass123"},
+    )
+    assert rejected.status_code == 400
+    assert rejected.json()["error"]["code"] == "invalid_reset_token"
+
+
+def test_mailer_reports_unconfigured(monkeypatch):
+    from app.services import mailer
+
+    settings = SimpleNamespace(
+        smtp_host="smtp.gmail.com",
+        smtp_username="",
+        smtp_password="",
+        smtp_from_email="",
+    )
+    monkeypatch.setattr(mailer, "get_settings", lambda: settings)
+
+    assert mailer.delivery_configured() is False
+    assert mailer.send_password_reset_email("member@example.com", "alice", "token") is False
+
+
+def test_mailer_sends_tls_message(monkeypatch):
+    from app.services import mailer
+
+    settings = SimpleNamespace(
+        smtp_host="smtp.gmail.com",
+        smtp_port=587,
+        smtp_username="sender@example.com",
+        smtp_password="app-password",
+        smtp_from_email="sender@example.com",
+        smtp_use_tls=True,
+        frontend_base_url="http://localhost:3000",
+        password_reset_token_minutes=30,
+    )
+    calls = []
+
+    class FakeSMTP:
+        def __init__(self, host, port, timeout):
+            calls.append(("connect", host, port, timeout))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def starttls(self):
+            calls.append(("starttls",))
+
+        def login(self, username, password):
+            calls.append(("login", username, password))
+
+        def send_message(self, message):
+            calls.append(("send", message["To"], message.get_content()))
+
+    monkeypatch.setattr(mailer, "get_settings", lambda: settings)
+    monkeypatch.setattr(mailer.smtplib, "SMTP", FakeSMTP)
+
+    assert mailer.send_password_reset_email("member@example.com", "alice", "raw-token") is True
+    assert ("starttls",) in calls
+    sent = next(call for call in calls if call[0] == "send")
+    assert sent[1] == "member@example.com"
+    assert "reset-password" in sent[2]
+
+
+def test_mailer_handles_smtp_failure(monkeypatch):
+    from app.services import mailer
+
+    settings = SimpleNamespace(
+        smtp_host="smtp.gmail.com",
+        smtp_port=587,
+        smtp_username="sender@example.com",
+        smtp_password="app-password",
+        smtp_from_email="sender@example.com",
+        smtp_use_tls=True,
+        frontend_base_url="http://localhost:3000",
+        password_reset_token_minutes=30,
+    )
+    monkeypatch.setattr(mailer, "get_settings", lambda: settings)
+    monkeypatch.setattr(
+        mailer.smtplib,
+        "SMTP",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("offline")),
+    )
+
+    assert mailer.send_password_reset_email("member@example.com", "alice", "raw-token") is False
+
+
+def test_legacy_reset_marker_survives_profile_edit_until_password_change(client):
+    sig = client.post(
+        "/auth/signup",
+        json={
+            "username": "legacy-user",
+            "password": "hunter22",
+            "display_name": "must_reset|legacy:legacy-user",
+        },
+    ).json()
+    headers = {"Authorization": f"Bearer {sig['access_token']}"}
+
+    profile_update = client.patch(
+        "/me/profile",
+        json={"display_name": "ชื่อใหม่"},
+        headers=headers,
+    )
+    assert profile_update.status_code == 200
+    assert profile_update.json()["display_name"] == "must_reset|ชื่อใหม่"
+
+    password_update = client.patch(
+        "/auth/me",
+        json={"current_password": "hunter22", "new_password": "newpass123"},
+        headers=headers,
+    )
+    assert password_update.status_code == 200
+    assert password_update.json()["display_name"] == "ชื่อใหม่"
+    assert client.get("/me/profile", headers=headers).json()["display_name"] == "ชื่อใหม่"
 
 
 def test_update_me_rejects_wrong_current_password(client):

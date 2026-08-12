@@ -55,3 +55,24 @@ class ItemOut(BaseModel):
 class ItemListOut(BaseModel):
     items: List[ItemOut] = Field(..., description="Paginated list of items.")
     total: int = Field(..., ge=0, description="Total active items matching the query.")
+
+
+class EngagementOut(BaseModel):
+    """Per-item engagement counters summed across the live action tables.
+
+    Combines ``likes`` + ``saved_items`` + positive (rating >= 4) ``ratings``
+    so the homepage "popular" ranking reflects *all the ways users engage
+    with an item*, not just historical legacy ratings. ``engagement_score``
+    is the plain sum of those three counts — useful as a primary sort key.
+    """
+
+    item_id: int = Field(..., description="Artifact item id (matches ``ItemOut.id``).")
+    like_count: int = Field(..., ge=0)
+    save_count: int = Field(..., ge=0)
+    rating_count: int = Field(..., ge=0, description="Count of ratings >= positive_threshold (default 4).")
+    engagement_score: int = Field(..., ge=0, description="like_count + save_count + rating_count.")
+
+
+class EngagementListOut(BaseModel):
+    engagements: List[EngagementOut] = Field(..., description="One row per requested item, in caller order.")
+    source: str = Field("postgres", description="'postgres' or 'disabled'.")

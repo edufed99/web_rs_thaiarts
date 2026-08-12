@@ -11,9 +11,10 @@ actions router can persist user clicks.
 Notes
 -----
 * ``Item.artifact_item_id`` bridges the artifact id space
-  (``stable_id("item", name)`` from the pipeline) and the legacy Django id
-  space from the imported ``items`` rows. The two never overlap; live
-  actions and CF live merge both translate through this column.
+  (``stable_id("item", name)`` from the pipeline) and the DB id space
+  (``items.id``, referenced by every relational table). The two never
+  overlap; live actions and CF live merge both translate through this
+  column.
 * All column types are SQL-portable (no JSONB / ARRAY / Postgres-only
   types) so the SQLite in-memory engine used in ``tests/test_db.py`` can
   create the same schema.
@@ -26,6 +27,7 @@ from typing import List, Optional
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -153,7 +155,7 @@ class Like(Base):
 
     id: Mapped[int] = mapped_column(BigAutoPK, primary_key=True)
     user_key: Mapped[str] = mapped_column(String(150), nullable=False)
-    # FK to the catalog row (Django id) — the artifact id is recovered via
+    # FK to the catalog row (DB id) — the artifact id is recovered via
     # Item.artifact_item_id at query time.
     item_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("items.id", ondelete="CASCADE"), nullable=False
@@ -210,9 +212,10 @@ class Rating(Base):
 class InteractionLog(Base):
     """Append-only audit trail for every user action.
 
-    Mirrors ``recommender.InteractionLog`` from the legacy Django project.
-    Used by the dashboard / future analytics — not read by the recommendation
-    hot path.
+    Mirrors ``recommender.InteractionLog`` from the legacy Django prototype
+    at ``../web_appRS/thai_arts_webapp/`` (read-only reference; this project
+    does not run Django). Used by the dashboard / future analytics — not
+    read by the recommendation hot path.
     """
 
     __tablename__ = "interaction_logs"
@@ -220,6 +223,7 @@ class InteractionLog(Base):
         Index("ix_interaction_logs_user_key", "user_key"),
         Index("ix_interaction_logs_action_type", "action_type"),
         Index("ix_interaction_logs_created_at", "created_at"),
+        Index("ix_interaction_logs_request_id", "recommendation_request_id"),
     )
 
     id: Mapped[int] = mapped_column(BigAutoPK, primary_key=True)
@@ -231,6 +235,15 @@ class InteractionLog(Base):
     action_type: Mapped[str] = mapped_column(String(40), nullable=False)
     # JSON-as-string for SQLite parity. Callers use json.dumps / json.loads.
     metadata_json: Mapped[str] = mapped_column(Text, default="")
+    # Added by migration 0006. Attributes an action to the recommendation
+    # that surfaced the item, which is what makes per-item click-through
+    # rate computable (ADR-002 §3.2). NULL when the action did not originate
+    # from a recommendation.
+    recommendation_request_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger,
+        ForeignKey("recommendation_requests.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -258,6 +271,7 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(BigAutoPK, primary_key=True)
     username: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    email: Mapped[str] = mapped_column(String(320), default="", nullable=False, index=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     display_name: Mapped[str] = mapped_column(String(120), default="")
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -268,6 +282,28 @@ class User(Base):
     )
     last_login_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+
+class PasswordResetToken(Base):
+    """Hashed, expiring, one-time token used by the email reset flow."""
+
+    __tablename__ = "password_reset_tokens"
+    __table_args__ = (
+        Index("ix_password_reset_tokens_user_id", "user_id"),
+        Index("ix_password_reset_tokens_token_hash", "token_hash", unique=True),
+        Index("ix_password_reset_tokens_expires_at", "expires_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigAutoPK, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
 
@@ -288,6 +324,14 @@ class UserProfile(Base):
         UniqueConstraint("user_id", name="uq_accounts_userprofile_user_id"),
         Index("ix_accounts_userprofile_user_id", "user_id", unique=True),
         Index("ix_accounts_userprofile_role", "role"),
+        CheckConstraint(
+            "role IN ('user', 'super_admin')",
+            name="ck_accounts_userprofile_role",
+        ),
+        CheckConstraint(
+            "user_group IN ('user', 'super_admin')",
+            name="ck_accounts_userprofile_user_group",
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigAutoPK, primary_key=True)
@@ -296,8 +340,10 @@ class UserProfile(Base):
     )
     display_name: Mapped[str] = mapped_column(String(150), default="", nullable=False)
     role: Mapped[str] = mapped_column(String(20), default="user", nullable=False)
-    user_group: Mapped[str] = mapped_column(String(100), default="", nullable=False)
+    user_group: Mapped[str] = mapped_column(String(100), default="user", nullable=False)
     experience_level: Mapped[str] = mapped_column(String(20), default="none", nullable=False)
+    avatar_url: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    bio: Mapped[str] = mapped_column(Text, default="", nullable=False)
     consent_accepted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     consent_version: Mapped[str] = mapped_column(String(40), default="", nullable=False)
     consent_accepted_at: Mapped[Optional[datetime]] = mapped_column(
@@ -406,6 +452,94 @@ class RecommendationResult(Base):
     explanation: Mapped[str] = mapped_column(Text, default="", nullable=False)
 
 
+class EvaluationRun(Base):
+    """One snapshot of a recommender quality run.
+
+    Populated by two paths:
+
+    * ``source='offline'`` — ``pipelines/run_offline_evaluation.py``
+      runs an 80/20 holdout over ``legacy_interactions`` and predicts
+      top-10 with the live recommender. One row per run.
+    * ``source='online'`` — recomputed lazily on every
+      ``POST /recommendations`` from the last 30 days of
+      ``recommendation_results`` joined with ``interaction_logs``.
+
+    The dashboard's model-quality tiles prefer online rows when any
+    exist, otherwise fall back to the latest offline row. When the
+    table is empty the dashboard renders "รอการประเมิน".
+    """
+
+    __tablename__ = "evaluation_runs"
+    __table_args__ = (
+        Index("ix_evaluation_runs_source", "source"),
+        Index("ix_evaluation_runs_ran_at", "ran_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigAutoPK, primary_key=True)
+    source: Mapped[str] = mapped_column(String(20), nullable=False)
+    ran_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    test_user_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    test_interaction_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    ndcg10: Mapped[float] = mapped_column(nullable=False, default=0.0)
+    hr10: Mapped[float] = mapped_column(nullable=False, default=0.0)
+    mrr10: Mapped[float] = mapped_column(nullable=False, default=0.0)
+    coverage: Mapped[float] = mapped_column(nullable=False, default=0.0)
+    violation_rate: Mapped[float] = mapped_column(nullable=False, default=0.0)
+    metadata_json: Mapped[str] = mapped_column(Text, default="", nullable=False)
+
+
+class PopularityWeight(Base):
+    """One version of the popularity score weights (ADR-002 §4.4).
+
+    The current ``engagement_score`` formula in ``db_query.py`` is
+    hardcoded; this table is the replacement so an admin can retune
+    the score without a code change or a deploy.
+
+    Invariants enforced by ``services.popularity.set_weights``:
+
+    * ``weights_json`` deserialises to ``{factor: float ∈ [0, 1]}``
+      with values summing to 1.0 ± 1e-3.
+    * At most one row has ``is_active=True`` at any time.
+    * ``bayes_m`` ≥ 0 (the smoothing prior strength).
+    * ``half_life_days`` ≥ 0 (0 disables time decay).
+
+    Validation lives in the service, not the DB, because a stale row
+    written by a previous version of the service must still load —
+    a CHECK constraint here would break a rollback.
+    """
+
+    __tablename__ = "popularity_weights"
+    __table_args__ = (Index("ix_popularity_weights_is_active", "is_active"),)
+
+    id: Mapped[int] = mapped_column(BigAutoPK, primary_key=True)
+    # JSON-as-string for SQLite parity (tests run on SQLite). Validated
+    # on write; readers trust the writer.
+    weights_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    half_life_days: Mapped[int] = mapped_column(Integer, nullable=False, default=14)
+    bayes_m: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    updated_by: Mapped[str] = mapped_column(
+        String(150), nullable=False, default=""
+    )
+
+    def weights(self) -> dict:
+        """Deserialise ``weights_json`` lazily on access (callers hot-path)."""
+        import json
+
+        try:
+            out = json.loads(self.weights_json or "{}")
+        except (TypeError, ValueError):
+            return {}
+        return out if isinstance(out, dict) else {}
+
+
 __all__ = [
     "Base",
     "Context",
@@ -420,8 +554,11 @@ __all__ = [
     "Rating",
     "InteractionLog",
     "User",
+    "PasswordResetToken",
     "UserProfile",
     "RecommendationRequest",
     "RecommendationRequestSelectedKeyword",
     "RecommendationResult",
+    "EvaluationRun",
+    "PopularityWeight",
 ]

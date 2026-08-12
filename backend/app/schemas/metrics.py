@@ -18,6 +18,12 @@ class HealthOut(BaseModel):
     item_count: int = Field(default=0, ge=0, description="Number of items in artifacts.")
     context_count: int = Field(default=0, ge=0)
     embedding_dim: int = Field(default=0, ge=0)
+    research_mode: bool = False
+    embedding_backend: str = Field(default="not_loaded")
+    e5_model: str = Field(default="")
+    e5_load_latency_ms: Optional[float] = Field(default=None, ge=0)
+    e5_last_inference_latency_ms: Optional[float] = Field(default=None, ge=0)
+    e5_error: Optional[str] = None
 
 
 class MetricsOut(BaseModel):
@@ -100,3 +106,23 @@ class ModelConfigOut(BaseModel):
         default_factory=dict,
         description="Other keys from best_model_config.json surfaced as-is.",
     )
+
+
+class ReproducibilityCount(BaseModel):
+    expected: int = Field(..., ge=0)
+    actual: int = Field(..., ge=0)
+    delta: int
+    matches: bool
+
+
+class ReproducibilityOut(BaseModel):
+    """Paper baseline compared with the currently loaded artifact corpus."""
+
+    status: str = Field(..., description="'match' or 'drift_detected'.")
+    baseline_source: str
+    keyword_count_source: str = Field(description="'postgres' or 'artifacts'.")
+    item_count: ReproducibilityCount
+    keyword_count: ReproducibilityCount
+    taxonomy_path_count: ReproducibilityCount
+    artifact_config_hash: str = ""
+    artifact_build_timestamp: str = ""

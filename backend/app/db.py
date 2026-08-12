@@ -24,6 +24,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from .core.config import get_settings
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,7 +34,10 @@ _SessionLocal: Optional[sessionmaker] = None
 
 
 def is_db_enabled() -> bool:
-    return os.environ.get("RECSYS_DB_ENABLED", "1") == "1"
+    raw = os.environ.get("RECSYS_DB_ENABLED")
+    if raw is not None:
+        return raw == "1"
+    return bool(get_settings().db_enabled)
 
 
 def get_engine() -> Engine:
@@ -41,10 +46,7 @@ def get_engine() -> Engine:
     if not is_db_enabled():
         return None
     if _engine is None:
-        url = os.environ.get(
-            "RECSYS_DATABASE_URL",
-            "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/web_rs_thaiarts",
-        )
+        url = os.environ.get("RECSYS_DATABASE_URL") or get_settings().database_url
         logger.info("Connecting to DB: %s", url)
         _engine = create_engine(url, future=True, pool_pre_ping=True)
     return _engine

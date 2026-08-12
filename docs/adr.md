@@ -69,7 +69,8 @@ The deliverable of this refactor is a **new** project at `web_appRS1/` (root) th
     ├─ /keywords                     ← list of keywords (GET)
     ├─ /metrics                      ← evaluator dashboard summary (GET)
     ├─ /auth/signup, /auth/login     ← JWT issuance (POST)
-    ├─ /auth/me                      ← echo current user (GET, JWT)
+    ├─ /auth/me                      ← read/update current user (GET/PATCH, JWT)
+    ├─ /auth/password-reset/*        ← email reset request/confirm (POST)
     ├─ /admin/items/draft            ← Layer A + Layer B grounding (POST, admin JWT)
     ├─ /admin/items                  ← Layer C commit + ingest (POST, admin JWT)
     ├─ /admin/items/{id}/keywords    ← Layer C re-edit (POST, admin JWT)
@@ -402,11 +403,11 @@ backend/tests/
 
 The following are explicitly **not** part of this refactor:
 
-1. **Authentication / login.** ~~Legacy `accounts/` is left untouched. Backend endpoints are open in this MVP. Production must add OAuth or JWT — separate ADR. (Live actions use an opaque `user_key` like `anon:<uuid>` — see §5 + §6.)~~ **In scope as of 2026-07-28.** Username + password (no email verification) via **bcrypt** + **JWT (HS256, 7-day)**. Endpoints: `POST /auth/signup`, `POST /auth/login`, `GET /auth/me`. Admin gating via `is_admin` on the `User` row.
+1. **Authentication / login.** ~~Legacy `accounts/` is left untouched. Backend endpoints are open in this MVP. Production must add OAuth or JWT — separate ADR. (Live actions use an opaque `user_key` like `anon:<uuid>` — see §5 + §6.)~~ **In scope as of 2026-07-28.** Username + email + password via **bcrypt** + **JWT (HS256, 7-day)**. Endpoints: `POST /auth/signup`, `POST /auth/login`, `GET/PATCH /auth/me`, and email-based `POST /auth/password-reset/{request,confirm}`. Admin gating via `is_admin` on the `User` row.
    - **First-user-admin bootstrap.** When `RECSYS_ADMIN_USERNAMES` is empty, the very first `POST /auth/signup` becomes admin. Otherwise only members of the allow-list are admins.
    - **JWT-vs-anon translation.** All write endpoints (`/actions/*`, `/admin/*`) require `Authorization: Bearer <jwt>`. The `User` resolves to `user_key = "user:<id>"`. Catalog browse (`GET /items`, `GET /items/{id}`) and `POST /recommendations` accept either: a JWT (server picks it) **or** an opaque `user_key` body/query that starts with `anon:`. Mismatch (JWT + non-anon body) raises 401. Implemented in `routers/_user_key.py:resolve_user_key`.
    - **JWT secret** defaults to `"dev-only-change-me"` for tests; **rotate before any production deployment** via `RECSYS_JWT_SECRET` env var. HS256 — no JWKS needed.
-   - **No email verification, password reset, or 2FA** — out of scope.
+   - **Password reset.** Reset links carry a random one-time token; only SHA-256 is stored, tokens expire after 30 minutes, and username + email must match. SMTP credentials are environment-only. Email verification at signup and 2FA remain out of scope.
 2. ~~**Live user personalization** (`personalized_recommendations_from_history`, like / save / rate actions).~~ **In scope as of 2026-07-28.** Tables `likes` / `saved_items` / `ratings` / `interaction_logs` exist; the `/actions/*` endpoints persist writes; `cf_service` merges live history into the ItemKNN index; `recommendation_service` applies `apply_negative_penalty` for negative ratings.
 3. **Migration of existing PostgreSQL data.** The Django DB stays where it is; the new system reads CSVs and rebuilds artifacts from scratch. (Live-action tables are owned by Alembic; legacy `legacy_interactions` data is migrated once via `pipelines/migrate_sqlite_to_postgres.py`.)
 4. **CI/CD, Docker, deployment scripts.** Manual `uvicorn` and `npm run dev` only. (Docker compose for the local Postgres is the only exception.)
@@ -436,3 +437,268 @@ The refactor is considered complete when:
 7. Backend never reads CSV at serving time **or at admin-ingest time**. Only `artifacts/*` (loader) + Postgres (live actions + admin ingest) + the E5 model runtime (admin ingest only).
 8. Swagger UI renders at `/docs` with summary + description on every endpoint.
 9. Live ingest: `POST /admin/items` returns the new item and the in-memory loader (`item_count`, recommendations, `/items` listing) reflects the new item without a backend restart.
+
+---
+---
+
+# ADR-002: Behavioural Popularity Score
+
+**Status:** Proposed
+**Date:** 2026-07-31
+**Scope:** Replace the flat `engagement_score` with a multi-signal, time-windowed
+popularity score; add the missing telemetry it depends on; surface it as a
+sort option and (later) a dedicated menu.
+**Supersedes:** the hardcoded formula at `backend/app/services/db_query.py:301`.
+
+## 1. Problem
+
+`GET /items/engagement` currently ranks items by
+
+```python
+engagement_score = like_count + save_count + rating_count   # db_query.py:301
+```
+
+The homepage "ชุดการแสดงยอดนิยม" section (`frontend/app/(public)/page.tsx:203`)
+sorts its top-4 by this number. Four defects:
+
+1. **Unweighted.** A like (one tap, low intent) counts exactly as much as a
+   save (intent to return). There is no way to express that some signals
+   mean more than others.
+2. **No time window.** The score is a lifetime cumulative count, so
+   "popular" means "has been around longest", not "is being liked now".
+   A retired performance outranks a rising one indefinitely.
+3. **Small-sample distortion.** `rating_count` counts positive ratings but
+   ignores how many people rated at all. An item rated 5★ by one user is
+   indistinguishable from one rated 4.8★ by a hundred.
+4. **Not tunable.** The weights are literals in a service function. Changing
+   the ranking requires a code edit and a redeploy.
+
+Additionally, the **inputs for a richer score do not exist**:
+`backend/app/services/actions.py:34` fixes
+`VALID_ACTIONS = {"like", "unlike", "save", "unsave", "rate"}`, and no code
+path writes any other verb. `dashboard_query.py:519` already *queries*
+`search` / `keyword_click` / `item_view` — those rows are produced only by
+test fixtures (`tests/test_dashboard.py:306`), never in production. We must
+not add a second layer of aspirational queries over data nobody writes.
+
+## 2. Decision
+
+Adopt a weighted, Bayesian-smoothed, time-decayed popularity score, delivered
+in **three phases**. Phase A adds the missing telemetry; Phase B introduces
+the formula and makes its weights admin-editable; Phase C exposes the UI.
+Each phase ships independently and leaves the system working.
+
+### Non-goals
+
+* **Popularity does not enter the recommendation ranking.** ADR-001 §5
+  invariant stands: eligibility → CBF → CF → hybrid is untouched, and the
+  hybrid score remains the sole sort key of `POST /recommendations`.
+  Popularity is a *browse-time* ordering, in the same category as
+  `match_percent` (display-only).
+* **No booking/reservation subsystem.** The domain has no booking flow, so
+  there is no literal "selected/booked" event to record. §3.2 defines the
+  closest honest proxy.
+* **No eligibility change.** `eligibility.py:59` filters on context
+  membership only. Filtering by performer count, budget, region, or costume
+  availability is a separate, larger change requiring its own ADR — several
+  of those fields do not exist in the schema, and `price_text` is free-form
+  text, not a comparable number.
+
+## 3. Phase A — Telemetry (prerequisite)
+
+### 3.1 `item_view`
+
+Add `"item_view"` to `VALID_ACTIONS` and expose `POST /actions/view`. It writes
+an `interaction_logs` row **only** — no state table, since a view has no
+undo and no per-user current state.
+
+* **Deduplication.** One view per `(user_key, item_id)` per 30-minute window.
+  Refreshing a detail page must not inflate the count. Enforced by a lookback
+  query in the service, not a DB constraint (the window is a policy, not an
+  invariant).
+* **Attribution.** When the view originates from a recommendation, the caller
+  passes the request id and it is stored in the existing
+  `interaction_logs.recommendation_request_id` column (migration 0006), which
+  is currently always NULL.
+* **No migration needed.** `action_type` is `String(40)`, free-form, already
+  indexed alongside `created_at` and `item_id`.
+
+**Compatibility:** `member_query.py:132` whitelists
+`{like, unlike, save, unsave, rate}` when building user history. `item_view`
+must be excluded there — a view is not a history-worthy user action, and
+including it would flood the "ประวัติความสนใจ" tab. This also means
+`member_query.py:226 (_recent_view_count)`, which today approximates views by
+counting *any* log row, can become exact; that cleanup is in scope for
+Phase A.
+
+### 3.2 Impressions and CTR — the honest "Selected" proxy
+
+`recommendation_results` (migration 0006) already persists **every row ever
+shown** to a user, with `request_id` → `recommendation_requests.created_at`
+for the time window. This gives, per item and per window:
+
+* `impressions` — how many times the item was recommended;
+* `views` — how many of those led to a detail-page open (§3.1);
+* `ctr = views / impressions`.
+
+CTR is a **rate, not a count**, so it does not reward items merely for being
+shown often, and it measures the same thing the proposed "Selected" factor
+was reaching for — deliberate user choice — without inventing a booking
+system. Items below an impression floor (default 20) get `ctr = None` and are
+excluded from the CTR term rather than scored as zero, so a single lucky
+click cannot top the chart.
+
+### 3.3 Consequence for backfill
+
+Phases A/B are **not retroactive**: no `item_view` rows exist for the past,
+and `recommendation_results` only accumulates from when 0006 landed. The
+first meaningful popularity ranking appears one full window (30 days) after
+Phase A ships. This is accepted — the alternative (synthesising history) would
+fabricate data.
+
+## 4. Phase B — Score
+
+### 4.1 Signal normalisation
+
+Raw counts are long-tailed: one breakout item with 500 likes would compress
+every other item to ~0 under plain min-max. Each count signal is therefore
+compressed before scaling:
+
+```
+norm(x) = (log1p(x) - log1p(min)) / (log1p(max) - log1p(min))
+```
+
+with `norm(x) = 0` when `max == min` (degenerate/empty catalog). CTR is
+already a [0,1] rate and is used directly.
+
+**Normalisation population is the whole catalog, not the filtered result
+set.** A per-query min-max would make the score depend on the filter, which
+breaks caching and makes two screens disagree about the same item. This also
+matches the ADR-001 precompute philosophy: aggregate once, filter after.
+
+### 4.2 Bayesian rating
+
+Plain mean rating is replaced by
+
+```
+WR = (v / (v + m)) * R  +  (m / (v + m)) * C
+```
+
+`R` = item mean, `v` = its rating count, `C` = catalog-wide mean, `m` =
+prior strength. **`m` defaults to 3, not 10.** With today's near-zero
+telemetry, `m = 10` pulls every item to `C` and flattens the ranking
+entirely; `m` is a tunable weight (§4.4) and should be raised as volume
+grows.
+
+### 4.3 Time decay
+
+Each contributing event is weighted by `exp(-λ · age_days)`, λ derived from a
+configurable half-life (default 14 days, i.e. λ = ln2/14). Applied to like /
+save / rate / view events. This is what makes the score mean "currently
+popular" rather than "accumulated since launch".
+
+**Like/save events are counted from `interaction_logs`, not from the
+`likes` / `saved_items` tables.** The state tables hold only *current* state
+(unlike deletes the row: `actions.py:133`), which has no time dimension.
+The log is append-only, so decay is computable — but it records `like` and
+`unlike` as separate rows, so a like→unlike→like sequence would triple-count.
+The aggregation must therefore net out `unlike` / `unsave` against their
+positive counterparts per `(user_key, item_id)` before decaying.
+
+### 4.4 Weights
+
+Stored in a new `popularity_weights` table (one row per active weight set,
+`is_active` flag, `updated_at`, `updated_by`) so an admin can retune without a
+deploy — this is the DB-backed config the current system lacks (only
+`RECSYS_*` env vars and `artifacts/best_model_config.json` exist today, and
+neither carries popularity coefficients).
+
+Because view/CTR data does not exist until Phase A has been live for a full
+window, weights ship in two stages, renormalised so the achievable score is
+always 1.0 (never silently capped at 0.60):
+
+| Factor | Phase B (no view data yet) | Phase C (full) |
+|---|---|---|
+| Saved | 0.30 | 0.20 |
+| Rating (WR) | 0.35 | 0.20 |
+| Like | 0.25 | 0.15 |
+| Recency | 0.10 | 0.05 |
+| View | — | 0.15 |
+| CTR ("Selected") | — | 0.25 |
+
+The Phase C column is the user's proposed weighting, with "Selected"
+reinterpreted per §3.2. Cutover is a row update, not a code change.
+
+### 4.5 Storage of sub-scores
+
+The API returns each normalised sub-score alongside the total, not just the
+sum. Without this, "why is this item ranked third?" is unanswerable, and
+tuning the weights becomes guesswork.
+
+## 5. Phase C — Surface
+
+1. **Sort option first.** Add "เรียงตามความนิยม" to the existing sort dropdown
+   at `/items` (today: ก-ฮ / ฮ-ก / ใหม่ล่าสุด). Lowest-risk surface.
+2. **Then the three-way split**, once a window of real data exists:
+   * **ยอดนิยม** — top score over 30 days.
+   * **มาแรง** — growth rate over 7 days vs the preceding 7.
+   * **แนะนำสำหรับคุณ** — the existing personalised `POST /recommendations`.
+   These are deliberately different lists; a globally popular โขน may be
+   inappropriate for a user with six performers, which is exactly why
+   popularity must not feed the recommender (§2 non-goals).
+
+### Blocking defect
+
+`frontend/app/(public)/items/page.tsx:272` re-sorts by `name-asc` on the
+client **after** the backend returned an ordered list, silently discarding
+the server's ranking (this already breaks `?context=` ranked mode, which
+`catalog.py:112` sorts by `match_percent`). Any server-side popularity order
+would be discarded the same way. **Fix before Phase C step 1.**
+
+## 6. Consequences
+
+**Positive**
+
+* "ยอดนิยม" becomes defensible: multi-signal, recency-aware, small-sample-safe.
+* CTR gives a genuine quality signal, reusing `recommendation_results` — a
+  table already written and currently unread.
+* Weights become admin-tunable; the first DB-backed config in the project.
+* `_recent_view_count` stops being an approximation.
+
+**Negative / risks**
+
+| Risk | Mitigation |
+|---|---|
+| No data until a window elapses (§3.3) | Ship Phase A first; UI shows the existing zero-state; sort option degrades to stable id order |
+| `item_view` inflates `interaction_logs` — the highest-frequency verb | 30-min dedupe (§3.1); the table is indexed on `created_at`/`action_type`; revisit partitioning if it exceeds ~10M rows |
+| Popularity feedback loop (popular → shown more → more popular) | Popularity is browse-only, never a recommender input (§2); CTR is a rate, so impressions alone don't help |
+| Weight misconfiguration via admin UI | Validate weights sum to 1.0 ± 0.001 and each ∈ [0,1]; keep the previous active row for rollback |
+| Per-request aggregation cost | Score is computed over the whole catalog (~116 items) and cached; recomputed on a schedule, not per request |
+
+## 7. Acceptance Criteria
+
+**Phase A**
+1. `POST /actions/view` writes exactly one `interaction_logs` row per
+   `(user_key, item_id)` per 30-minute window; a second call inside the
+   window is a no-op returning 200.
+2. A view originating from a recommendation persists a non-NULL
+   `recommendation_request_id`.
+3. `item_view` rows never appear in `/me/history` or the profile
+   "ประวัติความสนใจ" tab.
+4. A `db_query` function returns `{impressions, views, ctr}` per artifact id
+   for a given window, with `ctr = None` below the impression floor.
+5. Backend tests cover dedupe, attribution, history exclusion, and the
+   impression floor. Coverage does not regress.
+
+**Phase B**
+6. `popularity_weights` exists via a new Alembic revision (no
+   `CREATE TABLE IF NOT EXISTS` — ADR-001 convention).
+7. The score endpoint returns per-factor sub-scores plus the total.
+8. Bayesian smoothing verified: 5★×1 ranks below 4.8★×100 at `m = 3`.
+9. Decay verified: two items with equal counts rank by recency.
+10. `engagement_score` retains its current field name and meaning for
+    backwards compatibility, with the new score as an additional field.
+
+**Phase C**
+11. `items/page.tsx:272` no longer discards server ordering.
+12. "เรียงตามความนิยม" appears in the sort dropdown and matches backend order.

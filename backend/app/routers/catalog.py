@@ -15,6 +15,7 @@ Two list modes:
 from __future__ import annotations
 
 import hashlib
+import math
 import threading
 import time
 from typing import Any, List, Optional
@@ -227,6 +228,54 @@ def items_engagement(
     return EngagementListOut(engagements=rows, source="postgres")
 
 
+@router.get(
+    "/items/batch",
+    response_model=ItemListOut,
+    summary="Get multiple catalog items in one request",
+)
+def get_items_batch(
+    ids: str = Query(..., description="Comma-separated artifact item ids, max 200."),
+    user_key: Optional[str] = Query(default=None, max_length=150),
+    user: Optional[User] = Depends(get_current_user_dep),
+    loader: ArtifactLoader = Depends(get_singleton),
+) -> ItemListOut:
+    effective_user_key = _effective_user_key(user, user_key)
+    requested = _parse_item_ids(ids)
+    items = _item_outs_for_ids(requested, effective_user_key, loader)
+    return ItemListOut(items=items, total=len(items))
+
+
+@router.get(
+    "/items/{item_id}/similar",
+    response_model=ItemListOut,
+    summary="Find genuinely similar catalog items",
+)
+def get_similar_items(
+    item_id: int,
+    limit: int = Query(default=4, ge=1, le=20),
+    user_key: Optional[str] = Query(default=None, max_length=150),
+    user: Optional[User] = Depends(get_current_user_dep),
+    loader: ArtifactLoader = Depends(get_singleton),
+) -> ItemListOut:
+    effective_user_key = _effective_user_key(user, user_key)
+    rows = _similarity_rows(loader)
+    reference = next((row for row in rows if int(row["item_id"]) == int(item_id)), None)
+    if reference is None:
+        raise ItemNotFoundError(
+            f"Item id {item_id} not found.",
+            extra={"item_id": int(item_id)},
+        )
+    scored = [
+        (_similarity_score(loader, reference, candidate), str(candidate.get("name") or ""), int(candidate["item_id"]))
+        for candidate in rows
+        if int(candidate["item_id"]) != int(item_id) and bool(candidate.get("is_active", True))
+    ]
+    scored.sort(key=lambda row: (-row[0], row[1], row[2]))
+    selected_ids = [candidate_id for _score, _name, candidate_id in scored[:limit]]
+    items = _item_outs_for_ids(selected_ids, effective_user_key, loader)
+    return ItemListOut(items=items, total=len(items))
+
+
 def _parse_engagement_range_days(raw: str) -> Optional[int]:
     text = (raw or "all").strip().lower()
     if text in {"", "all", "all-time", "alltime"}:
@@ -272,6 +321,103 @@ def get_item(
         )
     state_map = live_user_state_for_items(effective_user_key, [int(item_id)])
     return _row_to_item_out(row, loader, user_state=state_map.get(int(item_id)))
+
+
+def _effective_user_key(user: Optional[User], user_key: Optional[str]) -> str:
+    if user is None and not user_key:
+        return ""
+    return resolve_user_key(user=user, body_user_key=user_key)
+
+
+def _parse_item_ids(raw_ids: str) -> list[int]:
+    parsed: list[int] = []
+    seen: set[int] = set()
+    for chunk in str(raw_ids or "").split(","):
+        try:
+            item_id = int(chunk.strip())
+        except ValueError:
+            continue
+        if item_id > 0 and item_id not in seen:
+            seen.add(item_id)
+            parsed.append(item_id)
+        if len(parsed) >= 200:
+            break
+    return parsed
+
+
+def _item_outs_for_ids(
+    requested_ids: list[int],
+    effective_user_key: str,
+    loader: ArtifactLoader,
+) -> list[ItemOut]:
+    if not requested_ids:
+        return []
+    state_map = live_user_state_for_items(effective_user_key, requested_ids)
+    db_rows = _db_item_rows()
+    if db_rows is not None:
+        by_id = {
+            int(row["artifact_item_id"]): row
+            for row in db_rows
+            if bool(row.get("is_active", True))
+        }
+        return [
+            _db_row_to_item_out(by_id[item_id], user_state=state_map.get(item_id))
+            for item_id in requested_ids
+            if item_id in by_id
+        ]
+    output: list[ItemOut] = []
+    for item_id in requested_ids:
+        row = loader.item_row(item_id)
+        if row is not None and bool(row.get("is_active", True)):
+            output.append(_row_to_item_out(row, loader, user_state=state_map.get(item_id)))
+    return output
+
+
+def _similarity_rows(loader: ArtifactLoader) -> list[dict[str, Any]]:
+    db_rows = _db_item_rows()
+    if db_rows is not None:
+        return [
+            {
+                "item_id": int(row["artifact_item_id"]),
+                "name": row.get("name", ""),
+                "category_group": row.get("category_group", ""),
+                "keyword_names": [str(k.get("name") or "") for k in row.get("keywords", [])],
+                "context_names": [str(c.get("name") or "") for c in row.get("contexts", [])],
+                "is_active": bool(row.get("is_active", True)),
+            }
+            for row in db_rows
+        ]
+    return [row.to_dict() for _, row in loader.items.iterrows()]
+
+
+def _similarity_score(loader: ArtifactLoader, reference: dict[str, Any], candidate: dict[str, Any]) -> float:
+    ref_id = int(reference["item_id"])
+    candidate_id = int(candidate["item_id"])
+    embedding_score = 0.0
+    try:
+        ref_embedding = loader.embedding_for(ref_id)
+        candidate_embedding = loader.embedding_for(candidate_id)
+        if ref_embedding is not None and candidate_embedding is not None:
+            dot = float(sum(float(a) * float(b) for a, b in zip(ref_embedding, candidate_embedding)))
+            ref_norm = math.sqrt(sum(float(v) ** 2 for v in ref_embedding))
+            candidate_norm = math.sqrt(sum(float(v) ** 2 for v in candidate_embedding))
+            if ref_norm and candidate_norm:
+                embedding_score = max(0.0, min(1.0, (dot / (ref_norm * candidate_norm) + 1.0) / 2.0))
+    except (KeyError, TypeError, ValueError):
+        embedding_score = 0.0
+
+    def jaccard(left: Any, right: Any) -> float:
+        a = {str(value) for value in (left or []) if value}
+        b = {str(value) for value in (right or []) if value}
+        return len(a & b) / len(a | b) if a or b else 0.0
+
+    keyword_score = jaccard(reference.get("keyword_names"), candidate.get("keyword_names"))
+    context_score = jaccard(reference.get("context_names"), candidate.get("context_names"))
+    category_score = float(
+        bool(reference.get("category_group"))
+        and str(reference.get("category_group")) == str(candidate.get("category_group"))
+    )
+    return 0.70 * embedding_score + 0.15 * keyword_score + 0.10 * context_score + 0.05 * category_score
 
 
 def _search_terms(search: Optional[str]) -> list[str]:

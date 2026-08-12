@@ -16,7 +16,7 @@ const GROUP_ORDER = [
   "โอกาสอื่น ๆ",
 ];
 
-function inferGroupName(context: ContextOut): string {
+export function getContextGroupName(context: ContextOut): string {
   const name = context.name.trim();
   const explicit = context.group.trim();
   if (explicit.length > 0) return explicit;
@@ -51,7 +51,7 @@ export function groupContexts(contexts: ContextOut[]): ContextGroup[] {
   const buckets = new Map<string, ContextOut[]>();
 
   contexts.forEach((context) => {
-    const groupName = inferGroupName(context);
+    const groupName = getContextGroupName(context);
     const bucket = buckets.get(groupName) ?? [];
     bucket.push(context);
     buckets.set(groupName, bucket);

@@ -1,5 +1,7 @@
+import { PHASE_DEVELOPMENT_SERVER } from "next/constants.js";
+
 /** @type {import('next').NextConfig} */
-const nextConfig = {
+const baseConfig = {
   reactStrictMode: true,
   // Backend is a separate process; frontend never imports Python or reads CSV.
   env: {
@@ -8,4 +10,13 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+/**
+ * Keep development and production artifacts separate. Running `next build`
+ * while the dev server is open must never replace chunks used by that server.
+ */
+export default function nextConfig(phase) {
+  return {
+    ...baseConfig,
+    distDir: phase === PHASE_DEVELOPMENT_SERVER ? ".next-dev" : ".next",
+  };
+}

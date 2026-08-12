@@ -58,7 +58,12 @@ def post_recommendations(
     if user is not None:
         profile_key, _ = _best_profile_key(loader, user)
         payload = payload.model_copy(update={"user_key": profile_key})
-    return generate_recommendations(loader, payload, settings=settings)
+    return generate_recommendations(
+        loader,
+        payload,
+        settings=settings,
+        user_id=int(user.id) if user is not None else None,
+    )
 
 
 @router.get(

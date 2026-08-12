@@ -161,3 +161,23 @@ def test_validation_error_handler():
     body = r.json()
     assert body["error"]["code"] == "validation_error"
     assert "errors" in body["error"]
+
+
+def test_unexpected_error_handler_returns_json_500():
+    app = FastAPI()
+    register_exception_handlers(app)
+
+    @app.get("/explode")
+    def _explode():
+        raise RuntimeError("database detail must not leak")
+
+    c = TestClient(app, raise_server_exceptions=False)
+    r = c.get("/explode")
+    assert r.status_code == 500
+    assert r.json() == {
+        "error": {
+            "code": "internal_server_error",
+            "message": "The server could not complete this request.",
+        }
+    }
+    assert "database detail" not in r.text

@@ -63,6 +63,16 @@ const CATEGORY_IMAGES = [
   "/img/home/category-5.png",
   "/img/home/category-6.png",
 ] as const;
+const CATEGORY_IMAGE_BY_NAME: Record<string, string> = {
+  "นาฏศิลป์อนุรักษ์": "/img/home/category-conservation.gif",
+  "การแสดงนาฏศิลป์สร้างสรรค์": "/img/home/category-creative.jpg",
+  "นาฏศิลป์พื้นบ้านภาคเหนือ": "/img/home/category-north.jpg",
+  "นาฏศิลป์พื้นบ้านภาคอีสาน": "/img/home/category-isan.jpg",
+  "นาฏศิลป์พื้นบ้านภาคกลาง": "/img/home/category-central.jpg",
+  "นาฏศิลป์พื้นบ้านภาคใต้": "/img/home/category-south.jpg",
+  "รำฉุยฉาย": "/img/home/category-chui-chai.jpg",
+  "ระบำโบราณคดี": "/img/home/category-archaeology.jpg",
+};
 const OCCASION_IMAGES = [
   "/img/home/occasion-1.png",
   "/img/home/occasion-2.png",
@@ -120,7 +130,8 @@ export default function HomePage() {
   // returning users. Mirrors the pattern from member pages.
   useEffect(() => {
     function syncAuth() {
-      setUser(getCurrentUser());
+      const currentUser = getCurrentUser();
+      setUser(currentUser);
     }
     syncAuth();
     function onStorage(e: StorageEvent) {
@@ -132,7 +143,7 @@ export default function HomePage() {
       window.removeEventListener(AUTH_CHANGED_EVENT, syncAuth);
       window.removeEventListener("storage", onStorage);
     };
-  }, []);
+  }, [router]);
 
   // Live data — three endpoints fired in parallel, then a 4th call for the
   // batch legacy stats (so the popular card can show real ratings) and a
@@ -259,17 +270,8 @@ export default function HomePage() {
       .slice(0, 5);
   }, [live.contexts]);
 
-  // Stats tile numbers.
   const itemCount = live.metrics?.item_count ?? live.items.length;
   const totalItemsLabel = itemCount > 0 ? new Intl.NumberFormat("th-TH").format(itemCount) : "—";
-  // Number of distinct main groups (NOT sub-contexts). The static copy was
-  // "7 บริบทงาน" which matched the 7 main groups, so we keep that semantic.
-  const groupCount = useMemo(() => {
-    const groups = new Set<string>();
-    for (const ctx of live.contexts) if (ctx.group) groups.add(ctx.group);
-    return groups.size;
-  }, [live.contexts]);
-  const groupLabel = groupCount > 0 ? new Intl.NumberFormat("th-TH").format(groupCount) : "—";
 
   return (
     <div className="home home-mockup">
@@ -342,29 +344,8 @@ export default function HomePage() {
         )}
       </section>
 
-      <section className="home-stats" aria-label="สถิติภาพรวม">
-        <StatTile
-          icon="♜"
-          value={liveReady && itemCount > 0 ? `${totalItemsLabel}+` : totalItemsLabel}
-          label="ชุดการแสดง"
-          sub="คัดสรรจากฐานข้อมูลนาฏศิลป์ไทย"
-        />
-        <StatTile
-          icon="♙"
-          value={liveReady && groupCount > 0 ? `${groupLabel}` : "—"}
-          label="กลุ่มงาน"
-          sub="ครอบคลุมทุกโอกาสสำคัญ"
-        />
-        <StatTile
-          icon="AI"
-          value="AI"
-          label="แนะนำเฉพาะคุณ"
-          sub="ค้นหาชุดการแสดงที่ตรงกับงาน งบประมาณ และความต้องการ"
-        />
-      </section>
-
       <section className="home-section">
-        <SectionHead title="สำรวจตามหมวดหมู่" href="/items" />
+        <SectionHead title="สำรวจตามหมวดหมู่" href="/categories" />
         {!liveReady ? (
           <SkeletonGrid count={6} variant="square" />
         ) : categoryTop6.length === 0 ? (
@@ -374,11 +355,11 @@ export default function HomePage() {
             {categoryTop6.map((cat, idx) => (
               <Link
                 key={cat.name}
-                href={`/items?q=${encodeURIComponent(cat.name)}`}
+                href={`/items?category=${encodeURIComponent(cat.name)}`}
                 className="home-category-tile"
               >
                 <img
-                  src={CATEGORY_IMAGES[idx] ?? CATEGORY_IMAGES[0]}
+                  src={categoryImageFor(cat.name, idx)}
                   alt=""
                   aria-hidden="true"
                 />
@@ -391,7 +372,7 @@ export default function HomePage() {
       </section>
 
       <section className="home-section">
-        <SectionHead title="เลือกตามโอกาสสำคัญ" href="/items" />
+        <SectionHead title="เลือกตามโอกาสสำคัญ" href="/occasions" />
         {!liveReady ? (
           <SkeletonGrid count={5} variant="square" />
         ) : occasionTop5.length === 0 ? (
@@ -401,7 +382,7 @@ export default function HomePage() {
             {occasionTop5.map((occ, idx) => (
               <Link
                 key={occ.name}
-                href={`/items?q=${encodeURIComponent(occ.name)}`}
+                href={`/items?occasion=${encodeURIComponent(occ.name)}`}
                 className="home-occasion-card"
               >
                 <img
@@ -450,19 +431,6 @@ function SectionHead({ title, href }: { title: string; href?: string }) {
   );
 }
 
-function StatTile({ icon, value, label, sub }: { icon: string; value: string; label: string; sub: string }) {
-  return (
-    <div className="home-stat">
-      <span className="home-stat-icon" aria-hidden="true">{icon}</span>
-      <div>
-        <strong>{value}</strong>
-        <span>{label}</span>
-        <p>{sub}</p>
-      </div>
-    </div>
-  );
-}
-
 function HowStep({ n, icon, title, desc }: { n: string; icon: string; title: string; desc: string }) {
   return (
     <li className="home-how-step">
@@ -500,6 +468,10 @@ function EmptyState({ text }: { text: string }) {
 function formatCount(n: number): string {
   if (!Number.isFinite(n) || n <= 0) return "0";
   return new Intl.NumberFormat("th-TH").format(n);
+}
+
+function categoryImageFor(name: string, idx: number): string {
+  return CATEGORY_IMAGE_BY_NAME[name] ?? CATEGORY_IMAGES[idx % CATEGORY_IMAGES.length];
 }
 
 function rankPopularItems(

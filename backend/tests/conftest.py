@@ -20,6 +20,8 @@ for _key in (
     "RECSYS_GROUNDING_USE_LLM",
     "RECSYS_CORS_ORIGINS",
     "RECSYS_E5_ENABLED",
+    "RECSYS_RESEARCH_MODE",
+    "RECSYS_PRELOAD_E5",
     "RECSYS_GEMINI_API_KEY",
 ):
     os.environ.pop(_key, None)
@@ -216,6 +218,12 @@ def client(artifacts_dir: Path, monkeypatch):
     monkeypatch.setenv("RECSYS_ARTIFACT_DIR", str(artifacts_dir))
     reset_settings_cache()
     reset_singleton()
+    # Clear the in-process catalog-row cache so each test sees a fresh
+    # corpus; ``_db_item_rows`` is module-global on purpose for the
+    # production hot path, but tests must not share that state.
+    from app.routers import catalog as catalog_module
+    catalog_module._db_rows_cache["data"] = None
+    catalog_module._db_rows_cache["expires_at"] = 0.0
     app = create_app()
     with TestClient(app) as c:
         yield c

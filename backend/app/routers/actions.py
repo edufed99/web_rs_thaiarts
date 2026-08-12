@@ -1,10 +1,15 @@
 """
-routers/actions.py — Live user actions (Like / Save / Rate).
+routers/actions.py — Live user actions (Like / Save / Rate / View).
 
 RESTful resource-style endpoints: each action is its own route so Swagger
 shows a clean shape and the frontend can use semantically meaningful verbs.
-All five endpoints return an ``ItemActionOut`` containing the full item
-(with ``UserState`` resolved) plus the action name.
+The five state-changing endpoints return an ``ItemActionOut`` containing the
+full item (with ``UserState`` resolved) plus the action name.
+
+``POST /actions/view`` (ADR-002 §3.1) is the exception: it only appends to
+``interaction_logs``, is deduped per time window, and returns a lightweight
+``ItemViewOut`` rather than the full item — it fires on every detail-page
+open, so it stays cheap.
 
 Auth (Phase G): if a JWT is present (``Authorization: Bearer <jwt>``),
 the ``User`` is resolved and the action is logged against
@@ -21,7 +26,7 @@ from ..core.config import get_settings
 from ..core.exceptions import InvalidRequestError, ItemNotFoundError
 from ..model_loader import ArtifactLoader, get_singleton
 from ..models_db import User
-from ..schemas.action import ActionRequestIn, ItemActionOut
+from ..schemas.action import ActionRequestIn, ItemActionOut, ItemViewOut, ViewRequestIn
 from ..schemas.item import ItemOut, UserState
 from ..services._ids import stable_id
 from ..services.actions import fetch_user_state, perform_item_action
@@ -227,6 +232,46 @@ def delete_save(
         item_id=int(payload.item_id),
         action=result["action"],
         metadata=result["metadata"],
+    )
+
+
+# --- View -------------------------------------------------------------------
+
+@router.post(
+    "/actions/view",
+    response_model=ItemViewOut,
+    status_code=200,
+    summary="Log an item view",
+    description=(
+        "Appends an ``item_view`` row to ``interaction_logs``. Unlike the "
+        "other actions this writes no state table — a view has no undo and "
+        "no per-user current state.\n\n"
+        "**Deduplicated:** a repeat view of the same item by the same user "
+        "inside ``RECSYS_VIEW_DEDUPE_MINUTES`` (default 30) is a no-op and "
+        "returns ``deduped: true``, so page refreshes don't inflate counts.\n\n"
+        "**Attribution:** when ``request_id`` is a persisted recommendation "
+        "id, the view is linked to it, which is what makes per-item "
+        "click-through rate computable. A uuid fallback id is ignored.\n\n"
+        "Views are excluded from user history and interest bars on purpose "
+        "(ADR-002 §3.1)."
+    ),
+)
+def post_view(
+    payload: ViewRequestIn,
+    user: Optional[User] = Depends(get_current_user_dep),
+) -> ItemViewOut:
+    user_key = resolve_user_key(user=user, body_user_key=payload.user_key)
+    result = perform_item_action(
+        user_key=user_key,
+        item_id=int(payload.item_id),
+        action="item_view",
+        request_id=payload.request_id,
+        context_id=payload.context_id,
+    )
+    return ItemViewOut(
+        action=result["action"],
+        item_id=int(payload.item_id),
+        deduped=bool(result["metadata"].get("deduped", False)),
     )
 
 

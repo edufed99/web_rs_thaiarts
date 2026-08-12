@@ -1,0 +1,55 @@
+=== catalog_context ===
+  id                             INTEGER
+  name                           varchar(255)
+  group                          varchar(255)
+  description                    TEXT
+
+=== catalog_item ===
+  id                             INTEGER
+  name                           varchar(255)
+  description                    TEXT
+  category_group                 varchar(255)
+  performance_type               varchar(255)
+  performers_count               integer unsigned
+  duration_minutes               integer unsigned
+  price_text                     varchar(100)
+  image_url                      varchar(200)
+  video_url                      varchar(200)
+  is_active                      bool
+  created_at                     datetime
+  updated_at                     datetime
+
+=== catalog_keyword ===
+  id                             INTEGER
+  name                           varchar(120)
+  taxonomy_node_id               bigint
+
+=== catalog_taxonomynode ===
+  id                             INTEGER
+  name                           varchar(255)
+  level                          smallint unsigned
+  parent_id                      bigint
+
+=== catalog_itemcontext ===
+  id                             INTEGER
+  validity_status                varchar(30)
+  context_id                     bigint
+  item_id                        bigint
+
+=== catalog_itemkeyword ===
+  id                             INTEGER
+  source                         varchar(100)
+  weight                         REAL
+  item_id                        bigint
+  keyword_id                     bigint
+
+=== recommender_legacyinteraction ===
+  id                             INTEGER
+  legacy_user_id                 varchar(150)
+  rating                         smallint unsigned
+  keywords                       TEXT
+  raw_item_name                  varchar(255)
+  imported_at                    datetime
+  context_id                     bigint
+  item_id                        bigint
+

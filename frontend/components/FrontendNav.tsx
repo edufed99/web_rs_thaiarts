@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import React, { useEffect, useState } from "react";
 
 import {
@@ -12,6 +13,7 @@ import {
 import type { UserOut } from "@/lib/types";
 
 export function FrontendNav() {
+  const router = useRouter();
   const [user, setUser] = useState<UserOut | null | undefined>(undefined);
 
   useEffect(() => {
@@ -52,6 +54,8 @@ export function FrontendNav() {
             onClick={() => {
               logout();
               setUser(null);
+              router.replace("/login");
+              router.refresh();
             }}
           >
             ออกจากระบบ

@@ -8,13 +8,23 @@ the embeddings are computed once by the pipeline and loaded from
 """
 from __future__ import annotations
 
-from typing import Dict, Iterable, List, Optional
+from dataclasses import dataclass
+import time
+from typing import Dict, Iterable, List, Literal, Optional
 
 import numpy as np
 
 from ..core.config import Settings
+from ..core.exceptions import EmbeddingBackendUnavailableError
 from ..model_loader import ArtifactLoader
 from .embedding import encode_query
+
+
+@dataclass(frozen=True)
+class ContentScoreOutcome:
+    scores: Dict[int, float]
+    embedding_backend: Literal["e5", "proxy"]
+    embedding_latency_ms: float
 
 
 def build_query_text(keyword_names: Iterable[str], context_name: Optional[str] = None) -> str:
@@ -39,22 +49,49 @@ def score_items_by_content(
     item's precomputed embedding, plus a small additive boost when any
     selected keyword matches the item's keywords.
     """
+    return score_items_by_content_with_runtime(
+        loader,
+        candidate_items,
+        selected_keyword_names,
+        context_name=context_name,
+        settings=settings,
+    ).scores
+
+
+def score_items_by_content_with_runtime(
+    loader: ArtifactLoader,
+    candidate_items: List[Dict],
+    selected_keyword_names: Iterable[str],
+    context_name: Optional[str] = None,
+    settings: Optional[Settings] = None,
+) -> ContentScoreOutcome:
+    """Score candidates and disclose whether real E5 or proxy was used."""
     settings = settings or Settings()
     candidates = list(candidate_items)
     if not candidates:
-        return {}
+        backend = "e5" if settings.research_mode else "proxy"
+        return ContentScoreOutcome({}, backend, 0.0)
 
     keyword_list = [k for k in selected_keyword_names if k]
     query_text = build_query_text(keyword_list, context_name)
     if not query_text.strip():
-        return {int(item["item_id"]): 0.0 for item in candidates}
+        backend = "e5" if settings.research_mode else "proxy"
+        return ContentScoreOutcome(
+            {int(item["item_id"]): 0.0 for item in candidates}, backend, 0.0
+        )
 
     candidate_ids = [int(item["item_id"]) for item in candidates]
+    started = time.perf_counter()
     query_vec = _encode_query_vector(loader, query_text, settings)
+    backend: Literal["e5", "proxy"] = "e5" if query_vec is not None else "proxy"
     if query_vec is None:
         query_vec = _proxy_query_vector(loader, candidate_ids, keyword_list, context_name)
     if query_vec is None:
-        return {iid: 0.0 for iid in candidate_ids}
+        return ContentScoreOutcome(
+            {iid: 0.0 for iid in candidate_ids},
+            backend,
+            round((time.perf_counter() - started) * 1000, 3),
+        )
 
     scores: Dict[int, float] = {}
     boost = float(settings.cbf_keyword_boost)
@@ -70,7 +107,11 @@ def score_items_by_content(
         hit = bool(keyword_set.intersection(item.get("keyword_names") or []))
         scores[iid] = cosine + (boost if hit else 0.0)
 
-    return scores
+    return ContentScoreOutcome(
+        scores,
+        backend,
+        round((time.perf_counter() - started) * 1000, 3),
+    )
 
 
 def _encode_query_vector(
@@ -85,13 +126,34 @@ def _encode_query_vector(
     available at runtime, callers fall back to the deterministic proxy vector.
     """
     expected_dim = int(loader.embeddings.shape[1])
-    if not settings.e5_enabled or expected_dim != 1024:
+    if expected_dim != 1024:
+        if settings.research_mode:
+            raise EmbeddingBackendUnavailableError(
+                f"Research mode requires 1024-D E5 artifacts; loaded dimension is {expected_dim}.",
+                extra={"expected_embedding_dim": 1024, "actual_embedding_dim": expected_dim},
+            )
+        return None
+    if not settings.e5_enabled:
+        if settings.research_mode:
+            raise EmbeddingBackendUnavailableError(
+                "Research mode requires E5 but RECSYS_E5_ENABLED=0."
+            )
         return None
     try:
         vec = encode_query(query_text)
-    except Exception:  # noqa: BLE001 - keep recommender available offline
+    except Exception as exc:
+        if settings.research_mode:
+            raise EmbeddingBackendUnavailableError(
+                "E5 inference failed in research mode; proxy fallback is disabled.",
+                extra={"reason": str(exc)},
+            ) from exc
         return None
     if vec.ndim != 1 or int(vec.shape[0]) != expected_dim:
+        if settings.research_mode:
+            raise EmbeddingBackendUnavailableError(
+                "E5 returned an incompatible query embedding.",
+                extra={"expected_embedding_dim": expected_dim, "actual_shape": list(vec.shape)},
+            )
         return None
     return vec.astype(np.float32, copy=False)
 

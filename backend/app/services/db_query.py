@@ -493,7 +493,8 @@ def live_user_positive_items(
 ) -> Set[int]:
     """Set of artifact_item_ids the user has positively interacted with.
 
-    Sources: ``likes`` rows + ``ratings`` rows with rating >= min_rating.
+    Sources: current ``likes`` + ``saved_items`` rows and ``ratings`` rows
+    with rating >= min_rating.
     Returns an empty set when DB is disabled or the user has no history.
     """
     if not is_db_enabled() or not user_key:
@@ -518,7 +519,16 @@ def _live_user_positive_items(
         if aid is not None:
             out.add(int(aid))
 
-    # 2. ratings >= min_rating
+    # 2. saved items
+    for (aid,) in session.execute(
+        select(Item.artifact_item_id)
+        .join(SavedItem, SavedItem.item_id == Item.id)
+        .where(SavedItem.user_key == user_key)
+    ).all():
+        if aid is not None:
+            out.add(int(aid))
+
+    # 3. ratings >= min_rating
     for (aid,) in session.execute(
         select(Item.artifact_item_id)
         .join(Rating, Rating.item_id == Item.id)
@@ -578,6 +588,39 @@ def live_user_state_for_items(
         if session is None:
             return {}
         return _live_user_state_for_items(session, user_key, artifact_ids)
+
+
+def live_item_media_for_items(
+    artifact_item_ids: Iterable[int],
+) -> Dict[int, Dict[str, str]]:
+    """Return DB-managed image/video URLs keyed by artifact item id.
+
+    Recommendation candidates come from ``catalog.parquet``, while media is
+    uploaded and updated in PostgreSQL.  This batched lookup lets recommendation
+    responses overlay the current database media without issuing one query per
+    card.  Empty when the DB layer is disabled or unavailable.
+    """
+    if not is_db_enabled():
+        return {}
+    artifact_ids = list(dict.fromkeys(int(value) for value in artifact_item_ids))
+    if not artifact_ids:
+        return {}
+    with session_scope() as session:
+        if session is None:
+            return {}
+        rows = session.execute(
+            select(Item.artifact_item_id, Item.image_url, Item.video_url).where(
+                Item.artifact_item_id.in_(artifact_ids)
+            )
+        ).all()
+    return {
+        int(artifact_id): {
+            "image_url": str(image_url or ""),
+            "video_url": str(video_url or ""),
+        }
+        for artifact_id, image_url, video_url in rows
+        if artifact_id is not None
+    }
 
 
 def _live_user_state_for_items(

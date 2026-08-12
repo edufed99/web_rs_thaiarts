@@ -34,14 +34,14 @@
 | **Interaction logging ตอน runtime** | ✅ — `interaction_logs` (2,563 rows) + `recommendation_requests` / `recommendation_results` / `recommendation_request_selected_keywords` (revision `0006`) | ✅ — `InteractionLog` table ทุก action |
 | **`UserState` ต่อ item ใน response** | ✅ — `ItemOut.user_state` populated จาก `likes` / `saved_items` / `ratings` สำหรับทั้ง `/recommendations`, `/items`, `/items/{id}` | ❌ |
 | **Suitability hint** | ✅ — `match_percent` (int 82..98) + `suitability_label` (`เหมาะมาก`/`เหมาะสม`/`เหมาะใช้ได้`) บนทุก item row — **display-only ไม่มีผลกับ ranking** | ✅ (heuristic เดิมใน `catalog.views`) |
-| **User accounts / consent** | ✅ auth ครบ (signup/login/JWT/admin role) — ❌ ยังไม่มี consent text + password reset | ✅ — Django auth + consent text + role-based permissions |
+| **User accounts / consent** | ✅ auth + email reset ครบ (signup/login/JWT/admin role/one-time reset token) — ❌ ยังไม่มี consent text | ✅ — Django auth + consent text + role-based permissions |
 | **Researcher dashboard** | ❌ (out of scope) | ✅ — top keywords, clicked/liked/rated tables, CSV export |
 | **Embedding model ตอน runtime** | ⚠️ เฉพาะ admin ingest เท่านั้น (lazy load, ปิดได้ด้วย env) — request path ปกติใช้ precomputed vectors | ✅ — โหลด `intfloat/multilingual-e5-large-instruct` (~2.5 GB) ใน web process ตลอด |
 | **CSV read ตอน runtime** | ❌ | ✅ (ผ่าน management commands) |
 | **Build time (clean cold install)** | Backend: ~30s (pip, ไม่รวม torch), Frontend: ~54s (npm), Pipeline: ~2s (synthetic) | Django + PostgreSQL setup: หลายนาที + ต้อง `migrate`, `import_project_data`, `build_item_embeddings` |
 | **Cold start latency** | Backend ~2s (load artifacts, วัดจริง session 10); Frontend instant | Django ~3-5s + E5 model loading (~10-30s first time) |
 | **Memory footprint per worker** | ~150 MB (artifacts only) — จะพุ่งชั่วคราวตอน admin ingest ครั้งแรก | ~2.5 GB+ (E5 model in memory) |
-| **Production-ready concerns** | ต้องหมุน JWT secret, เพิ่ม password reset, deployment, CI/CD, monitoring (ตาม ADR §11) | ต้องเพิ่ม WSGI/gunicorn, HTTPS, secret key, allowed hosts |
+| **Production-ready concerns** | ต้องหมุน JWT secret, ตั้ง SMTP/OAuth mail relay, deployment, CI/CD, monitoring (ตาม ADR §11) | ต้องเพิ่ม WSGI/gunicorn, HTTPS, secret key, allowed hosts |
 
 ## ขนาด source code (เฉพาะ production code)
 
@@ -78,7 +78,7 @@
 ## สิ่งที่ตัดออกตาม ADR §11 (out of scope)
 
 - ❌ Consent text + researcher dashboard + CSV export
-- ❌ Password reset flow (ผู้ใช้ที่ import มาจึงยังล็อกอินไม่ได้ — ดู "ข้อจำกัด" ข้อ 1)
+- ❌ Email verification ตอนสมัครและ 2FA (password reset ผ่านอีเมลอยู่ใน scope แล้ว)
 - ❌ EASE_R, BiasedMF, BiasedMF-BPR, SimpleX CF models
 - ❌ BGE-M3, WangchanBERTa, Phayathaibert encoders
 - ❌ WeightedProduct, RRF, ReliabilityGate hybrid strategies
@@ -105,7 +105,7 @@
 
 ## ข้อจำกัดของระบบใหม่
 
-1. **Password reset ยังไม่มี** — user ที่ import มา (id 2..158) มี `password_hash = "!redacted!<random>"` และ `display_name = "must_reset|legacy:<username>"` จึงล็อกอินไม่ได้; ตอนนี้ล็อกอินได้แค่ bootstrap admin (id=1)
+1. **ต้องตั้งค่า SMTP ก่อนส่งอีเมลจริง** — user ที่ import มามีรหัสผ่านเดิมที่กู้ไม่ได้ แต่สามารถตั้งรหัสใหม่ผ่าน `/reset-password` ได้เมื่อกำหนด `RECSYS_SMTP_*` ด้วย Gmail App Password หรือ mail relay/OAuth แล้ว
 2. **ArtifactLoader ไม่ persist การ append** — DB มี 115 items แต่ `/health` รายงาน 114 หลัง restart เพราะ item ที่ admin ingest เข้ามาอยู่ในหน่วยความจำอย่างเดียว; ต้อง re-run pipeline ให้ artifacts sync
 3. **Context ที่ admin สร้างใหม่ไม่เข้า loader vocab** — `/recommendations` ด้วย context ใหม่จะได้ `context_not_found` จนกว่าจะ regenerate artifacts
 4. ต้อง regenerate artifacts เมื่อ source CSV เปลี่ยน (manual — ไม่มี hot-reload model)

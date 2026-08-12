@@ -91,6 +91,53 @@ def test_encode_text_empty_raises(fake_model):
         embedding.encode_text("   ")
 
 
+def test_query_prefix_for_plain_e5(fake_model, monkeypatch):
+    """Plain ``intfloat/e5-large`` (no ``instruct``) gets the short
+    ``query: `` prefix, not the long Thai-instruct one."""
+    from app.services import embedding
+
+    new_model = _FakeModel()
+    monkeypatch.setattr(embedding, "_ensure_model", lambda: new_model)
+    monkeypatch.setattr(embedding, "get_settings", lambda: _settings_named("intfloat/e5-large"))
+    v = embedding.encode_query("hello")
+    assert v.shape == (4,)
+    assert new_model.calls[-1] == "query: hello"
+
+
+def test_passage_prefix_for_plain_e5(fake_model, monkeypatch):
+    """Plain e5 (not instruct) gets the ``passage: `` prefix on encoding."""
+    from app.services import embedding
+
+    new_model = _FakeModel()
+    monkeypatch.setattr(embedding, "_ensure_model", lambda: new_model)
+    monkeypatch.setattr(embedding, "get_settings", lambda: _settings_named("intfloat/e5-large"))
+    v = embedding.encode_text("hello")
+    assert v.shape == (4,)
+    assert new_model.calls[-1] == "passage: hello"
+
+
+def test_ensure_model_raises_when_disabled(monkeypatch):
+    """``RECSYS_E5_ENABLED=0`` short-circuits the model load and raises
+    ``RuntimeError`` on the first encode call."""
+    from app.services import embedding
+
+    monkeypatch.setattr(embedding, "get_settings", lambda: _settings_named("anything", e5_enabled=False))
+    with pytest.raises(RuntimeError, match="E5 embedding is disabled"):
+        embedding.encode_text("hi")
+
+
+def _settings_named(name: str, *, e5_enabled: bool = True):
+    """Build a SimpleNamespace that mimics ``app.core.config.Settings``."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        e5_model_name=name,
+        e5_max_length=512,
+        e5_local_path=None,
+        e5_enabled=e5_enabled,
+    )
+
+
 def test_build_item_text_matches_pipeline_format():
     """Mirror of ``pipelines.train_or_generate_artifacts.build_item_text``."""
     s = embedding.build_item_text(
@@ -156,3 +203,16 @@ def test_e5_disabled_short_circuits(monkeypatch, fake_model):
     monkeypatch.setattr(embedding, "_ensure_model", _disabled)
     with pytest.raises(RuntimeError, match="E5 disabled"):
         embedding.encode_text("hello")
+
+
+def test_runtime_status_records_inference_latency(fake_model):
+    embedding.encode_query("hello")
+    status = embedding.runtime_status()
+    assert status["status"] == "ready"
+    assert status["last_inference_latency_ms"] is not None
+
+
+def test_preload_model_runs_warmup(fake_model):
+    status = embedding.preload_model()
+    assert fake_model.calls
+    assert status["status"] == "ready"

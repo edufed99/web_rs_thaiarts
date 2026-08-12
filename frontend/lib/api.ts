@@ -6,8 +6,15 @@
 
 import type {
   ActionRequestIn,
+  AnalyticsOut,
+  AdminUserCreate,
+  AdminUserDeleteOut,
+  AdminUserListOut,
+  AdminUserUpdate,
   ContextListOut,
   DashboardOut,
+  GmailOAuthStartOut,
+  GmailOAuthStatusOut,
   EngagementListOut,
   HealthOut,
   HistoryListOut,
@@ -20,6 +27,7 @@ import type {
   ItemDraftOut,
   ItemFacetsOut,
   ItemImageUploadOut,
+  ItemVideoUploadOut,
   ItemKeywordReassign,
   ItemListOut,
   ItemOut,
@@ -28,12 +36,21 @@ import type {
   ItemViewOut,
   KeywordListOut,
   LikedItemsOut,
+  MemberDashboardOut,
+  MemberProfileOut,
+  MemberProfileUpdate,
   RatedItemsOut,
+  RatingSummaryOut,
+  RecentViewsOut,
   SavedItemsOut,
   UserSummaryOut,
   LegacyStatsOut,
   MetricsOut,
   ModelConfigOut,
+  PasswordResetConfirm,
+  PasswordResetConfirmOut,
+  PasswordResetRequest,
+  PasswordResetRequestOut,
   ProfileRecommendationResponseOut,
   RecommendationRequestIn,
   RecommendationResponseOut,
@@ -169,6 +186,33 @@ export async function getItem(
   return handle<ItemOut>(res);
 }
 
+export async function getItemsBatch(
+  itemIds: number[],
+  opts?: { userKey?: string; extraHeaders?: Record<string, string> },
+): Promise<ItemListOut> {
+  if (itemIds.length === 0) return { items: [], total: 0 };
+  const params = new URLSearchParams({ ids: itemIds.join(",") });
+  if (opts?.userKey && getCurrentUser() != null) params.set("user_key", opts.userKey);
+  const res = await fetch(`${baseUrl()}/items/batch?${params.toString()}`, {
+    headers: { ...getAuthHeaders(), ...(opts?.extraHeaders ?? {}) },
+    cache: "no-store",
+  });
+  return handle<ItemListOut>(res);
+}
+
+export async function getSimilarItems(
+  itemId: number,
+  opts?: { limit?: number; userKey?: string; extraHeaders?: Record<string, string> },
+): Promise<ItemListOut> {
+  const params = new URLSearchParams({ limit: String(opts?.limit ?? 4) });
+  if (opts?.userKey && getCurrentUser() != null) params.set("user_key", opts.userKey);
+  const res = await fetch(`${baseUrl()}/items/${itemId}/similar?${params.toString()}`, {
+    headers: { ...getAuthHeaders(), ...(opts?.extraHeaders ?? {}) },
+    cache: "no-store",
+  });
+  return handle<ItemListOut>(res);
+}
+
 /**
  * Real per-item rating stats from the legacy Postgres table.
  * Used by the home / dashboard cards instead of fake-rendered numbers.
@@ -279,6 +323,36 @@ export async function getDashboard(
     cache: "no-store",
   });
   return handle<DashboardOut>(res);
+}
+
+export async function getAnalytics(
+  range: "7d" | "30d" | "90d" | "365d" = "30d",
+): Promise<AnalyticsOut> {
+  const res = await fetch(`${baseUrl()}/metrics/analytics?range=${range}`, {
+    headers: { ...getAuthHeaders() },
+    cache: "no-store",
+  });
+  return handle<AnalyticsOut>(res);
+}
+
+export async function downloadDashboardReport(
+  range: "7d" | "30d" | "90d" | "365d" = "30d",
+): Promise<{ blob: Blob; filename: string }> {
+  const res = await fetch(`${baseUrl()}/metrics/dashboard/export?range=${range}`, {
+    headers: { ...getAuthHeaders() },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    await handle<never>(res);
+    throw new ApiClientError(res.status, "export_failed", "ส่งออกรายงานไม่สำเร็จ");
+  }
+  const fallback = `thai_arts_dashboard_${new Date().toISOString().slice(0, 10)}_${range}.xlsx`;
+  const disposition = res.headers.get("Content-Disposition") || "";
+  const filenameMatch = disposition.match(/filename="?([^";]+)"?/i);
+  return {
+    blob: await res.blob(),
+    filename: filenameMatch?.[1] || fallback,
+  };
 }
 
 export async function postRecommendations(
@@ -479,6 +553,75 @@ export async function getMeRated(
   return handle<RatedItemsOut>(res);
 }
 
+export async function getMeRatingSummary(
+  userKey: string,
+  extraHeaders: Record<string, string> = {},
+): Promise<RatingSummaryOut> {
+  const url = `${baseUrl()}/me/rating-summary?${memberParams(userKey)}`;
+  const res = await fetch(url, { headers: { ...extraHeaders }, cache: "no-store" });
+  return handle<RatingSummaryOut>(res);
+}
+
+export async function getMeRecentViews(
+  userKey: string,
+  days = 30,
+  limit = 20,
+  extraHeaders: Record<string, string> = {},
+): Promise<RecentViewsOut> {
+  const url = `${baseUrl()}/me/recent-views?${memberParams(userKey, { days, limit })}`;
+  const res = await fetch(url, { headers: { ...extraHeaders }, cache: "no-store" });
+  return handle<RecentViewsOut>(res);
+}
+
+export async function getMemberProfile(): Promise<MemberProfileOut> {
+  const res = await fetch(`${baseUrl()}/me/profile`, {
+    headers: { ...getAuthHeaders() },
+    cache: "no-store",
+  });
+  return handle<MemberProfileOut>(res);
+}
+
+export async function patchMemberProfile(
+  body: MemberProfileUpdate,
+): Promise<MemberProfileOut> {
+  const res = await fetch(`${baseUrl()}/me/profile`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  return handle<MemberProfileOut>(res);
+}
+
+export async function uploadMemberAvatar(file: File): Promise<MemberProfileOut> {
+  const form = new FormData();
+  form.set("file", file);
+  const res = await fetch(`${baseUrl()}/me/profile/avatar`, {
+    method: "POST",
+    headers: { ...getAuthHeaders() },
+    body: form,
+    cache: "no-store",
+  });
+  return handle<MemberProfileOut>(res);
+}
+
+export async function deleteMemberAvatar(): Promise<MemberProfileOut> {
+  const res = await fetch(`${baseUrl()}/me/profile/avatar`, {
+    method: "DELETE",
+    headers: { ...getAuthHeaders() },
+    cache: "no-store",
+  });
+  return handle<MemberProfileOut>(res);
+}
+
+export async function getMemberDashboard(): Promise<MemberDashboardOut> {
+  const res = await fetch(`${baseUrl()}/me/dashboard`, {
+    headers: { ...getAuthHeaders() },
+    cache: "no-store",
+  });
+  return handle<MemberDashboardOut>(res);
+}
+
 export async function postSignup(body: UserSignup): Promise<TokenOut> {
   const res = await fetch(`${baseUrl()}/auth/signup`, {
     method: "POST",
@@ -516,6 +659,84 @@ export async function patchMe(body: UserProfileUpdate): Promise<UserOut> {
     cache: "no-store",
   });
   return handle<UserOut>(res);
+}
+
+export async function postPasswordResetRequest(
+  body: PasswordResetRequest,
+): Promise<PasswordResetRequestOut> {
+  const res = await fetch(`${baseUrl()}/auth/password-reset/request`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  return handle<PasswordResetRequestOut>(res);
+}
+
+export async function postPasswordResetConfirm(
+  body: PasswordResetConfirm,
+): Promise<PasswordResetConfirmOut> {
+  const res = await fetch(`${baseUrl()}/auth/password-reset/confirm`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  return handle<PasswordResetConfirmOut>(res);
+}
+
+export async function getGmailOAuthStatus(): Promise<GmailOAuthStatusOut> {
+  const res = await fetch(`${baseUrl()}/admin/gmail-oauth/status`, {
+    headers: { ...getAuthHeaders() },
+    cache: "no-store",
+  });
+  return handle<GmailOAuthStatusOut>(res);
+}
+
+export async function startGmailOAuth(): Promise<GmailOAuthStartOut> {
+  const res = await fetch(`${baseUrl()}/admin/gmail-oauth/start`, {
+    method: "POST",
+    headers: { ...getAuthHeaders() },
+    cache: "no-store",
+  });
+  return handle<GmailOAuthStartOut>(res);
+}
+
+export async function getAdminUsers(): Promise<AdminUserListOut> {
+  const res = await fetch(`${baseUrl()}/admin/users`, {
+    headers: { ...getAuthHeaders() },
+    cache: "no-store",
+  });
+  return handle<AdminUserListOut>(res);
+}
+
+export async function postAdminUser(body: AdminUserCreate): Promise<UserOut> {
+  const res = await fetch(`${baseUrl()}/admin/users`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  return handle<UserOut>(res);
+}
+
+export async function putAdminUser(userId: number, body: AdminUserUpdate): Promise<UserOut> {
+  const res = await fetch(`${baseUrl()}/admin/users/${userId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  return handle<UserOut>(res);
+}
+
+export async function deleteAdminUser(userId: number): Promise<AdminUserDeleteOut> {
+  const res = await fetch(`${baseUrl()}/admin/users/${userId}`, {
+    method: "DELETE",
+    headers: { ...getAuthHeaders() },
+    cache: "no-store",
+  });
+  return handle<AdminUserDeleteOut>(res);
 }
 
 export async function postItemDraft(body: ItemDraft): Promise<ItemDraftOut> {
@@ -603,6 +824,22 @@ export async function uploadItemImage(
     cache: "no-store",
   });
   return handle<ItemImageUploadOut>(res);
+}
+
+/** Upload an MP4, WebM, or MOV file (max 100 MB) for an item. */
+export async function uploadItemVideo(
+  artifactId: number,
+  file: File,
+): Promise<ItemVideoUploadOut> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${baseUrl()}/admin/items/${artifactId}/video`, {
+    method: "POST",
+    headers: { ...getAuthHeaders() },
+    body: form,
+    cache: "no-store",
+  });
+  return handle<ItemVideoUploadOut>(res);
 }
 
 export function getBaseUrl(): string {

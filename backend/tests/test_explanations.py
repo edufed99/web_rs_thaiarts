@@ -45,7 +45,7 @@ def test_build_explanation_includes_context_sentence():
         matched_keywords=[],
     )
     assert "งานบวช" in text
-    assert text == 'แนะนำชุดนี้เพราะตรงบริบท (บริบท: "งานบวช").'
+    assert text == 'แนะนำเพราะตรงกับ “งานบวช”.'
 
 
 def test_build_explanation_matched_keywords():
@@ -58,10 +58,11 @@ def test_build_explanation_matched_keywords():
         selected_keyword_names=["ผู้หญิง"],
         cbf_score=0.8, cf_score=0.7,
         matched_keywords=["ผู้หญิง"],
+        history_reason="คุณเคยกดถูกใจการแสดงประเภทระบำ",
     )
     assert "ผู้หญิง" in text
-    assert "ตรงบริบทและคำสำคัญ" in text
-    assert "คล้ายกับความสนใจในอดีต" in text
+    assert "ตรงกับ “งานบวช” และคำสำคัญ “ผู้หญิง”" in text
+    assert "คุณเคยกดถูกใจการแสดงประเภทระบำ" in text
     assert len(text) < 140
 
 
@@ -73,7 +74,7 @@ def test_build_explanation_no_match_path():
         cbf_score=0.1, cf_score=0.0,
         matched_keywords=[],
     )
-    assert "ตรงบริบทและใกล้เคียงคำสำคัญ" in text
+    assert "ตรงกับ “งานบวช” และใกล้เคียงคำสำคัญที่เลือก" in text
 
 
 def test_build_explanation_empty_context():
@@ -86,7 +87,7 @@ def test_build_explanation_empty_context():
     )
     # No context sentence should appear
     assert "บริบท" not in text
-    assert text == "แนะนำชุดนี้เพราะเหมาะกับเงื่อนไขที่เลือก."
+    assert text == "แนะนำเพราะเหมาะกับเงื่อนไขที่เลือก."
 
 
 def test_build_explanation_keyword_only():
@@ -98,7 +99,7 @@ def test_build_explanation_keyword_only():
         cf_score=0.0,
         matched_keywords=["ผู้หญิง"],
     )
-    assert text == 'แนะนำชุดนี้เพราะตรงคำสำคัญ (คำสำคัญ: "ผู้หญิง").'
+    assert text == 'แนะนำเพราะตรงกับคำสำคัญ “ผู้หญิง”.'
 
 
 def test_build_explanation_content_signal_only():
@@ -110,7 +111,7 @@ def test_build_explanation_content_signal_only():
         cf_score=0.0,
         matched_keywords=[],
     )
-    assert text == "แนะนำชุดนี้เพราะใกล้เคียงคำสำคัญ."
+    assert text == "แนะนำเพราะใกล้เคียงคำสำคัญที่เลือก."
 
 
 def test_build_explanation_history_signal_only():
@@ -121,5 +122,18 @@ def test_build_explanation_history_signal_only():
         cbf_score=0.0,
         cf_score=0.2,
         matched_keywords=[],
+        history_reason="คุณเคยให้คะแนนสูงแก่การแสดงประเภทโขนและละคร",
     )
-    assert text == "แนะนำชุดนี้เพราะคล้ายกับความสนใจในอดีต."
+    assert text == "แนะนำเพราะคุณเคยให้คะแนนสูงแก่การแสดงประเภทโขนและละคร."
+
+
+def test_build_explanation_does_not_treat_popularity_as_personal_history():
+    text = build_explanation(
+        item={},
+        context_name="งานบวช",
+        selected_keyword_names=[],
+        cbf_score=0.0,
+        cf_score=0.8,
+        matched_keywords=[],
+    )
+    assert text == 'แนะนำเพราะตรงกับ “งานบวช”.'

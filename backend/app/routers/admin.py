@@ -30,18 +30,163 @@ from ..schemas.admin import (
     ItemDraftOut,
     ItemFacetsOut,
     ItemImageUploadOut,
+    ItemVideoUploadOut,
     ItemKeywordReassign,
     ItemReassignOut,
     ItemUpdate,
 )
+from ..schemas.user import (
+    AdminUserCreate,
+    AdminUserDeleteOut,
+    AdminUserListOut,
+    AdminUserUpdate,
+    GmailOAuthStartOut,
+    GmailOAuthStatusOut,
+    UserOut,
+)
 from ..schemas.item import ItemOut
-from ..services import grounding, ingestion, storage
-from ..services.auth import get_current_admin
+from ..services import gmail_oauth, grounding, ingestion, mailer, storage, user_query
+from ..services.auth import get_current_admin, hash_password
 from ..services._ids import stable_id
 
 
 logger = logging.getLogger("recsys.admin")
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+def _admin_user_out(user) -> UserOut:
+    return UserOut(
+        id=int(user.id),
+        username=str(user.username),
+        email=str(user.email or ""),
+        display_name=str(user.display_name or ""),
+        is_admin=bool(user.is_admin),
+        role="super_admin" if bool(user.is_admin) else "user",
+        created_at=user.created_at,
+        last_login_at=user.last_login_at,
+    )
+
+
+@router.get("/users", response_model=AdminUserListOut)
+def list_admin_users(admin_user=Depends(get_current_admin)) -> AdminUserListOut:
+    rows = user_query.list_users(limit=500)
+    return AdminUserListOut(
+        users=[_admin_user_out(row) for row in rows],
+        total=len(rows),
+    )
+
+
+@router.post("/users", response_model=UserOut)
+def create_admin_user(
+    payload: AdminUserCreate,
+    admin_user=Depends(get_current_admin),
+) -> UserOut:
+    if user_query.find_user_by_username(payload.username) is not None:
+        raise InvalidRequestError(
+            "Username already taken",
+            extra={"code": "duplicate_username"},
+        )
+    user = user_query.create_user(
+        username=payload.username,
+        password_hash=hash_password(payload.password),
+        email=payload.email or "",
+        display_name=payload.display_name or "",
+        is_admin=payload.is_admin,
+    )
+    if user is None:
+        raise InvalidRequestError(
+            "User could not be created",
+            extra={"code": "user_not_created"},
+        )
+    return _admin_user_out(user)
+
+
+@router.put("/users/{user_id}", response_model=UserOut)
+def update_admin_user(
+    user_id: int,
+    payload: AdminUserUpdate,
+    admin_user=Depends(get_current_admin),
+) -> UserOut:
+    target = user_query.find_user_by_id(user_id)
+    if target is None:
+        raise InvalidRequestError(
+            "User not found",
+            extra={"code": "user_not_found"},
+        )
+    if payload.username is not None and payload.username != target.username:
+        duplicate = user_query.find_user_by_username(payload.username)
+        if duplicate is not None and int(duplicate.id) != int(user_id):
+            raise InvalidRequestError(
+                "Username already taken",
+                extra={"code": "duplicate_username"},
+            )
+    if int(admin_user.id) == int(user_id) and payload.is_admin is False:
+        raise InvalidRequestError(
+            "You cannot remove your own administrator role",
+            extra={"code": "cannot_demote_self"},
+        )
+    updated = user_query.update_user_by_admin(
+        user_id,
+        username=payload.username,
+        email=payload.email,
+        display_name=payload.display_name,
+        password_hash=hash_password(payload.password) if payload.password else None,
+        is_admin=payload.is_admin,
+    )
+    if updated is None:
+        raise InvalidRequestError(
+            "User not found",
+            extra={"code": "user_not_found"},
+        )
+    return _admin_user_out(updated)
+
+
+@router.delete("/users/{user_id}", response_model=AdminUserDeleteOut)
+def delete_admin_user(
+    user_id: int,
+    admin_user=Depends(get_current_admin),
+) -> AdminUserDeleteOut:
+    if int(admin_user.id) == int(user_id):
+        raise InvalidRequestError(
+            "You cannot delete the account you are currently using",
+            extra={"code": "cannot_delete_self"},
+        )
+    if user_query.find_user_by_id(user_id) is None:
+        raise InvalidRequestError(
+            "User not found",
+            extra={"code": "user_not_found"},
+        )
+    if not user_query.delete_user(user_id):
+        raise InvalidRequestError(
+            "User could not be deleted",
+            extra={"code": "user_not_deleted"},
+        )
+    return AdminUserDeleteOut(user_id=user_id)
+
+
+@router.get("/gmail-oauth/status", response_model=GmailOAuthStatusOut)
+def gmail_oauth_status(admin_user=Depends(get_current_admin)) -> GmailOAuthStatusOut:
+    """Report sender setup state without returning any credential material."""
+    settings = get_settings()
+    return GmailOAuthStatusOut(
+        client_configured=gmail_oauth.client_configured(),
+        authorized=gmail_oauth.authorized(),
+        delivery_configured=mailer.delivery_configured(),
+        sender_email=settings.gmail_sender_email,
+        redirect_uri=settings.gmail_oauth_redirect_uri,
+    )
+
+
+@router.post("/gmail-oauth/start", response_model=GmailOAuthStartOut)
+def gmail_oauth_start(admin_user=Depends(get_current_admin)) -> GmailOAuthStartOut:
+    """Create a short-lived Google consent URL for the admin sender mailbox."""
+    try:
+        url = gmail_oauth.start_authorization()
+    except gmail_oauth.GmailOAuthError as exc:
+        raise InvalidRequestError(
+            str(exc), extra={"code": "gmail_oauth_not_configured"}
+        ) from exc
+    return GmailOAuthStartOut(authorization_url=url)
 
 
 # --- Draft store (in-memory; TTL 30 min) -----------------------------------
@@ -220,6 +365,7 @@ def commit_item(
         keyword_ids=final_kw_ids,
     )
     result = ingestion.ingest_new_item(item_create, admin_user=admin_user)
+    _invalidate_catalog_cache()
     return ItemCommitOut(item=result.item, warnings=result.warnings)
 
 
@@ -284,6 +430,7 @@ def reassign_keywords(
             lock.release()
 
         item_out = _item_out_from_session(session, item)
+        _invalidate_catalog_cache()
         return ItemReassignOut(item=item_out, warnings=[])
 
 
@@ -294,10 +441,10 @@ def update_item(
     admin_user=Depends(get_current_admin),
 ) -> ItemReassignOut:
     """Edit an existing catalog row without touching PostgreSQL manually."""
-    from sqlalchemy import delete, select
+    from sqlalchemy import delete, func, select
 
     from ..db import session_scope
-    from ..models_db import Context, Item, ItemContext, ItemKeyword
+    from ..models_db import Context, Item, ItemContext, ItemKeyword, Keyword
 
     warnings: List[str] = []
     with session_scope() as session:
@@ -358,8 +505,53 @@ def update_item(
                 )
 
         keyword_names: List[str] | None = None
-        if body.keyword_ids is not None:
-            kw_ids = _unique_ints(body.keyword_ids)
+        if body.keyword_ids is not None or body.new_keyword_names is not None:
+            if body.keyword_ids is None:
+                current_keyword_ids = session.execute(
+                    select(ItemKeyword.keyword_id).where(ItemKeyword.item_id == db_id)
+                ).scalars().all()
+                requested_kw_ids = _unique_ints(list(current_keyword_ids))
+            else:
+                requested_kw_ids = _unique_ints(body.keyword_ids)
+
+            keyword_rows = session.execute(
+                select(Keyword).where(Keyword.id.in_(requested_kw_ids))
+            ).scalars().all() if requested_kw_ids else []
+            keywords_by_id = {int(row.id): row for row in keyword_rows}
+            kw_ids = [keyword_id for keyword_id in requested_kw_ids if keyword_id in keywords_by_id]
+            missing_ids = [keyword_id for keyword_id in requested_kw_ids if keyword_id not in keywords_by_id]
+            if missing_ids:
+                warnings.append(f"Ignored unknown keyword ids: {missing_ids}")
+
+            seen_names = {str(row.name).strip().casefold() for row in keyword_rows}
+            for raw_name in body.new_keyword_names or []:
+                if not isinstance(raw_name, str):
+                    continue
+                name = " ".join(raw_name.split())
+                if not name:
+                    continue
+                if len(name) > 255:
+                    raise InvalidRequestError(
+                        "Keyword must not exceed 255 characters",
+                        extra={"code": "keyword_name_too_long"},
+                    )
+                normalized = name.casefold()
+                if normalized in seen_names:
+                    continue
+                row = session.execute(
+                    select(Keyword).where(func.lower(Keyword.name) == name.lower())
+                ).scalars().first()
+                if row is None:
+                    row = Keyword(name=name)
+                    session.add(row)
+                    session.flush()
+                    warnings.append(f"Created keyword: {name!r}")
+                keyword_id = int(row.id)
+                keywords_by_id[keyword_id] = row
+                kw_ids.append(keyword_id)
+                seen_names.add(str(row.name).strip().casefold())
+
+            kw_ids = _unique_ints(kw_ids)
             session.execute(delete(ItemKeyword).where(ItemKeyword.item_id == db_id))
             for keyword_id in kw_ids:
                 session.add(
@@ -369,7 +561,7 @@ def update_item(
                         source="admin",
                     )
                 )
-            keyword_names = _names_for_keyword_ids(kw_ids)
+            keyword_names = [str(keywords_by_id[keyword_id].name) for keyword_id in kw_ids]
 
         session.flush()
         loader_values = {
@@ -390,6 +582,7 @@ def update_item(
         context_names=context_names,
         keyword_names=keyword_names,
     )
+    _invalidate_catalog_cache()
     return ItemReassignOut(item=item_out, warnings=warnings)
 
 
@@ -535,6 +728,7 @@ def upload_item_image(
         session.flush()
 
     _update_loader_row(int(artifact_id), {"image_url": public_url})
+    _invalidate_catalog_cache()
 
     # Best-effort cleanup of the previous cover. We do this after the DB
     # write so a failed delete doesn't leave the DB pointing at a missing
@@ -542,6 +736,63 @@ def upload_item_image(
     storage.delete_upload(old_url, settings.upload_dir)
 
     return ItemImageUploadOut(
+        url=public_url,
+        size_bytes=int(size_bytes),
+        mime=mime,
+        item_id=int(artifact_id),
+    )
+
+
+@router.post(
+    "/items/{artifact_id}/video",
+    response_model=ItemVideoUploadOut,
+    summary="Upload a video for an item",
+    description=(
+        "Accepts one MP4, WebM, or MOV file, validates its magic bytes, "
+        "stores it under data/uploads/items/, and updates items.video_url."
+    ),
+)
+def upload_item_video(
+    artifact_id: int,
+    file: UploadFile = File(..., description="MP4/WebM/MOV, max 100 MB."),
+    admin_user=Depends(get_current_admin),
+) -> ItemVideoUploadOut:
+    """Save an item video, persist ``video_url``, and clean up the old upload."""
+    from sqlalchemy import select
+
+    from ..db import session_scope
+    from ..models_db import Item
+
+    settings = get_settings()
+    items_dir = settings.upload_dir / "items"
+
+    with session_scope() as session:
+        if session is None:
+            raise InvalidRequestError("DB layer disabled", extra={"code": "db_disabled"})
+        item = session.execute(
+            select(Item).where(Item.artifact_item_id == int(artifact_id))
+        ).scalar_one_or_none()
+        if item is None:
+            raise InvalidRequestError(
+                f"Item not found: {artifact_id}",
+                extra={"code": "item_not_found"},
+            )
+        old_url = str(item.video_url or "")
+        _filename, public_url, size_bytes, mime = storage.save_video_upload(
+            file,
+            items_dir,
+            prefix=f"{artifact_id}_video",
+            max_bytes=settings.max_video_upload_bytes,
+            allowed_mime=settings.allowed_video_upload_mime,
+        )
+        item.video_url = public_url
+        session.flush()
+
+    _update_loader_row(int(artifact_id), {"video_url": public_url})
+    _invalidate_catalog_cache()
+    storage.delete_upload(old_url, settings.upload_dir)
+
+    return ItemVideoUploadOut(
         url=public_url,
         size_bytes=int(size_bytes),
         mime=mime,
@@ -594,6 +845,7 @@ def delete_item(
         session.flush()
 
     _update_loader_row(int(item_id), {"is_active": False})
+    _invalidate_catalog_cache()
     return ItemDeleteOut(item_id=int(item_id), deleted=True, warnings=[])
 
 
@@ -732,3 +984,9 @@ def _update_loader_row(
             loader._items.at[idx, "keyword_names"] = list(keyword_names)
     finally:
         lock.release()
+
+
+def _invalidate_catalog_cache() -> None:
+    from .catalog import invalidate_db_item_rows_cache
+
+    invalidate_db_item_rows_cache()

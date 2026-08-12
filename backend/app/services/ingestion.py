@@ -52,7 +52,7 @@ logger = logging.getLogger("recsys.ingestion")
 class IngestResult(NamedTuple):
     item: ItemOut
     artifact_id: int
-    django_id: int
+    db_id: int
     warnings: List[str]
 
 
@@ -227,12 +227,12 @@ def ingest_new_item(
             )
             session.add(item)
             session.flush()
-            django_id = int(item.id)
+            db_id = int(item.id)
 
             for cid in ctx_ids:
                 session.add(
                     ItemContext(
-                        item_id=django_id,
+                        item_id=db_id,
                         context_id=cid,
                         validity_status="valid",
                     )
@@ -240,7 +240,7 @@ def ingest_new_item(
             for kid in kw_ids:
                 session.add(
                     ItemKeyword(
-                        item_id=django_id,
+                        item_id=db_id,
                         keyword_id=kid,
                         source="admin",
                     )
@@ -282,13 +282,13 @@ def ingest_new_item(
                 contexts=[],
             )
             logger.info(
-                "ingested new item django_id=%d artifact_id=%d name=%r by admin=%s",
-                django_id, aid, name, admin_user.id if admin_user else "anon",
+                "ingested new item db_id=%d artifact_id=%d name=%r by admin=%s",
+                db_id, aid, name, admin_user.id if admin_user else "anon",
             )
             return IngestResult(
                 item=item_out,
                 artifact_id=aid,
-                django_id=django_id,
+                db_id=db_id,
                 warnings=warnings,
             )
     finally:

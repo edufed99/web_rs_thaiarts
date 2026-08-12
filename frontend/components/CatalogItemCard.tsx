@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 
 import { ItemActionBar } from "@/components/ItemActionBar";
+import { PerformanceCardMedia, resolvedImageUrl } from "@/components/PerformanceCardMedia";
 import type { ItemOut, UserState as UserStateType } from "@/lib/types";
 
 export interface CatalogItemCardProps {
@@ -14,6 +15,8 @@ export interface CatalogItemCardProps {
   rank?: number;
   /** Compact description length (legacy uses 180 chars on list, 150 on ranked). */
   descriptionLimit?: number;
+  /** Compact horizontal presentation for member activity pages. */
+  variant?: "standard" | "compact";
   /** Called after the user toggles like/save/rating. */
   onUserStateChange?: (itemId: number, next: UserStateType) => void;
 }
@@ -23,23 +26,36 @@ export function CatalogItemCard({
   userKey,
   contextId,
   rank,
-  descriptionLimit = 180,
+  descriptionLimit,
+  variant = "standard",
   onUserStateChange,
 }: CatalogItemCardProps) {
+  const compact = variant === "compact";
+  const effectiveDescriptionLimit = descriptionLimit ?? (compact ? 110 : 180);
   const description =
-    item.description && item.description.length > descriptionLimit
-      ? `${item.description.slice(0, descriptionLimit).trimEnd()}…`
+    item.description && item.description.length > effectiveDescriptionLimit
+      ? `${item.description.slice(0, effectiveDescriptionLimit).trimEnd()}…`
       : item.description;
+  const visibleContexts =
+    contextId != null
+      ? item.contexts.filter((context) => context.id === contextId)
+      : item.contexts.slice(0, compact ? 2 : 3);
 
   function handleStateChange(next: UserStateType) {
     if (onUserStateChange) onUserStateChange(item.id, next);
   }
 
   return (
-    <article className="item-card" style={{ display: "flex", flexDirection: "column" }}>
-      <div
+    <article
+      className={compact ? "item-card item-card--compact" : "item-card"}
+      style={compact ? undefined : { display: "flex", flexDirection: "column" }}
+    >
+      <PerformanceCardMedia
         className="item-card-media"
-        style={item.image_url ? { backgroundImage: `linear-gradient(135deg, rgba(6, 27, 60, 0.12), rgba(197, 145, 59, 0.18)), url("${item.image_url}")` } : undefined}
+        imageUrl={resolvedImageUrl(item.image_url)}
+        categoryGroup={item.category_group}
+        title={item.name}
+        variant="card"
       />
       <div className="item-card-body" style={{ display: "grid", gap: "0.55rem", flex: 1 }}>
       <header
@@ -66,9 +82,9 @@ export function CatalogItemCard({
         <p className="description" style={{ margin: 0 }}>{description}</p>
       ) : null}
 
-      {item.contexts.length > 0 ? (
+      {visibleContexts.length > 0 ? (
         <div className="pill-row">
-          {item.contexts.slice(0, 3).map((c) => (
+          {visibleContexts.map((c) => (
             <span key={c.id} className="context-pill">
               {c.name}
             </span>

@@ -2,9 +2,10 @@
 services/actions.py — Live user actions.
 
 Mirrors ``recommender.actions.perform_item_action`` from the legacy Django
-project. Translates artifact id <-> Django id through ``items.artifact_item_id``
-and writes both the action table (``likes`` / ``saved_items`` / ``ratings``)
-and an ``interaction_logs`` row.
+prototype (``../web_appRS/thai_arts_webapp/``; this project itself does not
+use Django). Translates artifact id <-> DB id through
+``items.artifact_item_id`` and writes both the action table
+(``likes`` / ``saved_items`` / ``ratings``) and an ``interaction_logs`` row.
 
 When ``RECSYS_DB_ENABLED=0`` every public function raises ``DbDisabledError``
 (via ``core.exceptions``) — the actions endpoints are write-side and
@@ -13,7 +14,7 @@ require a real database.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -24,13 +25,29 @@ from ..core.exceptions import (
     ItemNotFoundError,
 )
 from ..db import is_db_enabled, session_scope
-from ..models_db import InteractionLog, Item, Like, Rating, SavedItem
-from .db_query import artifact_id_to_django_id, live_user_state_for_items
+from ..models_db import (
+    InteractionLog,
+    Item,
+    Like,
+    Rating,
+    RecommendationRequest,
+    SavedItem,
+)
+from .db_query import artifact_id_to_db_id, live_user_state_for_items
 
 
 # Names match the legacy VALID_ACTIONS set minus 'dismiss' / 'submit_feedback'
 # (those are out of scope for this app's UI).
-VALID_ACTIONS = {"like", "unlike", "save", "unsave", "rate"}
+#
+# ``item_view`` (ADR-002 §3.1) is deliberately different from the other five:
+# it has no state table and no undo, writes only an ``interaction_logs`` row,
+# and is deduped per ``VIEW_DEDUPE_MINUTES``. It is excluded from user history
+# (see ``member_query.HISTORY_ACTIONS``) because a page open is not a
+# history-worthy user action.
+VALID_ACTIONS = {"like", "unlike", "save", "unsave", "rate", "item_view"}
+
+# Actions that only append to interaction_logs (no state table to mutate).
+LOG_ONLY_ACTIONS = {"item_view"}
 
 
 def perform_item_action(
@@ -60,8 +77,8 @@ def perform_item_action(
         )
 
     artifact_id = int(item_id)
-    django_id = artifact_id_to_django_id(artifact_id)
-    if django_id is None:
+    db_id = artifact_id_to_db_id(artifact_id)
+    if db_id is None:
         raise ItemNotFoundError(
             f"Item id {artifact_id} has no catalog row in Postgres.",
             extra={"item_id": artifact_id},
@@ -75,16 +92,16 @@ def perform_item_action(
             raise DbDisabledError("Database session unavailable.")
 
         if action == "like":
-            _like(session, user_key, django_id)
+            _like(session, user_key, db_id)
             metadata["liked"] = True
         elif action == "unlike":
-            _unlike(session, user_key, django_id)
+            _unlike(session, user_key, db_id)
             metadata["liked"] = False
         elif action == "save":
-            _save(session, user_key, django_id)
+            _save(session, user_key, db_id)
             metadata["saved"] = True
         elif action == "unsave":
-            _unsave(session, user_key, django_id)
+            _unsave(session, user_key, db_id)
             metadata["saved"] = False
         elif action == "rate":
             if rating is None:
@@ -92,14 +109,20 @@ def perform_item_action(
                     "rating is required for action='rate'.",
                     extra={"action": action},
                 )
-            _rate(session, user_key, django_id, int(rating))
+            _rate(session, user_key, db_id, int(rating))
             metadata["rating"] = int(rating)
+        elif action == "item_view":
+            # Log-only (ADR-002 §3.1). Suppress repeats inside the dedupe
+            # window so refreshing a detail page doesn't inflate the count.
+            if _view_is_duplicate(session, user_key, db_id):
+                return {"action": "viewed", "metadata": {"deduped": True}}
+            metadata["deduped"] = False
 
         # Always log the action.
         _log_action(
             session,
             user_key=user_key,
-            django_id=django_id,
+            db_id=db_id,
             action=action,
             metadata=metadata,
             request_id=request_id,
@@ -122,46 +145,73 @@ def fetch_user_state(user_key: str, item_id: int) -> dict:
 
 # --- Internal helpers -------------------------------------------------------
 
-def _like(session: Session, user_key: str, django_id: int) -> None:
-    existing = session.query(Like).filter_by(user_key=user_key, item_id=django_id).first()
+def _like(session: Session, user_key: str, db_id: int) -> None:
+    existing = session.query(Like).filter_by(user_key=user_key, item_id=db_id).first()
     if existing is None:
-        session.add(Like(user_key=user_key, item_id=django_id))
+        session.add(Like(user_key=user_key, item_id=db_id))
 
 
-def _unlike(session: Session, user_key: str, django_id: int) -> None:
-    session.query(Like).filter_by(user_key=user_key, item_id=django_id).delete()
+def _unlike(session: Session, user_key: str, db_id: int) -> None:
+    session.query(Like).filter_by(user_key=user_key, item_id=db_id).delete()
 
 
-def _save(session: Session, user_key: str, django_id: int) -> None:
-    existing = session.query(SavedItem).filter_by(user_key=user_key, item_id=django_id).first()
+def _save(session: Session, user_key: str, db_id: int) -> None:
+    existing = session.query(SavedItem).filter_by(user_key=user_key, item_id=db_id).first()
     if existing is None:
-        session.add(SavedItem(user_key=user_key, item_id=django_id))
+        session.add(SavedItem(user_key=user_key, item_id=db_id))
 
 
-def _unsave(session: Session, user_key: str, django_id: int) -> None:
-    session.query(SavedItem).filter_by(user_key=user_key, item_id=django_id).delete()
+def _unsave(session: Session, user_key: str, db_id: int) -> None:
+    session.query(SavedItem).filter_by(user_key=user_key, item_id=db_id).delete()
 
 
-def _rate(session: Session, user_key: str, django_id: int, rating: int) -> None:
+def _rate(session: Session, user_key: str, db_id: int, rating: int) -> None:
     if not 1 <= int(rating) <= 5:
         raise InvalidActionError(
             f"rating must be 1..5, got {rating}.",
             extra={"rating": int(rating)},
         )
     # update_or_create
-    existing = session.query(Rating).filter_by(user_key=user_key, item_id=django_id).first()
+    existing = session.query(Rating).filter_by(user_key=user_key, item_id=db_id).first()
     if existing is None:
-        session.add(Rating(user_key=user_key, item_id=django_id, rating=int(rating)))
+        session.add(Rating(user_key=user_key, item_id=db_id, rating=int(rating)))
     else:
         existing.rating = int(rating)
         existing.updated_at = datetime.now(timezone.utc)
+
+
+def _resolve_request_fk(session: Session, request_id: Optional[str]) -> Optional[int]:
+    """Translate the client's ``request_id`` into a ``recommendation_requests`` FK.
+
+    ``RecommendationResponseOut.request_id`` is a *string* that is either the
+    stringified DB primary key (when the persist succeeded) or a uuid4
+    fallback (when the DB was unreachable) — see
+    ``recommendation_service.py:391``. Only the former is a usable foreign
+    key, so we parse it and confirm the row exists; anything else returns
+    ``None`` and the log row simply carries no attribution rather than
+    raising an integrity error.
+    """
+    if not request_id:
+        return None
+    try:
+        candidate = int(str(request_id))
+    except (TypeError, ValueError):
+        return None  # uuid fallback — not a FK.
+    if candidate <= 0:
+        return None
+    exists = (
+        session.query(RecommendationRequest.id)
+        .filter(RecommendationRequest.id == candidate)
+        .first()
+    )
+    return candidate if exists else None
 
 
 def _log_action(
     session: Session,
     *,
     user_key: str,
-    django_id: int,
+    db_id: int,
     action: str,
     metadata: dict,
     request_id: Optional[str],
@@ -169,11 +219,39 @@ def _log_action(
 ) -> None:
     log = InteractionLog(
         user_key=user_key,
-        item_id=django_id,
+        item_id=db_id,
         action_type=action,
         metadata_json=json.dumps(metadata or {}, ensure_ascii=False),
+        recommendation_request_id=_resolve_request_fk(session, request_id),
     )
     session.add(log)
+
+
+def _view_is_duplicate(session: Session, user_key: str, db_id: int) -> bool:
+    """True when this user already viewed this item inside the dedupe window.
+
+    The window is a *policy* (configurable via ``RECSYS_VIEW_DEDUPE_MINUTES``),
+    not an invariant, so it is enforced here rather than by a DB constraint —
+    a unique index would also wrongly reject a genuine repeat view a week
+    later.
+    """
+    from ..core.config import get_settings
+
+    minutes = max(0, int(get_settings().view_dedupe_minutes))
+    if minutes == 0:
+        return False
+    since = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+    existing = (
+        session.query(InteractionLog.id)
+        .filter(
+            InteractionLog.user_key == user_key,
+            InteractionLog.item_id == db_id,
+            InteractionLog.action_type == "item_view",
+            InteractionLog.created_at >= since,
+        )
+        .first()
+    )
+    return existing is not None
 
 
 def _past_tense(action: str) -> str:
@@ -183,4 +261,5 @@ def _past_tense(action: str) -> str:
         "save": "saved",
         "unsave": "unsaved",
         "rate": "rated",
+        "item_view": "viewed",
     }.get(action, action)

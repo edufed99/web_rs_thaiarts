@@ -10,6 +10,7 @@ import {
   postSave,
   putRating,
 } from "@/lib/api";
+import { notifyMemberActivityChanged } from "@/lib/memberEvents";
 import { getJwt } from "@/lib/auth";
 import type { ItemActionOut, UserState } from "@/lib/types";
 
@@ -73,6 +74,7 @@ export function ItemActionBar({
     setSaved(s.saved);
     setRating(s.rating || 0);
     onChange(s);
+    notifyMemberActivityChanged();
   }
 
   function baseBody() {

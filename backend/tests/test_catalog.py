@@ -1,6 +1,8 @@
 """Tests for the /items and /items/{id} endpoints."""
 from __future__ import annotations
 
+import time
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -61,6 +63,23 @@ def test_get_item_not_found(client: TestClient):
     r = client.get("/items/99999", params=_ANON)
     assert r.status_code == 404
     assert r.json()["error"]["code"] == "item_not_found"
+
+
+def test_get_items_batch_preserves_requested_order(client: TestClient):
+    requested = [item_id("ลิเก"), item_id("ระบำพรหมาสตร์")]
+    response = client.get("/items/batch", params={"ids": ",".join(map(str, requested)), **_ANON})
+    assert response.status_code == 200, response.text
+    assert [item["id"] for item in response.json()["items"]] == requested
+
+
+def test_similar_items_are_ranked_and_exclude_reference(client: TestClient):
+    reference = item_id("ระบำพรหมาสตร์")
+    response = client.get(f"/items/{reference}/similar", params={"limit": 3, **_ANON})
+    assert response.status_code == 200, response.text
+    ids = [item["id"] for item in response.json()["items"]]
+    assert len(ids) == 3
+    assert reference not in ids
+    assert len(ids) == len(set(ids))
 
 
 # --- ranked-by-context mode (legacy top-10 behaviour) --------------------
@@ -130,38 +149,52 @@ def test_list_items_default_includes_suitability(client: TestClient, field):
         assert field in it
 
 
-def test_list_items_search_matches_keyword_name(client: TestClient):
-    """The legacy search covers keyword names as well as name + description."""
-    # "ผู้หญิง" is a keyword attached to ระบำพรหมาสตร์ in the synthetic corpus.
+def test_list_items_search_does_not_match_keyword_name(client: TestClient):
+    """Public catalog search intentionally ignores keyword names."""
     r = client.get("/items", params={"search": "ผู้หญิง", **_ANON})
     assert r.status_code == 200
     body = r.json()
-    assert body["total"] >= 1
-    assert any(item_id("ระบำพรหมาสตร์") == it["id"] for it in body["items"])
+    assert body["total"] == 0
+    assert body["items"] == []
 
 
-def test_list_items_search_matches_taxonomy_path(client: TestClient):
-    """The home-page taxonomy selector can search by taxonomy path level."""
+def test_list_items_search_does_not_match_taxonomy_path(client: TestClient):
+    """Public catalog search intentionally ignores taxonomy paths."""
     r = client.get("/items", params={"search": "เครื่องแต่งกาย", **_ANON})
     assert r.status_code == 200
     body = r.json()
-    assert body["total"] >= 1
-    assert any(item_id("ระบำพรหมาสตร์") == it["id"] for it in body["items"])
+    assert body["total"] == 0
+    assert body["items"] == []
 
 
-def test_list_items_search_matches_multiple_taxonomy_chips(client: TestClient):
-    """Multiple selected chips are matched as separate search terms."""
-    r = client.get("/items", params={"search": "ผู้หญิง|เครื่องแต่งกาย", **_ANON})
+def test_list_items_search_falls_back_to_category_group(client: TestClient):
+    r = client.get("/items", params={"search": "กลุ่ม", **_ANON})
     assert r.status_code == 200
     body = r.json()
-    assert body["total"] >= 1
-    assert any(item_id("ระบำพรหมาสตร์") == it["id"] for it in body["items"])
+    assert body["total"] == 5
 
 
-def test_search_does_not_match_thai_prefix_inside_longer_word():
-    assert not _matches_all_terms(["ทำนา"], ["พิเภกทำนายฝัน"])
+def test_list_items_search_falls_back_to_description(client: TestClient):
+    r = client.get("/items", params={"search": "คำอธิบายของ", **_ANON})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["total"] == 5
+
+
+def test_list_items_search_does_not_match_performance_type(client: TestClient):
+    r = client.get("/items", params={"search": "การแสดง", **_ANON})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["total"] == 0
+    assert body["items"] == []
+
+
+def test_search_matches_thai_substrings_inside_item_names():
+    assert _matches_all_terms(["จับนาง"], ["หนุมานจับนางเบญกาย"])
     assert _matches_all_terms(["ทำนา"], ["การแสดงเกี่ยวกับการทำนา"])
     assert _matches_all_terms(["โขน"], ["การแสดงโขนเรื่องรามเกียรติ์"])
+    assert _matches_all_terms(["ระบำ"], ["ระบำพรหมาสตร์"])
+    assert _matches_all_terms(["ระบำ"], ["การแสดง ระบำกฤดาภินิหาร"])
 
 
 def test_get_item_includes_suitability(client: TestClient):
@@ -173,3 +206,96 @@ def test_get_item_includes_suitability(client: TestClient):
     assert "match_percent" in body
     assert "suitability_label" in body
     assert 82 <= body["match_percent"] <= 98
+
+
+# --- anonymous short-circuit (no user_key, no JWT) ------------------------
+
+
+def test_list_items_anonymous_no_user_key(client: TestClient):
+    """Anonymous callers (no JWT, no user_key) must still get a 200 with
+    the same item shapes — they simply skip the per-row user_state lookup.
+    """
+    r = client.get("/items")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["total"] == 5
+    for it in body["items"]:
+        # user_state defaults to all-false when anonymous.
+        assert it["user_state"] == {"liked": False, "saved": False, "rating": 0}
+
+
+def test_get_item_anonymous_no_user_key(client: TestClient):
+    """Same anonymous short-circuit for the detail endpoint."""
+    rid = item_id("ระบำพรหมาสตร์")
+    r = client.get(f"/items/{rid}")
+    assert r.status_code == 200
+    assert r.json()["user_state"] == {"liked": False, "saved": False, "rating": 0}
+
+
+# --- _db_item_rows TTL cache -----------------------------------------------
+
+
+def test_db_item_rows_cache_returns_same_instance(monkeypatch):
+    """Two calls within the TTL window must return the *same* cached
+    object — the second call must not hit the DB joins or the recursive
+    taxonomy walk.
+    """
+    from app.routers import catalog as catalog_module
+
+    # Reset cache so this test is hermetic.
+    catalog_module._db_rows_cache["data"] = [{"marker": "cached"}]
+    catalog_module._db_rows_cache["expires_at"] = time.monotonic() + 60.0
+
+    seen = {"n": 0}
+
+    real_func = catalog_module._db_contexts_by_item
+
+    def counting_contexts(session, item_ids):
+        seen["n"] += 1
+        return real_func(session, item_ids)
+
+    monkeypatch.setattr(catalog_module, "_db_contexts_by_item", counting_contexts)
+
+    # First call: cache hit, DB untouched.
+    first = catalog_module._db_item_rows()
+    # Second call inside the TTL: must reuse the cache too.
+    second = catalog_module._db_item_rows()
+
+    assert first == [{"marker": "cached"}]
+    assert first is second
+    assert seen["n"] == 0  # DB never touched
+
+
+def test_db_item_rows_cache_invalidates_when_db_signature_changes(monkeypatch):
+    """External PostgreSQL edits must invalidate the cached catalog rows."""
+    from app.routers import catalog as catalog_module
+
+    catalog_module._db_rows_cache["data"] = [{"marker": "old"}]
+    catalog_module._db_rows_cache["expires_at"] = time.monotonic() + 60.0
+    catalog_module._db_rows_cache["signature"] = "old-signature"
+
+    monkeypatch.setattr(catalog_module, "_db_catalog_signature", lambda: "new-signature")
+
+    catalog_module._db_item_rows()
+
+    assert catalog_module._db_rows_cache["data"] != [{"marker": "old"}]
+    assert catalog_module._db_rows_cache["signature"] is None
+
+
+def test_db_item_rows_cache_stale_entry_is_not_returned_after_ttl():
+    """When the TTL has expired, the next call must NOT short-circuit on
+    the stale entry even if the DB fallback happens to return ``None``
+    (as it does in the synthetic-DB test fixture). The cache should
+    either be refreshed or cleared, never return the expired object.
+    """
+    from app.routers import catalog as catalog_module
+
+    # Stale entry: already past its TTL.
+    catalog_module._db_rows_cache["data"] = [{"marker": "stale"}]
+    catalog_module._db_rows_cache["expires_at"] = time.monotonic() - 1.0
+
+    # After the call, the cache data must no longer be the stale sentinel.
+    # (In the test fixture session_scope returns None → _db_item_rows()
+    # returns None and the cache stays empty, which is correct.)
+    catalog_module._db_item_rows()
+    assert catalog_module._db_rows_cache["data"] != [{"marker": "stale"}]

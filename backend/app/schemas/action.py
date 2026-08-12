@@ -45,3 +45,50 @@ class ItemActionOut(BaseModel):
         default=None, ge=0, le=5, description="Current rating (present only for 'rated')."
     )
     metadata: dict = Field(default_factory=dict, description="Action-specific metadata echoed back to the client.")
+
+
+class ViewRequestIn(BaseModel):
+    """Body for POST /actions/view (ADR-002 §3.1).
+
+    Deliberately narrower than ``ActionRequestIn``: a view has no rating and
+    no undo, and it is fired on every detail-page open, so the payload stays
+    minimal.
+    """
+
+    user_key: str = Field(
+        ...,
+        min_length=1,
+        max_length=150,
+        description="Opaque user id (e.g. 'anon:<uuid>').",
+    )
+    item_id: int = Field(..., gt=0, description="Artifact item id (stable_id).")
+    request_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional RecommendationResponseOut.request_id. When it is a "
+            "persisted recommendation id, the view is attributed to that "
+            "recommendation so click-through rate can be computed."
+        ),
+    )
+    context_id: Optional[int] = Field(
+        default=None, gt=0, description="Optional context id for the interaction log."
+    )
+
+
+class ItemViewOut(BaseModel):
+    """Response for POST /actions/view.
+
+    Does not echo the full item: the caller is the detail page, which already
+    has it. Returning only the outcome keeps this high-frequency endpoint
+    cheap (no artifact row lookup, no user-state query).
+    """
+
+    action: str = Field("viewed", description="Always 'viewed'.")
+    item_id: int = Field(..., description="Artifact item id that was logged.")
+    deduped: bool = Field(
+        ...,
+        description=(
+            "True when a view for this (user, item) already existed inside "
+            "the dedupe window, so no new row was written."
+        ),
+    )

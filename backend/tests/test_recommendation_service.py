@@ -5,18 +5,23 @@ import hashlib
 from contextlib import contextmanager
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.exceptions import ContextNotFoundError
 from app.schemas.recommendation import RecommendationRequestIn
+from app.schemas.item import UserState
 from app.services.recommendation_service import (
     _build_context_out,
     _build_item_out,
+    _history_reason_for_item,
+    _recommendation_history_evidence,
     _profile_card_explanation,
+    _profile_content_affinity,
     _profile_history_summary,
     _resolve_keywords,
+    generate_profile_recommendations,
     generate_recommendations,
 )
 
@@ -125,6 +130,55 @@ def test_profile_card_explanation_is_short_and_history_grounded(loader):
     assert len(explanation) < 140
 
 
+def test_profile_content_affinity_uses_fresh_history_metadata(loader):
+    history = {item_id("ระบำพรหมาสตร์")}
+    candidates = [row.to_dict() for _, row in loader.items.iterrows()]
+    scores = _profile_content_affinity(loader, history, candidates)
+    assert scores[item_id("ระบำพรหมาสตร์")] > 0
+    assert scores[item_id("ลิเก")] > 0  # shared ผู้หญิง keyword
+    assert scores[item_id("วงดนตรีไทย")] >= 0
+    assert _profile_content_affinity(loader, set(), candidates) == {
+        int(row["item_id"]): 0.0 for row in candidates
+    }
+
+
+def test_static_history_reason_uses_high_rating_and_shared_trait(loader):
+    evidence = _recommendation_history_evidence(loader, "user:u1")
+    row = loader.items[loader.items["name"] == "หุ่นกระบอก"].iloc[0].to_dict()
+
+    reason = _history_reason_for_item(row, evidence)
+
+    assert reason == "คุณเคยให้คะแนนสูงแก่การแสดงในกลุ่มเดียวกัน"
+
+
+@pytest.mark.parametrize(
+    ("state", "expected"),
+    [
+        (UserState(liked=True), "คุณเคยกดถูกใจการแสดงกลุ่มนาฏศิลป์อนุรักษ์"),
+        (UserState(saved=True), "คุณเคยบันทึกการแสดงกลุ่มนาฏศิลป์อนุรักษ์"),
+        (UserState(rating=5), "คุณเคยให้คะแนนสูงแก่การแสดงกลุ่มนาฏศิลป์อนุรักษ์"),
+    ],
+)
+def test_live_history_reason_uses_the_real_action(state, expected):
+    history_id = 101
+    evidence = {
+        "rows": {
+            history_id: {
+                "category_group": "นาฏศิลป์อนุรักษ์",
+                "performance_type": "การแสดง ระบำ รำ ฟ้อน",
+            }
+        },
+        "states": {history_id: state},
+        "static_ids": set(),
+    }
+    item = {
+        "category_group": "นาฏศิลป์อนุรักษ์",
+        "performance_type": "การแสดง ระบำ รำ ฟ้อน",
+    }
+
+    assert _history_reason_for_item(item, evidence) == expected
+
+
 # --- Negative penalty wiring (DB enabled) -----------------------------------
 
 @pytest.fixture
@@ -133,7 +187,7 @@ def live_db_for_rec(monkeypatch, loader):
     (backfilled artifact ids) so negative ratings can FK in."""
     from app.core import config as config_module
     from app import db as db_module
-    from app.models_db import Base, Item, Rating
+    from app.models_db import Base, Context, Item, Keyword, Rating, User
 
     eng = create_engine(
         "sqlite:///:memory:?check_same_thread=False", future=True,
@@ -142,14 +196,30 @@ def live_db_for_rec(monkeypatch, loader):
     Base.metadata.create_all(eng)
     SessionLocal = sessionmaker(bind=eng, expire_on_commit=False, future=True)
 
-    aid_to_django = {}
+    aid_to_db = {}
     with SessionLocal() as s:
+        s.add(Context(id=81, name="งานบวช", group_name="พิธีกรรม"))
+        s.add(Context(id=82, name="งานเลี้ยงสังสรรค์", group_name="งานเลี้ยง"))
+        for keyword_db_id, keyword_name in enumerate(
+            ["ผู้หญิง", "ผู้ชาย", "ชุดไทย", "หน้าจอ", "ดนตรี"],
+            start=301,
+        ):
+            s.add(Keyword(id=keyword_db_id, name=keyword_name))
+        s.add(
+            User(
+                id=5,
+                username="person5",
+                password_hash="unused",
+                display_name="บุคคล5",
+                is_admin=False,
+            )
+        )
         for i, name in enumerate(
             ["ระบำพรหมาสตร์", "โขน", "ลิเก", "หุ่นกระบอก", "วงดนตรีไทย"],
             start=901,
         ):
             aid = int(hashlib.sha256(f"item::{name}".encode("utf-8")).hexdigest()[:7], 16)
-            aid_to_django[aid] = i
+            aid_to_db[aid] = i
             s.add(Item(id=i, name=name, is_active=True, artifact_item_id=aid))
         s.commit()
 
@@ -178,7 +248,7 @@ def live_db_for_rec(monkeypatch, loader):
     monkeypatch.setattr(rec_module, "is_db_enabled", lambda: True)
     db_module.reset_engine()
     config_module.reset_settings_cache()
-    yield SessionLocal, aid_to_django
+    yield SessionLocal, aid_to_db
     eng.dispose()
 
 
@@ -186,7 +256,7 @@ def test_negative_penalty_lowers_hybrid_for_negatively_rated_items(loader, live_
     """When a user has a low rating for one of the candidates, that item's
     hybrid score must be reduced by the negative-penalty factor."""
     from app.models_db import Rating
-    SessionLocal, aid_to_django = live_db_for_rec
+    SessionLocal, aid_to_db = live_db_for_rec
     aid_rabam = item_id("ระบำพรหมาสตร์")
     aid_khon = item_id("โขน")
 
@@ -205,7 +275,7 @@ def test_negative_penalty_lowers_hybrid_for_negatively_rated_items(loader, live_
     # Seed a negative rating for โขน
     with SessionLocal() as s:
         s.add(Rating(
-            user_key="anon:user-neg", item_id=aid_to_django[aid_khon], rating=1,
+            user_key="anon:user-neg", item_id=aid_to_db[aid_khon], rating=1,
         ))
         s.commit()
 
@@ -232,7 +302,7 @@ def test_response_metadata_reports_personalization(loader, live_db_for_rec):
     """When user_key is set and DB is on, the response metadata should
     reflect that user_state was resolved and whether any negative penalty
     was applied."""
-    SessionLocal, aid_to_django = live_db_for_rec
+    SessionLocal, aid_to_db = live_db_for_rec
     req = RecommendationRequestIn(
         context_id=context_id("งานบวช"),
         keyword_ids=[],
@@ -250,10 +320,10 @@ def test_user_state_populated_in_response(loader, live_db_for_rec):
     """When a user has liked an item, the response payload's user_state
     must reflect that."""
     from app.models_db import Like
-    SessionLocal, aid_to_django = live_db_for_rec
+    SessionLocal, aid_to_db = live_db_for_rec
     aid_rabam = item_id("ระบำพรหมาสตร์")
     with SessionLocal() as s:
-        s.add(Like(user_key="anon:liker", item_id=aid_to_django[aid_rabam]))
+        s.add(Like(user_key="anon:liker", item_id=aid_to_db[aid_rabam]))
         s.commit()
 
     req = RecommendationRequestIn(
@@ -265,6 +335,31 @@ def test_user_state_populated_in_response(loader, live_db_for_rec):
     out = generate_recommendations(loader, req)
     rabam = next(r for r in out.results if r.item.id == aid_rabam)
     assert rabam.item.user_state.liked is True
+
+
+def test_recommendation_overlays_image_url_from_database(loader, live_db_for_rec):
+    from app.models_db import Item
+
+    SessionLocal, aid_to_db = live_db_for_rec
+    aid_rabam = item_id("ระบำพรหมาสตร์")
+    expected_url = "/uploads/items/rabam-cover.png"
+    with SessionLocal() as session:
+        db_item = session.get(Item, aid_to_db[aid_rabam])
+        assert db_item is not None
+        db_item.image_url = expected_url
+        session.commit()
+
+    out = generate_recommendations(
+        loader,
+        RecommendationRequestIn(
+            context_id=context_id("งานบวช"),
+            keyword_ids=[],
+            top_k=5,
+        ),
+    )
+
+    rabam = next(result for result in out.results if result.item.id == aid_rabam)
+    assert rabam.item.image_url == expected_url
     # Other items the user did NOT like remain unliked.
     others = [r for r in out.results if r.item.id != aid_rabam]
     for o in others:
@@ -272,6 +367,92 @@ def test_user_state_populated_in_response(loader, live_db_for_rec):
     # Sanity: selected keywords carry taxonomy_path on the response.
     if out.selected_keywords:
         assert out.selected_keywords[0].taxonomy_path == "ผู้แสดง"
+
+
+def test_profile_recommendations_overlay_images_from_database(loader, live_db_for_rec):
+    """Profile cards use current DB media just like context recommendations."""
+    from app.models_db import Item, User
+
+    SessionLocal, _aid_to_db = live_db_for_rec
+    with SessionLocal() as session:
+        for db_item in session.query(Item).all():
+            db_item.image_url = f"/uploads/items/{db_item.artifact_item_id}.png"
+        session.commit()
+
+    # The synthetic fixture has collaborative history for ``user:u1``.
+    user = User(
+        id=5,
+        username="person5",
+        password_hash="unused",
+        display_name="legacy: u1",
+        is_admin=False,
+    )
+    out = generate_profile_recommendations(loader, user, top_k=5)
+
+    assert out.results
+    assert all(result.item.image_url for result in out.results)
+    assert all(
+        result.item.image_url == f"/uploads/items/{result.item.id}.png"
+        for result in out.results
+    )
+
+
+def test_recommendation_persists_user_keywords_and_db_item_ids(loader, live_db_for_rec):
+    """A logged-in user's selected keywords are stored per request.
+
+    API recommendation rows use artifact item ids, while the history table
+    requires DB item ids; this test protects both mappings.
+    """
+    from app.models_db import (
+        Keyword,
+        RecommendationRequest,
+        RecommendationRequestSelectedKeyword,
+        RecommendationResult,
+    )
+
+    SessionLocal, aid_to_db = live_db_for_rec
+    selected_names = {"ผู้หญิง", "ชุดไทย"}
+    out = generate_recommendations(
+        loader,
+        RecommendationRequestIn(
+            context_id=context_id("งานบวช"),
+            keyword_ids=[keyword_id(name) for name in selected_names],
+            top_k=3,
+            user_key="user:บุคคล5",
+        ),
+        user_id=5,
+    )
+
+    assert out.request_id.isdigit()
+    assert out.metadata["persisted_to_db"] is True
+    with SessionLocal() as session:
+        request_row = session.get(RecommendationRequest, int(out.request_id))
+        assert request_row is not None
+        assert request_row.user_id == 5
+        assert request_row.candidate_count == out.candidate_count
+
+        stored_names = set(
+            session.execute(
+                select(Keyword.name)
+                .join(
+                    RecommendationRequestSelectedKeyword,
+                    RecommendationRequestSelectedKeyword.keyword_id == Keyword.id,
+                )
+                .where(RecommendationRequestSelectedKeyword.request_id == request_row.id)
+            )
+            .scalars()
+            .all()
+        )
+        assert stored_names == selected_names
+
+        stored_item_ids = {
+            item_id_value
+            for (item_id_value,) in session.query(RecommendationResult.item_id)
+            .filter(RecommendationResult.request_id == request_row.id)
+            .all()
+        }
+        expected_db_ids = {aid_to_db[result.item.id] for result in out.results}
+        assert stored_item_ids == expected_db_ids
 
 
 def test_generate_returns_request_id_and_method(loader):
@@ -324,3 +505,30 @@ def test_generate_empty_candidate_set(loader):
     resp = _empty_response(req, "งานบวช", [KeywordOut(id=1, name="x")], settings=None)
     assert resp.candidate_count == 0
     assert resp.results == []
+
+
+def test_generate_recommendations_falls_back_when_persist_returns_zero(loader, monkeypatch):
+    """When ``_persist_request_and_recompute_online_eval`` returns 0
+    (the DB was disabled or unreachable), the response is still
+    served with a uuid4 fallback ``request_id`` rather than failing."""
+    from app.services import recommendation_service as rec_svc
+    from app.schemas.recommendation import RecommendationRequestIn
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    monkeypatch.setattr(
+        rec_svc, "_persist_request_and_recompute_online_eval",
+        lambda *a, **kw: 0,
+    )
+    req = RecommendationRequestIn(
+        context_id=context_id("งานบวช"),
+        keyword_ids=[keyword_id("ผู้หญิง")],
+        top_k=3,
+    )
+    resp = rec_svc.generate_recommendations(loader, req, settings=settings)
+    # request_id is set, but not an int (it's the uuid4 fallback).
+    assert resp.request_id
+    assert not resp.request_id.isdigit()
+    # Results are still populated — the persist failure does not break
+    # the recommendation path.
+    assert isinstance(resp.results, list)

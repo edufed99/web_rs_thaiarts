@@ -86,15 +86,31 @@ export function getCurrentUser(): UserOut | null {
   return auth ? auth.user : null;
 }
 
-export function getReadableUserName(user: UserOut): string {
-  const displayName = (user.display_name || "").trim();
-  const legacyMarker = "legacy:";
-  if (displayName.includes(legacyMarker)) {
-    const legacyName = displayName.split(legacyMarker, 2)[1]?.trim();
-    if (legacyName) return legacyName;
+type UserNameFields = Pick<UserOut, "username" | "display_name">;
+
+const PASSWORD_RESET_MARKER = "must_reset|";
+const LEGACY_NAME_MARKER = "legacy:";
+
+/**
+ * Convert migration-era display names such as
+ * ``must_reset|legacy:บุคคล1`` into the name a member should actually see.
+ * The helper intentionally accepts only the two shared name fields so it can
+ * be used with both ``UserOut`` and ``MemberProfileOut`` payloads.
+ */
+export function getReadableUserName(user: UserNameFields): string {
+  let displayName = (user.display_name || "").trim();
+  if (displayName.startsWith(PASSWORD_RESET_MARKER)) {
+    displayName = displayName.slice(PASSWORD_RESET_MARKER.length).trim();
   }
-  if (displayName && !displayName.startsWith("must_reset|")) return displayName;
-  return user.username;
+  if (displayName.startsWith(LEGACY_NAME_MARKER)) {
+    displayName = displayName.slice(LEGACY_NAME_MARKER.length).trim();
+  }
+  return displayName || user.username;
+}
+
+/** Whether this migrated account still carries the password-reset marker. */
+export function userNeedsPasswordReset(user: UserNameFields): boolean {
+  return (user.display_name || "").trim().startsWith(PASSWORD_RESET_MARKER);
 }
 
 export function getJwt(): string | null {

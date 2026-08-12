@@ -11,6 +11,7 @@ import {
 } from "@/lib/api";
 import type { EngagementOut, ItemOut, LegacyStatsOut } from "@/lib/types";
 import { getUserKey } from "@/lib/user";
+import { rankPopularItems, toEngagementMap } from "@/lib/popularityRanking";
 
 interface PopularData {
   items: ItemOut[];
@@ -196,33 +197,6 @@ function RatingLine({ stats }: { stats?: LegacyStatsOut }) {
       {stats.avg_rating.toFixed(1)} ({formatCount(stats.count)} รีวิว)
     </span>
   );
-}
-
-function toEngagementMap(rows: EngagementOut[]): Map<number, EngagementOut> {
-  const map = new Map<number, EngagementOut>();
-  for (const row of rows) map.set(row.item_id, row);
-  return map;
-}
-
-function rankPopularItems(
-  items: ItemOut[],
-  engagement: Map<number, EngagementOut>,
-  limit: number,
-): ItemOut[] {
-  const scoreFor = (id: number): number => engagement.get(id)?.engagement_score ?? 0;
-  const ratingFor = (id: number): number => engagement.get(id)?.rating_count ?? 0;
-  return [...items]
-    .filter((item) => scoreFor(item.id) > 0)
-    .sort((a, b) => {
-      const ds = scoreFor(b.id) - scoreFor(a.id);
-      if (ds !== 0) return ds;
-      const dr = ratingFor(b.id) - ratingFor(a.id);
-      if (dr !== 0) return dr;
-      const dm = (b.match_percent ?? 0) - (a.match_percent ?? 0);
-      if (dm !== 0) return dm;
-      return b.id - a.id;
-    })
-    .slice(0, limit);
 }
 
 function compactItemMeta(item: ItemOut): string {

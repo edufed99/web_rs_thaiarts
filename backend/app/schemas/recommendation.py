@@ -1,7 +1,7 @@
 """Schemas for the /recommendations workflow."""
 from __future__ import annotations
 
-from typing import List
+from typing import List, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -103,6 +103,11 @@ class RecommendationResponseOut(BaseModel):
     candidate_count: int = Field(..., ge=0, description="Items after eligibility gate.")
     top_k: int = Field(..., ge=1, le=50)
     method: str = Field(default="Hybrid-WeightedSum", description="Method tag.")
+    embedding_backend: Literal["e5", "proxy"] = Field(
+        ...,
+        description="Actual live query embedding backend used for this ranking.",
+    )
+    embedding_latency_ms: float = Field(default=0.0, ge=0)
     metadata: dict = Field(default_factory=dict)
     results: List[RecommendationResultOut] = Field(default_factory=list)
 

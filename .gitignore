@@ -1,6 +1,7 @@
 # Node / Next.js
 node_modules/
 .next/
+.next-dev/
 out/
 build/
 dist/
@@ -11,6 +12,8 @@ next-env.d.ts
 .env
 .env.local
 .env.*.local
+client_secret_*.json
+backend/data/secrets/
 
 # Logs
 *.log

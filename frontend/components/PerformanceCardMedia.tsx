@@ -46,8 +46,10 @@ export function PerformanceCardMedia({
         style={{
           aspectRatio: aspect,
           backgroundImage: `linear-gradient(135deg, rgba(6, 27, 60, 0.12), rgba(197, 145, 59, 0.18)), url("${imageUrl}")`,
-          backgroundSize: "cover",
+          backgroundColor: "#080b10",
+          backgroundSize: "cover, contain",
           backgroundPosition: "center",
+          backgroundRepeat: "no-repeat",
         }}
         role="img"
         aria-label={title}

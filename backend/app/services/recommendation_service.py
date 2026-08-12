@@ -11,6 +11,8 @@ once and applied to both the scoring pipeline (negative penalty,
 """
 from __future__ import annotations
 
+import json
+import logging
 import uuid
 from collections import Counter
 from typing import Dict, List, Optional
@@ -33,9 +35,10 @@ from ..schemas.recommendation import (
     ScoresOut,
 )
 from ..explanations import build_explanation
-from .cbf_service import score_items_by_content
-from .cf_service import score_items_by_itemknn
+from .cbf_service import score_items_by_content_with_runtime
+from .cf_service import _get_user_history, score_items_by_itemknn
 from .db_query import (
+    live_item_media_for_items,
     live_user_positive_items,
     live_user_negative_ratings,
     live_user_state_for_items,
@@ -46,6 +49,9 @@ from .eligibility import (
 )
 from .hybrid_service import apply_negative_penalty, weighted_sum
 from .suitability import catalog_match_percent, suitability_label
+
+
+logger = logging.getLogger(__name__)
 
 
 def generate_profile_recommendations(
@@ -63,8 +69,15 @@ def generate_profile_recommendations(
     """
     settings = _effective_settings(loader, settings)
     top_k = max(1, min(50, int(top_k)))
-    profile_key, history_count = _best_profile_key(loader, user)
+    profile_key, _legacy_history_count = _best_profile_key(loader, user)
     current_user_key = f"user:{int(user.id)}"
+    history_ids = (
+        set(loader.cf_user_item.get(profile_key, []))
+        | live_user_positive_items(profile_key)
+        | set(loader.cf_user_item.get(current_user_key, []))
+        | live_user_positive_items(current_user_key)
+    )
+    history_count = len(history_ids)
 
     if history_count == 0:
         return ProfileRecommendationResponseOut(
@@ -84,8 +97,19 @@ def generate_profile_recommendations(
         for _, row in loader.items.iterrows()
         if bool(row.get("is_active", True))
     ]
-    scores = score_items_by_itemknn(loader, profile_key, active_items, settings=settings)
-    history_ids = set(loader.cf_user_item.get(profile_key, [])) | live_user_positive_items(profile_key)
+    profile_scores = score_items_by_itemknn(loader, profile_key, active_items, settings=settings)
+    current_scores = score_items_by_itemknn(loader, current_user_key, active_items, settings=settings)
+    affinity_scores = _profile_content_affinity(loader, history_ids, active_items)
+    scores = {
+        int(item["item_id"]): (
+            0.75 * max(
+                float(profile_scores.get(int(item["item_id"]), 0.0)),
+                float(current_scores.get(int(item["item_id"]), 0.0)),
+            )
+            + 0.25 * float(affinity_scores.get(int(item["item_id"]), 0.0))
+        )
+        for item in active_items
+    }
     history_summary = _profile_history_summary(loader, history_ids)
 
     ranked = sorted(
@@ -105,6 +129,7 @@ def generate_profile_recommendations(
 
     ranked_ids = [int(item["item_id"]) for item in ranked]
     state_map = live_user_state_for_items(current_user_key, ranked_ids)
+    media_map = live_item_media_for_items(ranked_ids)
 
     results: List[RecommendationResultOut] = []
     for rank, item in enumerate(ranked, start=1):
@@ -120,10 +145,16 @@ def generate_profile_recommendations(
         results.append(
             RecommendationResultOut(
                 rank=rank,
-                item=_build_item_out(loader, item, iid, user_state=state_map.get(iid)),
+                item=_build_item_out(
+                    loader,
+                    item,
+                    iid,
+                    user_state=state_map.get(iid),
+                    media=media_map.get(iid),
+                ),
                 scores=ScoresOut(
-                    cbf=0.0,
-                    cf=float(scores.get(iid, 0.0)),
+                    cbf=float(affinity_scores.get(iid, 0.0)),
+                    cf=max(float(profile_scores.get(iid, 0.0)), float(current_scores.get(iid, 0.0))),
                     hybrid=float(scores.get(iid, 0.0)),
                 ),
                 is_context_valid=True,
@@ -143,9 +174,43 @@ def generate_profile_recommendations(
                 "current_user_key": current_user_key,
                 "candidate_count": len(active_items),
                 "history_summary": history_summary,
+                "live_actions_included": True,
             },
             results=results,
         )
+
+
+def _profile_content_affinity(
+    loader: ArtifactLoader,
+    history_ids: set[int],
+    candidate_items: List[Dict],
+) -> Dict[int, float]:
+    """Content fallback that makes fresh likes/saves/ratings useful immediately."""
+    history_rows = [
+        row.to_dict()
+        for _, row in loader.items.iterrows()
+        if int(row.get("item_id")) in history_ids
+    ]
+    if not history_rows:
+        return {int(item["item_id"]): 0.0 for item in candidate_items}
+
+    history_keywords = {str(value) for row in history_rows for value in (row.get("keyword_names") or []) if value}
+    history_contexts = {str(value) for row in history_rows for value in (row.get("context_names") or []) if value}
+    history_categories = {str(row.get("category_group") or "") for row in history_rows if row.get("category_group")}
+
+    def overlap(values: object, history: set[str]) -> float:
+        current = {str(value) for value in (values or []) if value}
+        return len(current & history) / len(current | history) if current or history else 0.0
+
+    scores: Dict[int, float] = {}
+    for item in candidate_items:
+        iid = int(item["item_id"])
+        scores[iid] = (
+            0.55 * overlap(item.get("keyword_names"), history_keywords)
+            + 0.30 * overlap(item.get("context_names"), history_contexts)
+            + 0.15 * float(str(item.get("category_group") or "") in history_categories)
+        )
+    return scores
 
 
 def _profile_history_summary(loader: ArtifactLoader, history_ids: set[int]) -> Dict:
@@ -237,6 +302,114 @@ def _profile_card_explanation(item: Dict, history_summary: Dict) -> str:
     return f"{reason} แล้วพบว่ามีรูปแบบผู้ใช้ใกล้เคียงกัน"
 
 
+def _recommendation_history_evidence(
+    loader: ArtifactLoader,
+    user_key: str,
+) -> Dict:
+    """Load the user's positive history once for concise card explanations."""
+    if not user_key:
+        return {"rows": {}, "states": {}, "static_ids": set()}
+
+    history_ids = _get_user_history(loader, user_key)
+    if not history_ids:
+        return {"rows": {}, "states": {}, "static_ids": set()}
+
+    rows = {
+        int(row.get("item_id")): row.to_dict()
+        for _, row in loader.items.iterrows()
+        if int(row.get("item_id")) in history_ids
+    }
+    return {
+        "rows": rows,
+        "states": live_user_state_for_items(user_key, history_ids),
+        "static_ids": set(loader.cf_user_item.get(user_key, [])),
+    }
+
+
+def _history_reason_for_item(item: Dict, evidence: Dict) -> str:
+    """Return a short, action-grounded historical reason for one item.
+
+    The sentence deliberately names a shared performance characteristic rather
+    than a historical title.  This keeps the card compact while still telling
+    the user what they previously liked, saved, or rated highly.
+    """
+    history_rows: Dict[int, Dict] = evidence.get("rows") or {}
+    if not history_rows:
+        return ""
+
+    category = str(item.get("category_group") or "").strip()
+    if category:
+        matching_ids = [
+            iid
+            for iid, row in history_rows.items()
+            if str(row.get("category_group") or "").strip() == category
+        ]
+        if matching_ids:
+            return _history_action_phrase(
+                matching_ids,
+                _category_group_phrase(category),
+                evidence,
+            )
+
+    performance_type = str(item.get("performance_type") or "").strip()
+    if performance_type:
+        matching_ids = [
+            iid
+            for iid, row in history_rows.items()
+            if str(row.get("performance_type") or "").strip() == performance_type
+        ]
+        if matching_ids:
+            return _history_action_phrase(
+                matching_ids,
+                _performance_type_phrase(performance_type),
+                evidence,
+            )
+
+    return ""
+
+
+def _history_action_phrase(
+    matching_ids: List[int],
+    trait_phrase: str,
+    evidence: Dict,
+) -> str:
+    states: Dict[int, UserState] = evidence.get("states") or {}
+
+    if any(states.get(iid, UserState()).liked for iid in matching_ids):
+        return f"คุณเคยกดถูกใจ{trait_phrase}"
+    if any(states.get(iid, UserState()).saved for iid in matching_ids):
+        return f"คุณเคยบันทึก{trait_phrase}"
+    if any(states.get(iid, UserState()).rating >= 4 for iid in matching_ids):
+        return f"คุณเคยให้คะแนนสูงแก่{trait_phrase}"
+
+    static_ids = set(evidence.get("static_ids") or set())
+    if static_ids.intersection(matching_ids):
+        # Imported CF history is built from positive legacy ratings only.
+        return f"คุณเคยให้คะแนนสูงแก่{trait_phrase}"
+    return ""
+
+
+def _performance_type_phrase(performance_type: str) -> str:
+    labels = {
+        "การแสดง ระบำ รำ ฟ้อน": "การแสดงประเภทระบำ รำ และฟ้อน",
+        "การแสดงโขน - ละคร": "การแสดงประเภทโขนและละคร",
+        "การแสดงสร้างสรรค์": "การแสดงสร้างสรรค์",
+    }
+    if performance_type in labels:
+        return labels[performance_type]
+    if performance_type == "การแสดง":
+        return "การแสดงในรูปแบบเดียวกัน"
+    return f"การแสดงประเภท{performance_type}"
+
+
+def _category_group_phrase(category: str) -> str:
+    if category == "กลุ่ม":
+        return "การแสดงในกลุ่มเดียวกัน"
+    if category.startswith("การแสดง"):
+        return category
+    return f"การแสดงกลุ่ม{category}"
+
+
 def _best_profile_key(loader: ArtifactLoader, user: User) -> tuple[str, int]:
     keys = [f"user:{int(user.id)}"]
     if user.username:
@@ -266,6 +439,7 @@ def generate_recommendations(
     loader: ArtifactLoader,
     request: RecommendationRequestIn,
     settings: Optional[Settings] = None,
+    user_id: Optional[int] = None,
 ) -> RecommendationResponseOut:
     settings = _effective_settings(loader, settings)
 
@@ -294,12 +468,27 @@ def generate_recommendations(
         min_cands=settings.min_cands,
     )
     if not candidates:
-        return _empty_response(request, ctx_name, selected_keyword_objs, settings)
+        response = _empty_response(request, ctx_name, selected_keyword_objs, settings)
+        persisted_id = _persist_request_and_recompute_online_eval(
+            loader,
+            request,
+            ctx_name,
+            [],
+            settings,
+            user_id=user_id,
+            candidate_count=0,
+            selected_keywords=selected_keyword_objs,
+        )
+        if persisted_id:
+            response.request_id = str(persisted_id)
+            response.metadata["persisted_to_db"] = True
+        return response
 
     # 4. CBF + CF
-    cbf = score_items_by_content(
+    cbf_outcome = score_items_by_content_with_runtime(
         loader, candidates, selected_keyword_names, context_name=ctx_name, settings=settings
     )
+    cbf = cbf_outcome.scores
     cf = score_items_by_itemknn(
         loader, request.user_key or None, candidates, settings=settings
     )
@@ -334,6 +523,10 @@ def generate_recommendations(
     state_map: Dict[int, UserState] = live_user_state_for_items(
         request.user_key or "", ranked_ids
     )
+    media_map = live_item_media_for_items(ranked_ids)
+    history_evidence = _recommendation_history_evidence(
+        loader, request.user_key or ""
+    )
 
     # 7. Build result rows
     results: List[RecommendationResultOut] = []
@@ -342,6 +535,11 @@ def generate_recommendations(
         item_keywords = list(item.get("keyword_names") or [])
         item_contexts = list(item.get("context_names") or [])
         matched = [k for k in selected_keyword_names if k in item_keywords]
+        history_reason = (
+            _history_reason_for_item(item, history_evidence)
+            if float(cf.get(iid, 0.0)) > 0
+            else ""
+        )
         explanation = build_explanation(
             item=item,
             context_name=ctx_name,
@@ -349,6 +547,7 @@ def generate_recommendations(
             cbf_score=float(cbf.get(iid, 0.0)),
             cf_score=float(cf.get(iid, 0.0)),
             matched_keywords=matched,
+            history_reason=history_reason,
         )
         # Display-only suitability hint. Mirrors the legacy
         # catalog_match_percent heuristic (see services/suitability.py).
@@ -364,7 +563,13 @@ def generate_recommendations(
         results.append(
             RecommendationResultOut(
                 rank=rank,
-                item=_build_item_out(loader, item, iid, user_state=state_map.get(iid)),
+                item=_build_item_out(
+                    loader,
+                    item,
+                    iid,
+                    user_state=state_map.get(iid),
+                    media=media_map.get(iid),
+                ),
                 scores=ScoresOut(
                     cbf=float(cbf.get(iid, 0.0)),
                     cf=float(cf.get(iid, 0.0)),
@@ -378,13 +583,33 @@ def generate_recommendations(
             )
         )
 
+    # 7b. Phase 3 — persist this request + its results to the live DB
+    #     and recompute online evaluation in the same flow. The persist
+    #     is wrapped in its own try/except so a DB hiccup never breaks
+    #     the recommendation response. The returned request_id is the
+    #     DB primary key (an int) so the client can correlate; we fall
+    #     back to a uuid when the DB was unreachable.
+    persisted_id = _persist_request_and_recompute_online_eval(
+        loader,
+        request,
+        ctx_name,
+        results,
+        settings,
+        user_id=user_id,
+        candidate_count=len(candidates),
+        selected_keywords=selected_keyword_objs,
+    )
+    request_id_str = str(persisted_id) if persisted_id else str(uuid.uuid4())
+
     return RecommendationResponseOut(
-        request_id=str(uuid.uuid4()),
+        request_id=request_id_str,
         selected_context=_build_context_out(loader, int(request.context_id), ctx_name),
         selected_keywords=selected_keyword_objs,
         candidate_count=len(candidates),
         top_k=request.top_k,
         method=settings.recommendation_method,
+        embedding_backend=cbf_outcome.embedding_backend,
+        embedding_latency_ms=cbf_outcome.embedding_latency_ms,
         metadata={
             "cbf_model": str(settings.e5_model_name),
             "cf_model": "ItemKNN",
@@ -399,9 +624,152 @@ def generate_recommendations(
             "db_enabled": bool(is_db_enabled()),
             "user_state_resolved": bool(request.user_key and is_db_enabled()),
             "negative_ratings_applied": bool(negative_ratings),
+            "persisted_to_db": bool(persisted_id),
+            "embedding_backend": cbf_outcome.embedding_backend,
+            "embedding_latency_ms": cbf_outcome.embedding_latency_ms,
         },
         results=results,
     )
+
+
+def _persist_request_and_recompute_online_eval(
+    loader: ArtifactLoader,
+    request: RecommendationRequestIn,
+    ctx_name: str,
+    results: List[RecommendationResultOut],
+    settings: Settings,
+    *,
+    user_id: Optional[int] = None,
+    candidate_count: Optional[int] = None,
+    selected_keywords: Optional[List[KeywordOut]] = None,
+) -> int:
+    """Persist this request + its results to the live DB, then trigger
+    an online-eval recompute so the dashboard's model-quality tiles
+    reflect fresh telemetry.
+
+    Wrapped in its own try/except — telemetry writes must never break
+    the recommendation response. Returns the persisted ``request_id``
+    (DB id) on success, 0 when persistence was skipped (DB disabled
+    or transient error).
+    """
+    if not is_db_enabled():
+        return 0
+    try:
+        with session_scope() as session:
+            if session is None:
+                return 0
+            # Map the artifact context id (what the API uses) back to
+            # the live ``contexts.id`` PK. When the context is missing
+            # in the live DB the request cannot be persisted; we still
+            # attempt the online-eval recompute because that path only
+            # needs ``recommendation_results`` + ``interaction_logs``.
+            from ..models_db import (
+                Context,
+                Item,
+                Keyword as DbKeyword,
+                RecommendationRequest as RR,
+                RecommendationRequestSelectedKeyword as RRSK,
+                RecommendationResult as RL,
+            )
+            ctx_row_id: Optional[int] = None
+            if ctx_name:
+                ctx_row = session.execute(
+                    select(Context.id).where(Context.name == ctx_name).limit(1)
+                ).scalar_one_or_none()
+                ctx_row_id = int(ctx_row) if ctx_row is not None else None
+            if ctx_row_id is None:
+                logger.warning(
+                    "Recommendation telemetry skipped: context %r is missing from the database",
+                    ctx_name,
+                )
+                return 0
+
+            rr = RR(
+                user_id=int(user_id) if user_id is not None else None,
+                selected_context_id=int(ctx_row_id),
+                candidate_count=(
+                    int(candidate_count) if candidate_count is not None else len(results)
+                ),
+                top_k=int(request.top_k),
+                method=str(settings.recommendation_method),
+                metadata_json=json.dumps(
+                    {
+                        "cbf_model": str(settings.e5_model_name),
+                        "hybrid_alpha": float(settings.hybrid_alpha),
+                        "user_key_provided": bool(request.user_key),
+                        "selected_keyword_names": [
+                            str(keyword.name) for keyword in (selected_keywords or [])
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+            )
+            session.add(rr)
+            session.flush()  # populates rr.id
+            req_id = int(rr.id)
+
+            # Persist the exact keywords selected for this request in the
+            # existing M2M table. API ids can be artifact ids or DB ids, so
+            # resolve by the canonical keyword name before writing the FK.
+            selected_names = {
+                str(keyword.name).strip()
+                for keyword in (selected_keywords or [])
+                if str(keyword.name).strip()
+            }
+            if selected_names:
+                keyword_ids = session.execute(
+                    select(DbKeyword.id).where(DbKeyword.name.in_(selected_names))
+                ).scalars().all()
+                for keyword_id in keyword_ids:
+                    session.add(RRSK(request_id=req_id, keyword_id=int(keyword_id)))
+
+            # RecommendationResult.item_id is a DB FK, while the API result
+            # carries artifact ids. Translate the whole result set in one
+            # query; missing catalog rows are skipped without losing the
+            # request and its selected-keyword telemetry.
+            artifact_ids = [int(result.item.id) for result in results]
+            item_id_by_artifact = (
+                {
+                    int(artifact_id): int(db_id)
+                    for artifact_id, db_id in session.execute(
+                        select(Item.artifact_item_id, Item.id).where(
+                            Item.artifact_item_id.in_(artifact_ids)
+                        )
+                    ).all()
+                }
+                if artifact_ids
+                else {}
+            )
+
+            for r in results:
+                db_item_id = item_id_by_artifact.get(int(r.item.id))
+                if db_item_id is None:
+                    continue
+                session.add(
+                    RL(
+                        request_id=req_id,
+                        item_id=db_item_id,
+                        rank=int(r.rank),
+                        cbf_score=float(r.scores.cbf),
+                        cf_score=float(r.scores.cf),
+                        hybrid_score=float(r.scores.hybrid),
+                        is_context_valid=bool(r.is_context_valid),
+                        matched_keywords_json=json.dumps(list(r.matched_keywords or []), ensure_ascii=False),
+                        explanation=str(r.explanation or ""),
+                    )
+                )
+            return req_id
+    except Exception:  # noqa: BLE001 - telemetry writes must never break the request path
+        logger.exception("Failed to persist recommendation request telemetry")
+        return 0
+    finally:
+        # Online-eval recompute runs in its own session so a slow
+        # recompute never blocks the response. Cheap on small corpora.
+        try:
+            from .dashboard_query import recompute_online_eval
+            recompute_online_eval(window_days=30)
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _effective_settings(loader: ArtifactLoader, settings: Optional[Settings]) -> Settings:
@@ -549,6 +917,7 @@ def _build_item_out(
     item: Dict,
     item_id: int,
     user_state: Optional[UserState] = None,
+    media: Optional[Dict[str, str]] = None,
 ) -> ItemOut:
     from ._ids import stable_id
     item_keywords = list(item.get("keyword_names") or [])
@@ -573,6 +942,7 @@ def _build_item_out(
         for c in item_contexts
         if c
     ]
+    media = media or {}
     return ItemOut(
         id=int(item_id),
         name=str(item.get("name") or ""),
@@ -582,8 +952,8 @@ def _build_item_out(
         performers_count=item.get("performers_count"),
         duration_minutes=item.get("duration_minutes"),
         price_text=str(item.get("price_text") or ""),
-        image_url=str(item.get("image_url") or ""),
-        video_url="",
+        image_url=str(media.get("image_url") or item.get("image_url") or ""),
+        video_url=str(media.get("video_url") or item.get("video_url") or ""),
         keywords=keyword_objs,
         contexts=context_objs,
         user_state=user_state or UserState(),
@@ -610,6 +980,8 @@ def _empty_response(
         candidate_count=0,
         top_k=request.top_k,
         method=settings.recommendation_method,
+        embedding_backend="e5" if settings.research_mode else "proxy",
+        embedding_latency_ms=0.0,
         metadata={"note": "no candidates in this context"},
         results=[],
     )

@@ -51,15 +51,35 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        MODEL_SERVICE_URL: http://backend:8001
     container_name: web_rs_thaiarts-frontend
     restart: unless-stopped
     depends_on:
       backend:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     environment:
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:8001
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-web_rs_thaiarts}
     ports:
       - "3000:3000"
+
+  migrate:
+    image: pichaya5502/web_rs_thaiarts-frontend:latest
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        MODEL_SERVICE_URL: http://backend:8001
+    profiles: ["tools"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-web_rs_thaiarts}
+    restart: "no"
+    command: ["sh", "-c", "node .db-dist/cli.js migration:run && node .db-dist/cli.js seed"]
 
 volumes:
   postgres_data:

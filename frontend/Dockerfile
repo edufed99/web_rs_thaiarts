@@ -11,10 +11,12 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+ARG MODEL_SERVICE_URL=http://backend:8001
+ENV MODEL_SERVICE_URL=$MODEL_SERVICE_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
-RUN npm run build
+RUN npm run build && npm run build:db
 
 FROM node:20-alpine AS runner
 WORKDIR /app
@@ -30,6 +32,7 @@ RUN adduser --system --uid 1001 nextjs
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/.db-dist ./.db-dist
 
 USER nextjs
 

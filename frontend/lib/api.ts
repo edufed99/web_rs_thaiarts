@@ -1,8 +1,7 @@
 // lib/api.ts — Typed REST client for the FastAPI backend.
 //
-// Reads the backend URL from NEXT_PUBLIC_API_BASE_URL. The frontend never
-// imports Python files, reads CSV, or reads model artifacts directly; all
-// data comes from this client.
+// Uses the same-origin Next.js Application Backend. Internal service
+// addresses stay server-only and are never embedded in browser bundles.
 
 import type {
   ActionRequestIn,
@@ -66,12 +65,10 @@ import type {
 
 import { getAuthHeaders, getCurrentUser } from "./auth";
 
-const DEFAULT_BASE_URL = "http://127.0.0.1:8001";
+const DEFAULT_BASE_URL = "/api";
 
 function baseUrl(): string {
-  // process.env.NEXT_PUBLIC_* is inlined at build time by Next.js.
-  const envUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
-  return (envUrl && envUrl.length > 0 ? envUrl : DEFAULT_BASE_URL).replace(/\/+$/, "");
+  return DEFAULT_BASE_URL;
 }
 
 export class ApiClientError extends Error {
@@ -111,6 +108,7 @@ async function handle<T>(res: Response): Promise<T> {
   throw new ApiClientError(res.status, code, message, body.error);
 }
 
+// fallow-ignore-next-line unused-export -- Preserved public API client contract.
 export async function getHealth(): Promise<HealthOut> {
   const res = await fetch(`${baseUrl()}/health`, { cache: "no-store" });
   return handle<HealthOut>(res);
@@ -293,6 +291,7 @@ export async function getMetrics(): Promise<MetricsOut> {
  * Monthly request/shown trend for the dashboard chart. Falls back to
  * an empty trend with ``source='disabled'`` when the DB layer is off.
  */
+// fallow-ignore-next-line unused-export -- Preserved public API client contract.
 export async function getRequestTrend(months: number = 12): Promise<RequestTrendOut> {
   const safeMonths = Math.min(36, Math.max(1, Math.floor(months)));
   const url = `${baseUrl()}/metrics/requests?months=${safeMonths}`;
@@ -305,6 +304,7 @@ export async function getRequestTrend(months: number = 12): Promise<RequestTrend
  * ``best_model_config.json`` + RECSYS_* env vars). Used by the dashboard
  * model-control sliders to render real values.
  */
+// fallow-ignore-next-line unused-export -- Preserved public API client contract.
 export async function getModelConfig(): Promise<ModelConfigOut> {
   const res = await fetch(`${baseUrl()}/metrics/config`, { cache: "no-store" });
   return handle<ModelConfigOut>(res);
@@ -644,13 +644,8 @@ export async function postLogin(body: UserLogin): Promise<TokenOut> {
 }
 
 export function googleLoginStartUrl(nextPath = "/recommend"): string {
-  const target = new URL(baseUrl());
-  // The Google client redirects to localhost. Keep the start request on the
-  // same hostname so the HttpOnly OAuth state cookie reaches the callback.
-  if (target.hostname === "127.0.0.1") target.hostname = "localhost";
-  target.pathname = "/auth/google/login/start";
-  target.search = new URLSearchParams({ next: nextPath }).toString();
-  return target.toString();
+  const search = new URLSearchParams({ next: nextPath }).toString();
+  return `${baseUrl()}/auth/google/login/start?${search}`;
 }
 
 export async function postGoogleLoginExchange(
@@ -665,6 +660,7 @@ export async function postGoogleLoginExchange(
   return handle<TokenOut>(res);
 }
 
+// fallow-ignore-next-line unused-export -- Preserved public API client contract.
 export async function getMe(): Promise<UserOut> {
   const res = await fetch(`${baseUrl()}/auth/me`, {
     method: "GET",
@@ -782,6 +778,7 @@ export async function postItemCommit(body: ItemCommit): Promise<ItemCommitOut> {
   return handle<ItemCommitOut>(res);
 }
 
+// fallow-ignore-next-line unused-export -- Preserved public API client contract.
 export async function putItemKeywords(
   artifactId: number,
   body: ItemKeywordReassign,
@@ -870,11 +867,8 @@ export function getBaseUrl(): string {
 }
 
 /**
- * Turn a backend-relative media path into an absolute URL the browser can
- * fetch. The backend serves uploads from the same host as the API root, but
- * the frontend runs on a different port (``localhost:3000`` vs
- * ``127.0.0.1:8001``). Without this prefix, ``<img src="/uploads/...">`` or
- * CSS ``url("/uploads/...")`` would hit the wrong origin and 404.
+ * Turn an internal-service-relative media path into a same-origin
+ * Application Backend URL the browser can fetch.
  *
  * Already-absolute URLs (``http://...``, ``https://...``, ``data:...``) are
  * returned unchanged so legacy test fixtures keep working.
@@ -884,7 +878,7 @@ export function resolveImageUrl(path: string | null | undefined): string | null 
   const trimmed = path.trim();
   if (trimmed.length === 0) return null;
   if (/^(https?:|data:|blob:)/i.test(trimmed)) return trimmed;
-  if (trimmed.startsWith("//")) return `${new URL(baseUrl()).protocol}${trimmed}`;
+  if (trimmed.startsWith("//")) return trimmed;
   if (trimmed.startsWith("/")) return `${baseUrl()}${trimmed}`;
   return `${baseUrl()}/${trimmed}`;
 }

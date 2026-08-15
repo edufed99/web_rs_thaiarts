@@ -74,7 +74,79 @@ def test_private_app_exposes_only_versioned_authenticated_model_routes(private_c
         for route in private_client.app.routes
         if getattr(route, "include_in_schema", True)
     }
-    assert route_paths == {"/internal/v1/health", "/internal/v1/inference"}
+    assert route_paths == {
+        "/internal/v1/health",
+        "/internal/v1/inference",
+        "/internal/v1/similarity",
+    }
+
+
+@pytest.fixture
+def similarity_client(artifacts_dir, monkeypatch):
+    """Use vectors where embedding order intentionally opposes metadata order."""
+    vectors = np.asarray(
+        [
+            [1.0, 0.0],   # ระบำ: strongest embedding match for reference
+            [1.0, 0.0],   # โขน: reference
+            [0.7, 0.7],   # ลิเก: middle embedding match
+            [-1.0, 0.0],  # หุ่น: strongest metadata match, opposite embedding
+            [0.0, 1.0],
+        ],
+        dtype=np.float32,
+    )
+    vectors /= np.linalg.norm(vectors, axis=1, keepdims=True)
+    np.savez_compressed(artifacts_dir / "models" / "item_embeddings.npz", vectors=vectors)
+
+    monkeypatch.setenv("RECSYS_ARTIFACT_DIR", str(artifacts_dir))
+    monkeypatch.setenv("RECSYS_INTERNAL_SERVICE_SECRET", "contract-test-secret")
+    reset_settings_cache()
+    reset_singleton()
+    private_main = import_module("app.private_main")
+    with TestClient(private_main.create_private_model_app()) as client:
+        yield client
+    reset_singleton()
+    reset_settings_cache()
+
+
+def test_similarity_ranks_multiple_candidates_by_artifact_similarity(similarity_client):
+    response = similarity_client.post(
+        "/internal/v1/similarity",
+        headers=_auth(),
+        json={
+            "reference_artifact_item_id": item_id("โขน"),
+            "candidate_artifact_item_ids": [
+                item_id("หุ่นกระบอก"),
+                item_id("ลิเก"),
+                item_id("ระบำพรหมาสตร์"),
+            ],
+            "limit": 3,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {"ranked_candidates"}
+    assert [row["artifact_item_id"] for row in body["ranked_candidates"]] == [
+        item_id("ระบำพรหมาสตร์"),
+        item_id("ลิเก"),
+        item_id("หุ่นกระบอก"),
+    ]
+    assert all(set(row) == {"artifact_item_id", "score"} for row in body["ranked_candidates"])
+
+
+def test_similarity_rejects_unknown_artifact_identifiers(private_client):
+    response = private_client.post(
+        "/internal/v1/similarity",
+        headers=_auth(),
+        json={
+            "reference_artifact_item_id": item_id("โขน"),
+            "candidate_artifact_item_ids": [999_999_999],
+            "limit": 1,
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "invalid_inference_request"
 
 
 @pytest.mark.parametrize(

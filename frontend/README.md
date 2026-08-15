@@ -91,5 +91,17 @@ db/
 - `MODEL_SERVICE_URL` — private compatibility target for API paths that have
   not moved to the Application Backend yet. Next.js resolves rewrites while
   building, so container builds pass this as a server-only build argument.
+- `COMPATIBILITY_SERVICE_URL` — runtime target used only when a migrated
+  catalogue route must preserve authenticated member state through FastAPI.
+- `MEDIA_STORE_ROOT` — uploads volume root. Only files directly beneath its
+  `items/` and `avatars/` directories are publicly served.
+- `PRIVATE_MODEL_SERVICE_URL` and `MODEL_SERVICE_SHARED_SECRET` — server-only
+  endpoint and Internal Service Credential used for artifact-ranked similar
+  items. The browser receives only enriched catalogue responses.
 
-Neither value is public browser configuration.
+None of these values is public browser configuration.
+
+Anonymous catalogue reads (`/api/items`, item detail/similar routes,
+`/api/contexts`, and `/api/keywords`) use PostgreSQL through TypeORM.
+Authenticated catalogue requests retain staged FastAPI compatibility until
+server sessions and member state migrate.

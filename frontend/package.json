@@ -17,6 +17,8 @@
     "lint": "next lint",
     "type-check": "tsc --noEmit",
     "test:foundation": "node --test tests/foundation.test.mjs",
+    "test:catalogue": "node --test tests/catalogue.test.mjs",
+    "test:deployment": "node --test tests/deployment-routing.test.mjs",
     "test:e2e": "playwright test",
     "test:e2e:list": "playwright test --list"
   },

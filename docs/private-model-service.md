@@ -57,6 +57,14 @@ explanation fields:
 }
 ```
 
+## `POST /internal/v1/similarity`
+
+Ranks a supplied set of candidate Artifact Item Identifiers against one
+reference Artifact Item Identifier using the established artifact embedding
+and catalogue-metadata similarity blend. The response contains only ordered
+Artifact Item Identifiers and similarity scores; Next.js owns PostgreSQL
+catalogue enrichment and public media URLs.
+
 Candidate, history, and rating identifiers are immutable Artifact Item
 Identifiers. Unknown identifiers are rejected instead of being interpreted as
 legacy Django or PostgreSQL IDs.

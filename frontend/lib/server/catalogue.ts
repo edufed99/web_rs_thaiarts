@@ -23,7 +23,7 @@ import {
 } from "@/db/entities/Catalogue";
 import { rankSimilarArtifactIds } from "@/lib/server/model-service";
 
-interface CatalogueSnapshot {
+export interface CatalogueSnapshot {
   items: CatalogueItem[];
   contexts: CatalogueContext[];
   keywords: CatalogueKeyword[];
@@ -41,7 +41,7 @@ export async function listItems(options: {
   offset: number;
   contextId?: number;
 }): Promise<ItemListOut | undefined> {
-  const snapshot = await loadSnapshot();
+  const snapshot = await loadCatalogueSnapshot();
   let items = snapshot.items.filter((item) => item.isActive);
 
   if (options.contextId !== undefined) {
@@ -52,7 +52,7 @@ export async function listItems(options: {
     const eligibleInternalIds = itemIdsForContext(snapshot, numberOf(context.id));
     const ranked = items
       .filter((item) => eligibleInternalIds.has(numberOf(item.id)))
-      .map((item) => toItemOut(snapshot, item))
+      .map((item) => catalogueItemOut(snapshot, item))
       .sort((left, right) =>
         (right.match_percent ?? 0) - (left.match_percent ?? 0) ||
         left.name.localeCompare(right.name, "th"),
@@ -78,19 +78,19 @@ export async function listItems(options: {
   return {
     items: items
       .slice(options.offset, options.offset + options.limit)
-      .map((item) => toItemOut(snapshot, item)),
+      .map((item) => catalogueItemOut(snapshot, item)),
     total,
   };
 }
 
 export async function getItem(artifactItemId: number): Promise<ItemOut | undefined> {
-  const snapshot = await loadSnapshot();
+  const snapshot = await loadCatalogueSnapshot();
   const item = activeItemByArtifactId(snapshot, artifactItemId);
-  return item ? toItemOut(snapshot, item) : undefined;
+  return item ? catalogueItemOut(snapshot, item) : undefined;
 }
 
 export async function getItemsBatch(artifactItemIds: number[]): Promise<ItemListOut> {
-  const snapshot = await loadSnapshot();
+  const snapshot = await loadCatalogueSnapshot();
   const byArtifactId = new Map(
     snapshot.items
       .filter((item) => item.isActive)
@@ -99,7 +99,7 @@ export async function getItemsBatch(artifactItemIds: number[]): Promise<ItemList
   const items = artifactItemIds
     .map((artifactId) => byArtifactId.get(artifactId))
     .filter((item): item is CatalogueItem => item !== undefined)
-    .map((item) => toItemOut(snapshot, item));
+    .map((item) => catalogueItemOut(snapshot, item));
   return { items, total: items.length };
 }
 
@@ -107,15 +107,22 @@ export async function getSimilarItems(
   artifactItemId: number,
   limit: number,
 ): Promise<ItemListOut | undefined> {
-  const snapshot = await loadSnapshot();
+  const snapshot = await loadCatalogueSnapshot();
   const reference = activeItemByArtifactId(snapshot, artifactItemId);
   if (!reference) return undefined;
+  // Issue #8 publication gate: the model service scores from prebuilt
+  // artifacts, so rows edited after the last Artifact Publication must
+  // not be ranked as similar candidates. The reference item may itself
+  // be pending — it is only the anchor.
   const candidates = snapshot.items
     .filter(
       (candidate) =>
-        candidate.isActive && numberOf(candidate.artifactItemId) !== artifactItemId,
+        candidate.isActive &&
+        candidate.publishedAt !== null &&
+        numberOf(candidate.artifactItemId) !== artifactItemId,
     );
   const candidateIds = candidates.map((candidate) => numberOf(candidate.artifactItemId));
+  if (candidateIds.length === 0) return { items: [], total: 0 };
   const rankedIds = await rankSimilarArtifactIds({
     referenceArtifactItemId: artifactItemId,
     candidateArtifactItemIds: candidateIds,
@@ -124,12 +131,12 @@ export async function getSimilarItems(
   const byArtifactId = new Map(
     candidates.map((candidate) => [numberOf(candidate.artifactItemId), candidate]),
   );
-  const items = rankedIds.map((rankedId) => toItemOut(snapshot, byArtifactId.get(rankedId)!));
+  const items = rankedIds.map((rankedId) => catalogueItemOut(snapshot, byArtifactId.get(rankedId)!));
   return { items, total: items.length };
 }
 
 export async function listContexts(): Promise<ContextOut[]> {
-  const snapshot = await loadSnapshot();
+  const snapshot = await loadCatalogueSnapshot();
   return snapshot.contexts
     .map((context) => {
       const internalId = numberOf(context.id);
@@ -144,7 +151,7 @@ export async function listKeywords(options: {
   limit: number;
   contextId?: number;
 }): Promise<KeywordOut[]> {
-  const snapshot = await loadSnapshot();
+  const snapshot = await loadCatalogueSnapshot();
   let allowedKeywordIds: Set<number> | undefined;
   if (options.contextId !== undefined) {
     const context = snapshot.contexts.find(
@@ -171,7 +178,7 @@ export async function listKeywords(options: {
     .map((keyword) => keywordOut(snapshot, keyword));
 }
 
-async function loadSnapshot(): Promise<CatalogueSnapshot> {
+export async function loadCatalogueSnapshot(): Promise<CatalogueSnapshot> {
   const dataSource = await getDataSource();
   const [items, contexts, keywords, taxonomyNodes, itemContexts, itemKeywords] =
     await Promise.all([
@@ -185,7 +192,7 @@ async function loadSnapshot(): Promise<CatalogueSnapshot> {
   return { items, contexts, keywords, taxonomyNodes, itemContexts, itemKeywords };
 }
 
-function toItemOut(snapshot: CatalogueSnapshot, item: CatalogueItem): ItemOut {
+export function catalogueItemOut(snapshot: CatalogueSnapshot, item: CatalogueItem): ItemOut {
   const internalId = numberOf(item.id);
   const contextIds = new Set(
     snapshot.itemContexts
@@ -317,7 +324,7 @@ function searchTerms(search?: string): string[] {
     .filter(Boolean);
 }
 
-function stableId(namespace: string, value: string): number {
+export function stableId(namespace: string, value: string): number {
   const digest = createHash("sha256").update(`${namespace}::${value}`, "utf8").digest("hex");
   return Number.parseInt(digest.slice(0, 7), 16);
 }

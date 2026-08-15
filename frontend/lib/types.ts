@@ -567,6 +567,42 @@ export interface ItemVideoUploadOut {
   item_id: number;
 }
 
+// --- Artifact Publication (issue #8) ----------------------------------------
+
+export interface ArtifactPublicationOut {
+  id: number;
+  build_id: string;
+  published_at: string;
+  item_count: number;
+  created_by: number;
+  note: string;
+}
+
+export interface PublicationModelHealth {
+  reachable: boolean;
+  artifact_version: string;
+  artifact_item_count: number;
+  error?: string;
+}
+
+export interface PublicationStatusOut {
+  /** Latest recorded publication, or null when none has succeeded yet. */
+  published: ArtifactPublicationOut | null;
+  /** Catalogue rows edited after the last publication (pending). */
+  pending: {
+    count: number;
+    items: { id: number; name: string }[];
+  };
+  /** What the Private Model Service reports it is serving. */
+  model: PublicationModelHealth;
+}
+
+export interface PublicationExecuteOut {
+  publication: ArtifactPublicationOut;
+  pending_after: number;
+  warnings: string[];
+}
+
 // --- Admin dashboard payload (Phase 3 /metrics/dashboard) ------------------
 
 /**

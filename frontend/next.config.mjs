@@ -5,7 +5,6 @@ const baseConfig = {
   reactStrictMode: true,
   output: "standalone",
   experimental: {
-    instrumentationHook: true,
     serverComponentsExternalPackages: ["pg", "typeorm"],
   },
   async rewrites() {

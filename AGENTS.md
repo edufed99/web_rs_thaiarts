@@ -5,11 +5,11 @@ Instructions and architectural invariants for AI agents working in this reposito
 ## System Architecture
 
 `web_rs_thaiarts` is a production web application for Thai arts and crafts recommendation, consisting of:
-- **Frontend**: Next.js 14 (App Router) + TypeScript + Vanilla CSS (port `3000`).
-- **Backend**: FastAPI + Python 3.11/3.12 with Uvicorn (port `8001`).
+- **Public Application / Application Backend**: Next.js 14 (App Router) + TypeScript + Vanilla CSS (port `3000`). Migrated public routes and PostgreSQL access live here.
+- **Compatibility Backend / future Private Model Service**: FastAPI + Python 3.11/3.12 with Uvicorn (port `8001`). It remains published during the staged transition; a later cutover ticket will make it private.
 - **Database**: PostgreSQL 18 (`postgres:18` Docker image).
 - **Algorithm**: Eligibility-Gated Hybrid Recommender (CBF with multilingual E5 embeddings + CF ItemKNN + Hybrid WeightedSum).
-- **Runtime Design**: Zero runtime CSV reads or Python pipeline runs at request time — all served from pre-generated artifacts under `artifacts/` (`models/` and `outputs/`).
+- **Runtime Design**: Zero runtime CSV reads or Python pipeline runs at request time. FastAPI continues to load pre-generated recommender artifacts under `artifacts/` (`models/` and `outputs/`) while application persistence moves to Next.js/TypeORM.
 
 ## Environment & Server Deployments
 
@@ -39,9 +39,9 @@ Instructions and architectural invariants for AI agents working in this reposito
 ## Core Invariants
 
 1. **Working Directory Rule**: All new code lives in `C:\Users\Pichaya\Downloads\web_appRS1`. Never touch `../web_appRS/thai_arts_webapp/` (read-only reference).
-2. **Artifact-Driven Serving**: The backend loads models from `artifacts/` once during FastAPI lifespan into the `ArtifactLoader` singleton. The frontend only communicates with the backend over HTTP via `lib/api.ts`.
-3. **Database Schema & Migrations**: Managed via Alembic (`backend/alembic.ini` and `backend/migrations/versions/`). Never create tables manually or introduce `CREATE TABLE IF NOT EXISTS` in service code.
-4. **Database Driver**: Use `psycopg` (sync) with SQLAlchemy 2.x. Do not introduce `asyncpg`.
+2. **Artifact-Driven Serving**: FastAPI loads models from `artifacts/` once during lifespan into the `ArtifactLoader` singleton. Browser code uses same-origin `/api/*` calls through `frontend/lib/api.ts`; Next.js owns migrated routes and uses a server-only compatibility route for endpoints not yet migrated. Browser bundles never receive PostgreSQL or internal-service addresses.
+3. **Database Schema & Migrations**: TypeORM under `frontend/db/` is the schema authority for the Next.js Application Backend and the target architecture. Every schema change uses an explicit TypeORM migration; seed data uses explicit seed commands. Keep `synchronize: false` in every environment. Next.js server startup must never run migrations or seeds. Never create tables manually or introduce `CREATE TABLE IF NOT EXISTS` in service code. Existing Alembic files are historical compatibility references during the transition: do not add new Alembic revisions for application schema.
+4. **Database Drivers**: Next.js uses TypeORM with `pg`. Existing Python compatibility code may continue using synchronous `psycopg` with SQLAlchemy 2.x until its database responsibilities are migrated. Do not introduce `asyncpg`.
 5. **User Identity & State**: `user_key VARCHAR(150)` identifies users (e.g. `anon:<uuid>` or member profile).
 6. **Dual ID Mapping**: Dual item ID spaces exist: legacy Django ID (1..114) and pipeline artifact stable ID (`stable_id("item", name)`). Always map queries via `items.artifact_item_id` using `app.services.db_query` helpers.
 7. **OAuth Client Separation**: `google_oauth_client.json` is reserved for admin Gmail sending; `google_login_client.json` is reserved for member OpenID Connect sign-in. Never persist access/refresh tokens in query params.
@@ -59,6 +59,8 @@ uvicorn app.main:app --reload --port 8001
 
 # Run frontend (Next.js on port 3000)
 cd frontend
+npm run migration:run
+npm run seed
 npm run dev
 ```
 

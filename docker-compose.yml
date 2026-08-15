@@ -38,6 +38,8 @@ services:
       RECSYS_UPLOAD_DIR: /app/data/uploads
     volumes:
       - uploads_data:/app/data/uploads
+    ports:
+      - "8001:8001"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8001/health"]
       interval: 10s

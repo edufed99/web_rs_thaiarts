@@ -19,6 +19,10 @@ npm run migration:run
 npm run seed
 ```
 
+Starting Next.js never changes the database schema or seed data. Run the
+explicit commands above before the server, including after a deployment that
+contains new migrations.
+
 ## Run dev server
 
 ```bash

@@ -14,7 +14,7 @@ databaseUrl.pathname = `/${databaseName}`;
 
 let server;
 
-async function recreateTestDatabase() {
+async function resetTestDatabase({ create }) {
   const client = new Client({ connectionString: adminUrl });
   await client.connect();
   try {
@@ -23,21 +23,7 @@ async function recreateTestDatabase() {
       [databaseName],
     );
     await client.query(`DROP DATABASE IF EXISTS ${databaseName}`);
-    await client.query(`CREATE DATABASE ${databaseName}`);
-  } finally {
-    await client.end();
-  }
-}
-
-async function dropTestDatabase() {
-  const client = new Client({ connectionString: adminUrl });
-  await client.connect();
-  try {
-    await client.query(
-      "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()",
-      [databaseName],
-    );
-    await client.query(`DROP DATABASE IF EXISTS ${databaseName}`);
+    if (create) await client.query(`CREATE DATABASE ${databaseName}`);
   } finally {
     await client.end();
   }
@@ -93,15 +79,31 @@ async function stopServer() {
   } else {
     process.kill(-server.pid, "SIGTERM");
   }
+  server = undefined;
+}
+
+async function startServer(connectionString) {
+  server = spawn("npm", ["run", "dev", "--", "--port", "3100"], {
+    cwd: process.cwd(),
+    detached: process.platform !== "win32",
+    shell: process.platform === "win32",
+    env: {
+      ...process.env,
+      DATABASE_URL: connectionString,
+      MODEL_SERVICE_URL: "http://127.0.0.1:9",
+    },
+    stdio: "ignore",
+  });
+  return waitForHealth("http://127.0.0.1:3100/api/health");
 }
 
 before(async () => {
-  await recreateTestDatabase();
+  await resetTestDatabase({ create: true });
 });
 
 after(async () => {
   await stopServer();
-  await dropTestDatabase();
+  await resetTestDatabase({ create: false });
 });
 
 test("an empty development database is rebuilt from migrations and seed data", async () => {
@@ -131,24 +133,40 @@ test("an empty development database is rebuilt from migrations and seed data", a
   }
 });
 
-test("the public Next.js health endpoint reports PostgreSQL without FastAPI", async () => {
+test("Next.js requires explicit migrations and seeds before health becomes ready", async () => {
   await emptyTestDatabase();
-  server = spawn("npm", ["run", "dev", "--", "--port", "3100"], {
-    cwd: process.cwd(),
-    detached: process.platform !== "win32",
-    shell: process.platform === "win32",
-    env: {
-      ...process.env,
-      DATABASE_URL: databaseUrl.toString(),
-      MODEL_SERVICE_URL: "http://127.0.0.1:9",
-    },
-    stdio: "ignore",
+  const unavailable = await startServer(databaseUrl.toString());
+  assert.equal(unavailable.status, 503);
+  assert.deepEqual(await unavailable.json(), {
+    status: "unavailable",
+    database: "disconnected",
   });
 
-  const response = await waitForHealth("http://127.0.0.1:3100/api/health");
+  const migrated = await runNpm(["run", "migration:run"], {
+    DATABASE_URL: databaseUrl.toString(),
+  });
+  assert.equal(migrated.code, 0, `${migrated.stdout}\n${migrated.stderr}`);
+  const seeded = await runNpm(["run", "seed"], {
+    DATABASE_URL: databaseUrl.toString(),
+  });
+  assert.equal(seeded.code, 0, `${seeded.stdout}\n${seeded.stderr}`);
+
+  const response = await fetch("http://127.0.0.1:3100/api/health");
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), {
     status: "ok",
     database: "connected",
+  });
+});
+
+test("health returns 503 when PostgreSQL is unreachable", async () => {
+  await stopServer();
+  const response = await startServer(
+    "postgresql://postgres:postgres@127.0.0.1:1/unreachable",
+  );
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), {
+    status: "unavailable",
+    database: "disconnected",
   });
 });

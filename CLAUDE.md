@@ -117,12 +117,48 @@ When working on this repo, respect these:
    Member callbacks must never persist Google access/refresh tokens or place
    the application JWT in a query string.
 
+## Recommendations through Next.js (issue #7)
+
+`POST /api/recommendations` and `GET /api/recommendations/profile` are served
+**by the Next.js Application Backend** (not the public FastAPI). Flow:
+
+1. **Eligibility gate** — context-valid candidate set from the live catalogue
+   (`lib/server/catalogue.ts:eligibleItemsForContext`; keyword-matched items
+   first, optional `RECSYS_MAX_CANDS` cap with `RECSYS_MIN_CANDS` adaptive
+   fill).
+2. **Inference** — `lib/server/recommendations.ts` builds the Private Model
+   Service inference request: Eligible Candidate Set + personalization inputs
+   (live likes/saves/ratings as `positive_history` / `negative_ratings`) in
+   **immutable Artifact Item Identifier space only** — PostgreSQL primary
+   keys never cross the boundary. `lib/server/model-service.ts`
+   `rankInferenceCandidates` applies the bounded timeout
+   (`MODEL_SERVICE_TIMEOUT_MS`, default 5000) and one retry on network/5xx
+   failures.
+3. **Enrichment** — ranked candidates are enriched with catalogue details,
+   media, member state (session `user:<id>` or anonymous `anon:<uuid>` keys),
+   Thai explanations (ports of `backend/app/explanations.py`), and the
+   display-only suitability hint. `scores.final` is surfaced as `hybrid`.
+4. **Analytics** — context requests + ranked results are persisted into the
+   legacy `recommendation_requests` / `recommendation_results` tables
+   (TypeORM migration `1787025600000-CreateRecommendationRequests` adopts the
+   Alembic 0006 shapes) so the dashboard trend queries keep reading them.
+5. **Recommendation Fallback** — when the model service errors or times out,
+   the routes answer **200** with non-personalized context-valid results
+   (live engagement, then suitability hint, then name), zero model scores, a
+   fallback explanation, and `metadata.fallback: true` (+ `fallback_reason`).
+   Profile recommendations fall back to content affinity (catalogue overlap)
+   when the model is unavailable.
+
+Anonymous context/keyword recommendations work without an account; profile
+recommendations require the session (`401 unauthorized` otherwise).
+
 ## API endpoints
 
 | Method | Path | Purpose |
 |---|---|---|
 | GET  | /health | Liveness + build metadata |
-| POST | /recommendations | Generate top-K; `user_key` enables live personalization |
+| POST | /api/recommendations | Next.js: top-K via Private Model Service; fallback when it errors |
+| GET  | /api/recommendations/profile | Next.js: session-gated profile recommendations |
 | GET  | /items | Catalog browse (`?search=`, `?context=` ranked mode, `?user_key=`) |
 | GET  | /items/{id} | One item with keywords, contexts, user_state |
 | GET  | /contexts | List sub-contexts |

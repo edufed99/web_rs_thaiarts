@@ -96,10 +96,46 @@ db/
 - `MEDIA_STORE_ROOT` — uploads volume root. Only files directly beneath its
   `items/` and `avatars/` directories are publicly served.
 - `PRIVATE_MODEL_SERVICE_URL` and `MODEL_SERVICE_SHARED_SECRET` — server-only
-  endpoint and Internal Service Credential used for artifact-ranked similar
-  items. The browser receives only enriched catalogue responses.
+  endpoint and Internal Service Credential used for the artifact-ranked
+  similar-items and recommendation inference calls. The browser receives
+  only enriched catalogue responses.
+- `MODEL_SERVICE_TIMEOUT_MS` — per-attempt timeout for Private Model Service
+  calls (default 5000, bounds 100-30000). A failed inference attempt is
+  retried once; when both attempts fail the recommendation routes answer
+  with the clearly identified Recommendation Fallback (`metadata.fallback`).
+- `RECSYS_MAX_CANDS` / `RECSYS_MIN_CANDS` — optional Eligible Candidate Set
+  cap and the adaptive-fill minimum for the eligibility gate (mirrors the
+  legacy `RECSYS_*` configuration; empty `RECSYS_MAX_CANDS` means no cap).
 
 None of these values is public browser configuration.
+
+## Recommendations through the Application Backend
+
+`POST /api/recommendations` and `GET /api/recommendations/profile` are served
+entirely by Next.js:
+
+1. **Eligibility** — the context-valid candidate set is built from the live
+   catalogue (keyword-matched items first, optional cap with adaptive fill).
+2. **Inference** — the Eligible Candidate Set plus live personalization
+   inputs (positive history, negative ratings) in immutable Artifact Item
+   Identifier space are sent to the Private Model Service
+   (`POST /internal/v1/inference`). PostgreSQL primary keys never cross the
+   boundary.
+3. **Enrichment** — ranked candidates are enriched with catalogue details,
+   media, member state, Thai explanations, and the display-only suitability
+   hint; `scores.final` is surfaced as the public `hybrid` score.
+4. **Analytics** — each context request and its ranked results are persisted
+   into the legacy `recommendation_requests` / `recommendation_results`
+   tables (adopted by migration
+   `1787025600000-CreateRecommendationRequests`), so the existing dashboard
+   trend queries keep working.
+5. **Fallback** — when the model service errors or times out, the routes
+   answer 200 with non-personalized context-valid results (engagement, then
+   suitability hint, then name), zero model scores, a fallback explanation,
+   and `metadata.fallback: true`.
+
+Anonymous visitors personalize through the opaque `anon:<uuid>` user key;
+session members personalize through `user:<id>`.
 
 Anonymous catalogue reads (`/api/items`, item detail/similar routes,
 `/api/contexts`, and `/api/keywords`) use PostgreSQL through TypeORM.

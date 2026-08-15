@@ -23,13 +23,75 @@ import {
 } from "@/db/entities/Catalogue";
 import { rankSimilarArtifactIds } from "@/lib/server/model-service";
 
-interface CatalogueSnapshot {
+export interface CatalogueSnapshot {
   items: CatalogueItem[];
   contexts: CatalogueContext[];
   keywords: CatalogueKeyword[];
   taxonomyNodes: TaxonomyNode[];
   itemContexts: ItemContextLink[];
   itemKeywords: ItemKeywordLink[];
+}
+
+/**
+ * Eligibility gate port (legacy ``get_context_valid_items``): active items
+ * valid for the given sub-context, keyword-matching items first, then an
+ * optional candidate cap with adaptive fill back to ``minCands`` when the
+ * cap would starve the scorer. Callers use this to build the Eligible
+ * Candidate Set for the Private Model Service inference request.
+ */
+// fallow-ignore-next-line complexity -- Keyword-hit ordering, candidate caps, and adaptive fill mirror the legacy eligibility gate.
+export function eligibleItemsForContext(
+  snapshot: CatalogueSnapshot,
+  contextInternalId: number,
+  keywordNames: string[],
+  caps: { maxCands?: number; minCands: number },
+): CatalogueItem[] {
+  const contextItemIds = itemIdsForContext(snapshot, contextInternalId);
+  const keywordSet = new Set(keywordNames.filter((name) => name.length > 0));
+  let pool = snapshot.items
+    .filter(
+      (item) =>
+        item.isActive &&
+        contextItemIds.has(numberOf(item.id)),
+    )
+    .sort(
+      (left, right) =>
+        left.name.localeCompare(right.name, "th") || numberOf(left.id) - numberOf(right.id),
+    );
+
+  if (keywordSet.size > 0) {
+    const hit = pool.filter((item) => {
+      const itemKeywords = new Set(
+        snapshot.keywords
+          .filter((keyword) =>
+            snapshot.itemKeywords.some(
+              (link) =>
+                numberOf(link.itemId) === numberOf(item.id) &&
+                numberOf(link.keywordId) === numberOf(keyword.id),
+            ),
+          )
+          .map((keyword) => keyword.name),
+      );
+      return [...keywordSet].some((name) => itemKeywords.has(name));
+    });
+    const hitIds = new Set(hit.map((item) => numberOf(item.id)));
+    const miss = pool.filter((item) => !hitIds.has(numberOf(item.id)));
+    pool = [...hit, ...miss];
+  }
+
+  if (caps.maxCands !== undefined && caps.maxCands > 0) {
+    const adaptiveMin = Math.min(caps.minCands, pool.length);
+    const capped = pool.slice(0, caps.maxCands);
+    if (capped.length < adaptiveMin) {
+      const selectedIds = new Set(capped.map((item) => numberOf(item.id)));
+      const remaining = pool.filter((item) => !selectedIds.has(numberOf(item.id)));
+      const fill = remaining.slice(0, adaptiveMin - capped.length);
+      pool = [...capped, ...fill];
+    } else {
+      pool = capped;
+    }
+  }
+  return pool;
 }
 
 const anonymousState = { liked: false, saved: false, rating: 0 } as const;
@@ -171,7 +233,7 @@ export async function listKeywords(options: {
     .map((keyword) => keywordOut(snapshot, keyword));
 }
 
-async function loadSnapshot(): Promise<CatalogueSnapshot> {
+export async function loadSnapshot(): Promise<CatalogueSnapshot> {
   const dataSource = await getDataSource();
   const [items, contexts, keywords, taxonomyNodes, itemContexts, itemKeywords] =
     await Promise.all([
@@ -185,7 +247,7 @@ async function loadSnapshot(): Promise<CatalogueSnapshot> {
   return { items, contexts, keywords, taxonomyNodes, itemContexts, itemKeywords };
 }
 
-function toItemOut(snapshot: CatalogueSnapshot, item: CatalogueItem): ItemOut {
+export function toItemOut(snapshot: CatalogueSnapshot, item: CatalogueItem): ItemOut {
   const internalId = numberOf(item.id);
   const contextIds = new Set(
     snapshot.itemContexts
@@ -244,7 +306,7 @@ function contextOut(context: CatalogueContext, activeItemCount: number): Context
   };
 }
 
-function keywordOut(snapshot: CatalogueSnapshot, keyword: CatalogueKeyword): KeywordOut {
+export function keywordOut(snapshot: CatalogueSnapshot, keyword: CatalogueKeyword): KeywordOut {
   return {
     id: numberOf(keyword.id),
     name: keyword.name,
@@ -317,7 +379,7 @@ function searchTerms(search?: string): string[] {
     .filter(Boolean);
 }
 
-function stableId(namespace: string, value: string): number {
+export function stableId(namespace: string, value: string): number {
   const digest = createHash("sha256").update(`${namespace}::${value}`, "utf8").digest("hex");
   return Number.parseInt(digest.slice(0, 7), 16);
 }

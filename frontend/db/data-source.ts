@@ -10,6 +10,8 @@ import { CreateApplicationStatus1723708800000 } from "./migrations/1723708800000
 import { CreateCatalogue1786766400000 } from "./migrations/1786766400000-CreateCatalogue";
 import { ProtectArtifactItemId1786766500000 } from "./migrations/1786766500000-ProtectArtifactItemId";
 import { CreateMembersAndSessions1786939200000 } from "./migrations/1786939200000-CreateMembersAndSessions";
+import { CreateRecommendationRequests1787025600000 } from "./migrations/1787025600000-CreateRecommendationRequests";
+import { RecommendationRequestEntity, RecommendationRequestSelectedKeywordEntity, RecommendationResultEntity } from "./entities/RecommendationRequests";
 
 export function createAppDataSource(databaseUrl = process.env.DATABASE_URL): DataSource {
   if (!databaseUrl) {
@@ -22,12 +24,20 @@ export function createAppDataSource(databaseUrl = process.env.DATABASE_URL): Dat
     synchronize: false,
     migrationsRun: false,
     migrationsTableName: "typeorm_migrations",
-    entities: [ApplicationStatusEntity, ...catalogueEntities, ...memberEntities],
+    entities: [
+      ApplicationStatusEntity,
+      ...catalogueEntities,
+      ...memberEntities,
+      RecommendationRequestEntity,
+      RecommendationRequestSelectedKeywordEntity,
+      RecommendationResultEntity,
+    ],
     migrations: [
       CreateApplicationStatus1723708800000,
       CreateCatalogue1786766400000,
       ProtectArtifactItemId1786766500000,
       CreateMembersAndSessions1786939200000,
+      CreateRecommendationRequests1787025600000,
     ],
     logging: process.env.TYPEORM_LOGGING === "1",
   });

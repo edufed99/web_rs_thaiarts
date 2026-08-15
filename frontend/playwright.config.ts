@@ -3,6 +3,10 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false,
+  // The specs log in as the same dedicated member; rotateSession keeps a
+  // single session per user, so concurrent workers would invalidate each
+  // other's cookies. Serialize the browser tests.
+  workers: 1,
   retries: process.env.CI ? 2 : 0,
   reporter: "list",
   use: {

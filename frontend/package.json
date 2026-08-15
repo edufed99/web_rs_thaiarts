@@ -6,22 +6,33 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "migration:run": "tsx db/cli.ts migration:run",
+    "migration:revert": "tsx db/cli.ts migration:revert",
+    "migration:show": "tsx db/cli.ts migration:show",
+    "seed": "tsx db/cli.ts seed",
+    "db:rebuild": "tsx db/cli.ts rebuild",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
+    "test:foundation": "node --test tests/foundation.test.mjs",
     "test:e2e": "playwright test",
     "test:e2e:list": "playwright test --list"
   },
   "dependencies": {
     "next": "^14.2.35",
+    "pg": "^8.23.0",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "recharts": "^2.13.0"
+    "recharts": "^2.13.0",
+    "reflect-metadata": "^0.2.2",
+    "typeorm": "^0.3.31"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.1",
     "@types/node": "20.14.10",
+    "@types/pg": "^8.21.0",
     "@types/react": "18.3.3",
     "@types/react-dom": "18.3.0",
+    "tsx": "^4.23.12",
     "typescript": "5.5.3"
   }
 }

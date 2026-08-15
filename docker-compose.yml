@@ -38,8 +38,6 @@ services:
       RECSYS_UPLOAD_DIR: /app/data/uploads
     volumes:
       - uploads_data:/app/data/uploads
-    ports:
-      - "8001:8001"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8001/health"]
       interval: 10s
@@ -51,13 +49,17 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        MODEL_SERVICE_URL: http://backend:8001
     container_name: web_rs_thaiarts-frontend
     restart: unless-stopped
     depends_on:
       backend:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     environment:
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:8001
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-web_rs_thaiarts}
     ports:
       - "3000:3000"
 

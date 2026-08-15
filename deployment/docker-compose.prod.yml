@@ -1,12 +1,19 @@
 # Production Docker Compose definition for Thai Arts Recommender.
 # Runs PostgreSQL 18, the FastAPI Private Model Service, and the Next.js
-# Application Backend (the only public API surface, issue #10).
+# Application Backend (the only public API surface, issues #10 + #11).
 # Pulls public images from Docker Hub (pichaya5502/...).
-# Exposes internal ports on 127.0.0.1 for reverse proxy (IIS / Nginx / Caddy).
+# Exposes ONLY the Next.js port on 127.0.0.1 for the host reverse proxy
+# (IIS / Nginx / Caddy). PostgreSQL and the Private Model Service have no
+# host-published ports — they are reachable only over the internal Docker
+# network (issue #11 network boundary).
 # No source code is required on the server — runs only from pre-built images.
 name: thaiarts-recommender
 
 services:
+  # PostgreSQL is an internal service only (issue #11): no host-published
+  # port. The Application Backend and the migrate tool reach it over the
+  # internal network; backups run inside the container via `docker compose
+  # exec` (see deployment/release/backup-and-migrate.ps1).
   postgres:
     image: postgres:18
     container_name: thaiarts-postgres
@@ -17,8 +24,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-web_rs_thaiarts}
     volumes:
       - postgres_data:/var/lib/postgresql
-    ports:
-      - "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-web_rs_thaiarts}"]
       interval: 5s
@@ -28,17 +33,29 @@ services:
   # Private Model Service — the ONLY FastAPI process (issue #10). It is
   # database-free, serves no public endpoints, and is reachable only by the
   # Next.js Application Backend over the internal Docker network with the
-  # Internal Service Credential.
+  # Internal Service Credential. It deliberately does NOT load the shared
+  # .env (which carries POSTGRES_* credentials): every variable it reads is
+  # declared explicitly below, so the container provably has no database or
+  # media configuration (issue #11 boundary test).
   backend:
     image: pichaya5502/web_rs_thaiarts-backend:latest
     pull_policy: always
     container_name: thaiarts-backend
     restart: always
-    env_file:
-      - .env
     environment:
       RECSYS_ARTIFACT_DIR: /app/artifacts
       RECSYS_INTERNAL_SERVICE_SECRET: ${MODEL_SERVICE_SHARED_SECRET:-}
+      # Recommender runtime flags (defaults mirror backend/app/core/config.py).
+      RECSYS_E5_ENABLED: ${RECSYS_E5_ENABLED:-0}
+      RECSYS_PRELOAD_E5: ${RECSYS_PRELOAD_E5:-0}
+      RECSYS_HYBRID_ALPHA: ${RECSYS_HYBRID_ALPHA:-0.7}
+      RECSYS_CBF_KEYWORD_BOOST: ${RECSYS_CBF_KEYWORD_BOOST:-0.05}
+      RECSYS_ITEMKNN_K: ${RECSYS_ITEMKNN_K:-10}
+      RECSYS_ITEMKNN_SHRINK: ${RECSYS_ITEMKNN_SHRINK:-50.0}
+      RECSYS_POSITIVE_THRESHOLD: ${RECSYS_POSITIVE_THRESHOLD:-4}
+      RECSYS_NEGATIVE_PENALTY_ALPHA: ${RECSYS_NEGATIVE_PENALTY_ALPHA:-1.0}
+      RECSYS_MIN_CANDS: ${RECSYS_MIN_CANDS:-10}
+      RECSYS_MAX_CANDS: ${RECSYS_MAX_CANDS:-}
     expose:
       - "8001"
     healthcheck:
@@ -69,6 +86,10 @@ services:
     ports:
       - "127.0.0.1:3000:3000"
 
+  # One-shot migration/seed/verify tool (issue #11): runs the compiled
+  # TypeORM CLI against the internal PostgreSQL. `migration:verify` fails the
+  # run when any migration is still pending, so a release can never proceed
+  # with an unverified schema.
   migrate:
     image: pichaya5502/web_rs_thaiarts-frontend:latest
     pull_policy: always
@@ -81,7 +102,7 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-web_rs_thaiarts}
     restart: "no"
-    command: ["sh", "-c", "node .db-dist/cli.js migration:run && node .db-dist/cli.js seed"]
+    command: ["sh", "-c", "node .db-dist/cli.js migration:run && node .db-dist/cli.js seed && node .db-dist/cli.js migration:verify"]
 
 volumes:
   postgres_data:

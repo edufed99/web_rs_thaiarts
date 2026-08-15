@@ -101,7 +101,7 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-web_rs_thaiarts}
     restart: "no"
-    command: ["sh", "-c", "node .db-dist/cli.js migration:run && node .db-dist/cli.js seed"]
+    command: ["sh", "-c", "node .db-dist/cli.js migration:run && node .db-dist/cli.js seed && node .db-dist/cli.js migration:verify"]
 
 volumes:
   postgres_data:

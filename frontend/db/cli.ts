@@ -27,6 +27,15 @@ async function main(): Promise<void> {
       "migration:show": async () => {
         process.stdout.write((await dataSource.showMigrations()) ? "pending\n" : "current\n");
       },
+      // Release gate (issue #11): exits non-zero while any migration is
+      // pending, so the pre-release procedure can fail closed instead of
+      // routing public traffic to an unverified schema.
+      "migration:verify": async () => {
+        if (await dataSource.showMigrations()) {
+          throw new Error("Pending migrations detected — run migration:run before release.");
+        }
+        process.stdout.write("current\n");
+      },
       seed: async () => {
         await seedApplicationStatus(dataSource);
       },
@@ -39,7 +48,7 @@ async function main(): Promise<void> {
     const run = command ? commands[command] : undefined;
     if (!run) {
       throw new Error(
-        "Usage: tsx db/cli.ts <migration:run|migration:revert|migration:show|seed|rebuild>",
+        "Usage: tsx db/cli.ts <migration:run|migration:revert|migration:show|migration:verify|seed|rebuild>",
       );
     }
     await run();

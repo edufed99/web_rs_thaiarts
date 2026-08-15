@@ -768,3 +768,61 @@ Consequences locked in by this ADR:
 | A future browser feature must be added in Next.js, not FastAPI | Public-boundary tests (frontend `tests/*.test.mjs`) enforce the seam |
 | Model service still reachable if exposed by the host proxy | Compose `expose`s 8001 (never `ports`), IIS routes nothing to 8001, health check requires the credential |
 | Deleted FastAPI routers referenced by stale docs/scripts | `docs/api.md`, `AGENTS.md`, deployment scripts, and this ADR updated in the same change |
+
+---
+
+# ADR-004: Lock the public boundary to Next.js (release hardening)
+
+## 1. Problem
+
+ADR-003 retired the public FastAPI application, but the production
+topology still published PostgreSQL on the host loopback
+(`127.0.0.1:5432`) and the model service shared the full `.env` (including
+`POSTGRES_*` credentials). A release could also be shipped without a
+backup, with pending migrations, or without a smoke test — and there was
+no documented way to roll an image release back.
+
+## 2. Decision
+
+**Issue #11 hardens the release boundary.** The production compose
+(`deployment/docker-compose.prod.yml`) publishes **no host ports** for
+PostgreSQL or the Private Model Service — both are reachable only over the
+internal Docker network (the model service keeps `expose: 8001`). The
+model service no longer loads the shared `.env`; every variable it reads
+is declared explicitly in its service definition, so the container
+provably has no database or media configuration. The `uploads_data`
+volume is mounted only by the Next.js service. The only host-published
+port is `127.0.0.1:3000` for the IIS reverse proxy, which routes every
+path to Next.js (`deployment/web.config`).
+
+Releases follow the executable procedure in `deployment/release/`:
+
+* `backup-and-migrate.ps1` — pg_dump + uploads + `.env` backups, then
+  TypeORM `migration:run` + `seed` + `migration:verify` (the CLI exits
+  non-zero while any migration is pending, so routing can never proceed on
+  an unverified schema).
+* `smoke-test.ps1` — model contract (credential required, 401 without),
+  public surface, model-backed recommendation, **fallback check**
+  (`metadata.fallback: true` with the model service stopped), and network
+  boundary (no host listeners on 8001/5432).
+* `ROLLBACK.md` — image / IIS / database / uploads rollback, with image
+  digests recorded before every deploy.
+
+## 3. Consequences
+
+**Positive**
+
+* The public boundary is enforced by the topology itself, not only by the
+  proxy: there is no host port to accidentally expose.
+* The model service cannot leak database credentials (it never receives
+  them) and cannot mount the media store.
+* Every release is backed up, migration-verified, smoke-tested, and
+  rollback-able; `migration:verify` is a fail-closed gate.
+
+**Negative / risks**
+
+| Risk | Mitigation |
+|---|---|
+| Host tooling can no longer reach PostgreSQL directly (e.g. `psql` on 5432) | Backups and restores run inside the container (`docker compose exec` / `cp`); the dev compose still publishes 5432 for local work |
+| `migration:verify` adds a step operators must not skip | It is wired into the `migrate` compose service itself, so the gate runs with the migration |
+| Rollback restores old images against a migrated database | TypeORM migrations are additive; `ROLLBACK.md` documents when (and how) to restore the pg_dump backup |

@@ -4,7 +4,6 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { ApiClientError, postGoogleLoginExchange } from "@/lib/api";
-import { storeToken } from "@/lib/auth";
 
 const GOOGLE_ERRORS: Record<string, string> = {
   google_access_denied: "คุณยกเลิกการอนุญาตบัญชี Google",
@@ -59,7 +58,6 @@ function CallbackContent() {
     exchangeGoogleLoginCode(code)
       .then((out) => {
         if (!active) return;
-        storeToken(out.access_token, out.expires_in_seconds, out.user);
         router.replace(out.user.is_admin ? "/admin" : nextPath);
       })
       .catch((err) => {

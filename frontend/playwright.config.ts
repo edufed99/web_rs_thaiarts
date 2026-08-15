@@ -12,6 +12,7 @@ export default defineConfig({
   },
   webServer: process.env.E2E_SKIP_WEBSERVER ? undefined : {
     command: "npm run dev",
+    env: { SESSION_COOKIE_SECURE: "0" },
     url: "http://127.0.0.1:3000",
     reuseExistingServer: true,
     timeout: 120_000,

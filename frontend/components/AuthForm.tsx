@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { ApiClientError, googleLoginStartUrl, postLogin, postSignup } from "@/lib/api";
-import { storeToken } from "@/lib/auth";
+import { setSessionUser } from "@/lib/auth";
 
 export interface AuthFormProps {
   /** "login" shows an existing-user form; "signup" includes a display_name. */
@@ -43,7 +43,7 @@ export function AuthForm({ mode }: AuthFormProps) {
               display_name: displayName.trim() || null,
             })
           : await postLogin({ username: trimmedUsername, password });
-      storeToken(out.access_token, out.expires_in_seconds, out.user);
+      setSessionUser(out.user);
       // Admin access always lands on the admin dashboard, even if login was
       // opened with a member-only `next` URL. Members still return to the
       // protected page that initiated login, or /recommend by default.

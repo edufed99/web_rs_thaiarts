@@ -88,7 +88,7 @@ services:
       PRIVATE_MODEL_SERVICE_URL: http://model-service:8001
       MODEL_SERVICE_SHARED_SECRET: ${MODEL_SERVICE_SHARED_SECRET:-}
     volumes:
-      - uploads_data:/app/data/uploads:ro
+      - uploads_data:/app/data/uploads
     ports:
       - "127.0.0.1:3000:3000"
 

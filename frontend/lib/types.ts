@@ -443,8 +443,9 @@ export interface UserLogin {
 }
 
 export interface TokenOut {
-  access_token: string;
-  token_type: "bearer" | string;
+  /** JWT fields are absent for password sessions; issue #6 migrates Google SSO. */
+  access_token?: string;
+  token_type?: "bearer" | string;
   expires_in_seconds: number;
   user: UserOut;
 }

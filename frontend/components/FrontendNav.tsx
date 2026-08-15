@@ -6,6 +6,7 @@ import React, { useEffect, useState } from "react";
 
 import {
   AUTH_CHANGED_EVENT,
+  STORAGE_KEY,
   getCurrentUser,
   getReadableUserName,
   logout,
@@ -24,7 +25,7 @@ export function FrontendNav() {
     refreshUser();
     // Cross-tab logout sync.
     function onStorage(e: StorageEvent) {
-      if (e.key === "thai_arts_jwt") {
+      if (e.key === STORAGE_KEY) {
         refreshUser();
       }
     }

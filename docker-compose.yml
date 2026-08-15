@@ -86,8 +86,9 @@ services:
       MEDIA_STORE_ROOT: /app/data/uploads
       PRIVATE_MODEL_SERVICE_URL: http://model-service:8001
       MODEL_SERVICE_SHARED_SECRET: ${MODEL_SERVICE_SHARED_SECRET:-}
+      SESSION_COOKIE_SECURE: "0"
     volumes:
-      - uploads_data:/app/data/uploads:ro
+      - uploads_data:/app/data/uploads
     ports:
       - "3000:3000"
 

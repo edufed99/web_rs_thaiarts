@@ -1,0 +1,435 @@
+import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import { mkdtemp, rm } from "node:fs/promises";
+import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { after, before, test } from "node:test";
+
+import { chromium } from "@playwright/test";
+import pg from "pg";
+
+const { Client } = pg;
+const databaseName = "web_rs_thaiarts_members_test";
+const adminUrl =
+  process.env.TEST_POSTGRES_ADMIN_URL ??
+  "postgresql://postgres:postgres@127.0.0.1:5432/postgres";
+const databaseUrl = new URL(adminUrl);
+databaseUrl.pathname = `/${databaseName}`;
+const port = 3102;
+const baseUrl = `http://127.0.0.1:${port}`;
+const compatibilityPort = 4102;
+
+let server;
+let compatibilityServer;
+let mediaStoreRoot;
+const compatibilityRequests = [];
+
+function runNpm(args, env = {}) {
+  return new Promise((resolve) => {
+    const child = spawn("npm", args, {
+      cwd: process.cwd(),
+      env: { ...process.env, ...env },
+      shell: process.platform === "win32",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => (stdout += chunk));
+    child.stderr.on("data", (chunk) => (stderr += chunk));
+    child.on("close", (code) => resolve({ code, stdout, stderr }));
+  });
+}
+
+async function resetDatabase(create) {
+  const client = new Client({ connectionString: adminUrl });
+  await client.connect();
+  try {
+    await client.query(
+      "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()",
+      [databaseName],
+    );
+    await client.query(`DROP DATABASE IF EXISTS ${databaseName}`);
+    if (create) await client.query(`CREATE DATABASE ${databaseName}`);
+  } finally {
+    await client.end();
+  }
+}
+
+async function waitForServer() {
+  const deadline = Date.now() + 60_000;
+  while (Date.now() < deadline) {
+    const response = await fetch(`${baseUrl}/api/health`).catch(() => undefined);
+    if (response) return;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error("Timed out waiting for member test server");
+}
+
+async function stopServer() {
+  if (!server || server.exitCode !== null) return;
+  const exited = once(server, "exit");
+  if (process.platform === "win32") {
+    await new Promise((resolve) => {
+      spawn("taskkill", ["/pid", String(server.pid), "/t", "/f"], {
+        stdio: "ignore",
+      }).on("close", resolve);
+    });
+  } else {
+    process.kill(-server.pid, "SIGTERM");
+  }
+  await exited;
+}
+
+function cookieValue(setCookie) {
+  return setCookie?.split(";", 1)[0] ?? "";
+}
+
+before(async () => {
+  mediaStoreRoot = await mkdtemp(join(tmpdir(), "thai-arts-members-"));
+  await resetDatabase(true);
+  const migration = await runNpm(["run", "migration:run"], {
+    DATABASE_URL: databaseUrl.toString(),
+  });
+  assert.equal(migration.code, 0, migration.stderr || migration.stdout);
+
+  const client = new Client({ connectionString: databaseUrl.toString() });
+  await client.connect();
+  await client.query(
+    `INSERT INTO items
+       (id, artifact_item_id, name, description, category_group,
+        performance_type, price_text, image_url, video_url, is_active)
+     VALUES (41, 168393376, 'โขนทดสอบ', 'รายการสำหรับทดสอบสมาชิก',
+       'โขน', 'การแสดง', '', '', '', TRUE)`,
+  );
+  await client.end();
+
+  compatibilityServer = createServer((request, response) => {
+    if (request.method !== "POST" || request.url !== "/auth/google/login/exchange") {
+      response.writeHead(404).end();
+      return;
+    }
+    let requestBody = "";
+    request.on("data", (chunk) => (requestBody += chunk));
+    request.on("end", () => {
+      compatibilityRequests.push({ body: requestBody, authorization: request.headers.authorization });
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({
+        access_token: "legacy-jwt-must-not-reach-browser",
+        token_type: "bearer",
+        expires_in_seconds: 3600,
+        user: {
+          id: 9001,
+          username: "google_member",
+          email: "google@example.test",
+          display_name: "สมาชิก Google",
+          is_admin: false,
+          role: "user",
+          auth_provider: "google",
+          email_verified: true,
+        },
+      }));
+    });
+  });
+  compatibilityServer.listen(compatibilityPort, "127.0.0.1");
+  await once(compatibilityServer, "listening");
+
+  server = spawn("npm", ["run", "dev", "--", "-p", String(port)], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      DATABASE_URL: databaseUrl.toString(),
+      NODE_ENV: "test",
+      COMPATIBILITY_SERVICE_URL: `http://127.0.0.1:${compatibilityPort}`,
+      MEDIA_STORE_ROOT: mediaStoreRoot,
+    },
+    shell: process.platform === "win32",
+    detached: process.platform !== "win32",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  await waitForServer();
+});
+
+after(async () => {
+  await stopServer();
+  if (compatibilityServer) {
+    compatibilityServer.close();
+    await once(compatibilityServer, "close");
+  }
+  if (mediaStoreRoot) await rm(mediaStoreRoot, { recursive: true, force: true });
+  await resetDatabase(false);
+});
+
+function signup(username, email) {
+  return fetch(`${baseUrl}/api/auth/signup`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: baseUrl,
+      "Sec-Fetch-Site": "same-origin",
+      "X-CSRF-Token": "same-origin",
+    },
+    body: JSON.stringify({
+      username,
+      email,
+      password: "correct horse battery staple",
+      display_name: username,
+    }),
+  });
+}
+
+test("concurrent first password signups can bootstrap at most one admin", async () => {
+  const client = new Client({ connectionString: databaseUrl.toString() });
+  await client.connect();
+
+  const responses = await Promise.all([
+    signup("bootstrap_one", "bootstrap-one@example.test"),
+    signup("bootstrap_two", "bootstrap-two@example.test"),
+  ]);
+  assert.deepEqual(responses.map((response) => response.status), [200, 200]);
+  const result = await client.query(
+    "SELECT COUNT(*) FILTER (WHERE is_admin) AS admin_count FROM users",
+  );
+  await client.end();
+  assert.equal(Number(result.rows[0].admin_count), 1);
+});
+
+test("password signup issues only a secure opaque server session", async () => {
+  const response = await fetch(`${baseUrl}/api/auth/signup`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: baseUrl,
+      "Sec-Fetch-Site": "same-origin",
+      "X-CSRF-Token": "same-origin",
+    },
+    body: JSON.stringify({
+      username: "member_one",
+      email: "member@example.test",
+      password: "correct horse battery staple",
+      display_name: "สมาชิกทดสอบ",
+    }),
+  });
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.user.username, "member_one");
+  assert.equal("access_token" in body, false);
+
+  const setCookie = response.headers.get("set-cookie");
+  assert.match(setCookie, /thai_arts_session=[A-Za-z0-9_-]+/);
+  assert.match(setCookie, /HttpOnly/i);
+  assert.match(setCookie, /Secure/i);
+  assert.match(setCookie, /SameSite=Lax/i);
+  assert.match(setCookie, /Path=\//i);
+  assert.match(setCookie, /Max-Age=604800/i);
+
+  const client = new Client({ connectionString: databaseUrl.toString() });
+  await client.connect();
+  const sessions = await client.query(
+    `SELECT session.token_hash, session.expires_at
+       FROM user_sessions session
+       JOIN users member ON member.id = session.user_id
+      WHERE member.username = 'member_one'`,
+  );
+  await client.end();
+  assert.equal(sessions.rowCount, 1);
+  assert.equal(setCookie.includes(sessions.rows[0].token_hash), false);
+});
+
+test("Google compatibility exchange creates a normal opaque Next session", async () => {
+  const client = new Client({ connectionString: databaseUrl.toString() });
+  await client.connect();
+  await client.query(
+    `INSERT INTO users
+       (id, username, email, password_hash, google_subject_id, auth_provider,
+        email_verified, display_name, is_admin)
+     VALUES (9001, 'google_member', 'google@example.test', 'not-a-password',
+       'google-subject-9001', 'google', TRUE, 'สมาชิก Google', FALSE)`,
+  );
+  await client.query(
+    `INSERT INTO accounts_userprofile (user_id, display_name)
+     VALUES (9001, 'สมาชิก Google')`,
+  );
+  await client.end();
+
+  const exchange = await fetch(`${baseUrl}/api/auth/google/login/exchange`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: baseUrl,
+      "Sec-Fetch-Site": "same-origin",
+      "X-CSRF-Token": "same-origin",
+    },
+    body: JSON.stringify({ code: "single-use-google-code" }),
+  });
+  assert.equal(exchange.status, 200);
+  const body = await exchange.json();
+  assert.equal(body.user.username, "google_member");
+  assert.equal("access_token" in body, false);
+  assert.equal("token_type" in body, false);
+  assert.deepEqual(JSON.parse(compatibilityRequests.at(-1).body), { code: "single-use-google-code" });
+  assert.equal(compatibilityRequests.at(-1).authorization, undefined);
+  const cookie = cookieValue(exchange.headers.get("set-cookie"));
+  assert.match(cookie, /^thai_arts_session=/);
+
+  const me = await fetch(`${baseUrl}/api/auth/me`, { headers: { Cookie: cookie } });
+  assert.equal(me.status, 200);
+  assert.equal((await me.json()).username, "google_member");
+});
+
+test("Google browser callback keeps the legacy JWT out of browser storage and Bearer headers", async () => {
+  const browser = await chromium.launch();
+  try {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const bearerRequests = [];
+    page.on("request", (request) => {
+      if (request.headers().authorization?.startsWith("Bearer ")) bearerRequests.push(request.url());
+    });
+    const exchangeResponse = page.waitForResponse(
+      (response) => response.url().includes("/api/auth/google/login/exchange"),
+    );
+    await page.goto(`http://localhost:${port}/auth/google/callback?code=browser-google-code&next=/items`);
+    const exchange = await exchangeResponse;
+    assert.equal(exchange.status(), 200);
+    assert.equal("access_token" in await exchange.json(), false);
+    await page.waitForURL((url) => url.pathname === "/items");
+    const browserState = await page.evaluate(async () => {
+      const me = await fetch("/api/auth/me");
+      return {
+        legacyJwt: localStorage.getItem("thai_arts_jwt"),
+        visibleCookie: document.cookie,
+        meStatus: me.status,
+        username: me.ok ? (await me.json()).username : null,
+      };
+    });
+    assert.equal(browserState.legacyJwt, null);
+    assert.doesNotMatch(browserState.visibleCookie, /thai_arts_session/);
+    assert.equal(browserState.meStatus, 200);
+    assert.equal(browserState.username, "google_member");
+    assert.deepEqual(bearerRequests, []);
+    const cookies = await context.cookies();
+    const sessionCookie = cookies.find((cookie) => cookie.name === "thai_arts_session");
+    assert.equal(sessionCookie?.httpOnly, true);
+    assert.equal(sessionCookie?.secure, true);
+  } finally {
+    await browser.close();
+  }
+});
+
+test("member profile and avatar changes persist and cannot change role", async () => {
+  const login = await fetch(`${baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: baseUrl, "X-CSRF-Token": "same-origin" },
+    body: JSON.stringify({ username: "member_one", password: "correct horse battery staple" }),
+  });
+  const cookie = cookieValue(login.headers.get("set-cookie"));
+  const headers = { Cookie: cookie, Origin: baseUrl, "X-CSRF-Token": "same-origin" };
+  const patch = await fetch(`${baseUrl}/api/me/profile`, {
+    method: "PATCH",
+    headers: { ...headers, "Content-Type": "application/json" },
+    body: JSON.stringify({ display_name: "ชื่อใหม่", bio: "ประวัติใหม่" }),
+  });
+  assert.equal(patch.status, 200);
+  assert.equal((await patch.json()).bio, "ประวัติใหม่");
+  const escalation = await fetch(`${baseUrl}/api/me/profile`, {
+    method: "PATCH",
+    headers: { ...headers, "Content-Type": "application/json" },
+    body: JSON.stringify({ role: "super_admin" }),
+  });
+  assert.equal(escalation.status, 422);
+
+  const form = new FormData();
+  form.append("file", new File([new Uint8Array([137, 80, 78, 71])], "avatar.png", { type: "image/png" }));
+  const upload = await fetch(`${baseUrl}/api/me/profile/avatar`, { method: "POST", headers, body: form });
+  assert.equal(upload.status, 200);
+  assert.match((await upload.json()).avatar_url, /^\/api\/uploads\/avatars\/user-/);
+  const reloaded = await fetch(`${baseUrl}/api/me/profile`, { headers: { Cookie: cookie } });
+  assert.equal((await reloaded.json()).display_name, "ชื่อใหม่");
+  const removed = await fetch(`${baseUrl}/api/me/profile/avatar`, { method: "DELETE", headers });
+  assert.equal(removed.status, 200);
+  assert.equal((await removed.json()).avatar_url, "");
+});
+
+test("login rotates sessions and logout revokes the active session", async () => {
+  const login = await fetch(`${baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: baseUrl,
+      "X-CSRF-Token": "same-origin",
+    },
+    body: JSON.stringify({ username: "member_one", password: "correct horse battery staple" }),
+  });
+  assert.equal(login.status, 200);
+  const cookie = cookieValue(login.headers.get("set-cookie"));
+
+  const me = await fetch(`${baseUrl}/api/auth/me`, { headers: { Cookie: cookie } });
+  assert.equal(me.status, 200);
+  assert.equal((await me.json()).username, "member_one");
+
+  const forged = await fetch(`${baseUrl}/api/actions/like`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: cookie,
+      Origin: "https://attacker.example",
+      "X-CSRF-Token": "same-origin",
+    },
+    body: JSON.stringify({ item_id: 168393376, user_key: "user:999" }),
+  });
+  assert.equal(forged.status, 403);
+
+  const logout = await fetch(`${baseUrl}/api/auth/logout`, {
+    method: "POST",
+    headers: { Cookie: cookie, Origin: baseUrl, "X-CSRF-Token": "same-origin" },
+  });
+  assert.equal(logout.status, 200);
+  const after = await fetch(`${baseUrl}/api/auth/me`, { headers: { Cookie: cookie } });
+  assert.equal(after.status, 401);
+});
+
+test("member actions are authorized by session and persist by artifact item id", async () => {
+  const login = await fetch(`${baseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: baseUrl,
+      "X-CSRF-Token": "same-origin",
+    },
+    body: JSON.stringify({ username: "member_one", password: "correct horse battery staple" }),
+  });
+  const cookie = cookieValue(login.headers.get("set-cookie"));
+  const headers = {
+    "Content-Type": "application/json",
+    Cookie: cookie,
+    Origin: baseUrl,
+    "X-CSRF-Token": "same-origin",
+  };
+
+  const like = await fetch(`${baseUrl}/api/actions/like`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ item_id: 168393376, user_key: "anon:forged" }),
+  });
+  assert.equal(like.status, 200);
+  assert.equal((await like.json()).item.user_state.liked, true);
+
+  const rating = await fetch(`${baseUrl}/api/actions/rating`, {
+    method: "PUT",
+    headers,
+    body: JSON.stringify({ item_id: 168393376, rating: 5 }),
+  });
+  assert.equal(rating.status, 200);
+
+  const list = await fetch(`${baseUrl}/api/me/liked`, { headers: { Cookie: cookie } });
+  assert.deepEqual(await list.json(), { items: [168393376], total: 1 });
+
+  const reloadedItem = await fetch(`${baseUrl}/api/items/168393376`, { headers: { Cookie: cookie } });
+  assert.equal(reloadedItem.status, 200);
+  assert.equal((await reloadedItem.json()).user_state.liked, true);
+
+  const unauthorized = await fetch(`${baseUrl}/api/me/liked`);
+  assert.equal(unauthorized.status, 401);
+});

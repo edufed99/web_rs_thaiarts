@@ -5,6 +5,8 @@ import { apiError, internalApiError } from "@/lib/server/api-response";
 import { getItem } from "@/lib/server/catalogue";
 import { catalogueCompatibilityResponse } from "@/lib/server/compatibility";
 import { integerInRange } from "@/lib/server/request-values";
+import { authenticatedUser } from "@/lib/server/sessions";
+import { personalizeItems } from "@/lib/server/members";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -31,7 +33,8 @@ export async function GET(
         item_id: itemId,
       });
     }
-    return NextResponse.json(item);
+    const user = await authenticatedUser(request);
+    return NextResponse.json(user ? (await personalizeItems(user, [item]))[0] : item);
   } catch {
     return internalApiError();
   }

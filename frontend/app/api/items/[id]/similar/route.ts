@@ -6,6 +6,8 @@ import { getSimilarItems } from "@/lib/server/catalogue";
 import { catalogueCompatibilityResponse } from "@/lib/server/compatibility";
 import { ModelServiceUnavailableError } from "@/lib/server/model-service";
 import { integerInRange } from "@/lib/server/request-values";
+import { authenticatedUser } from "@/lib/server/sessions";
+import { personalizeItems } from "@/lib/server/members";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -33,7 +35,8 @@ export async function GET(
         item_id: itemId,
       });
     }
-    return NextResponse.json(result);
+    const user = await authenticatedUser(request);
+    return NextResponse.json(user ? { ...result, items: await personalizeItems(user, result.items) } : result);
   } catch (error) {
     if (error instanceof ModelServiceUnavailableError) {
       return apiError(503, "model_service_unavailable", error.message);

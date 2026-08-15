@@ -37,6 +37,12 @@ export async function revokeSession(token: string | undefined): Promise<void> {
   await dataSource.getRepository(UserSessionEntity).delete({ tokenHash: tokenHash(token) });
 }
 
+/** Revoke every server session for a user (password reset / account takeover). */
+export async function revokeAllSessions(userId: number): Promise<void> {
+  const dataSource = await getDataSource();
+  await dataSource.getRepository(UserSessionEntity).delete({ userId });
+}
+
 // fallow-ignore-next-line complexity -- Session expiry, revocation, missing-user, and valid-user paths are separate security checks.
 export async function authenticatedUser(request: NextRequest): Promise<ApplicationUser | undefined> {
   const token = request.cookies.get(SESSION_COOKIE)?.value;

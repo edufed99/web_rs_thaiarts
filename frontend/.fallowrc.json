@@ -1,0 +1,7 @@
+{
+  "$schema": "https://fallow.dev/schema.json",
+  "entry": [
+    "tests/**/*.test.mjs",
+    "e2e/**/*.spec.ts"
+  ]
+}

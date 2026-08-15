@@ -28,7 +28,6 @@ import type {
   ItemFacetsOut,
   ItemImageUploadOut,
   ItemVideoUploadOut,
-  ItemKeywordReassign,
   ItemListOut,
   ItemOut,
   ItemReassignOut,
@@ -171,7 +170,7 @@ export async function getItems(opts?: {
   if (opts?.offset !== undefined) params.set("offset", String(opts.offset));
   if (opts?.contextId !== undefined) params.set("context", String(opts.contextId));
   // Session cookies personalize member state server-side; user_key is never
-  // forwarded because it would re-enter the legacy FastAPI compatibility path.
+  // forwarded to any Python origin — the Application Backend owns personalization.
   const url = `${baseUrl()}/items${params.toString() ? `?${params.toString()}` : ""}`;
   const res = await fetch(url, {
     headers: { ...getAuthHeaders(), ...(opts?.extraHeaders ?? {}) },
@@ -713,20 +712,6 @@ export async function postItemCommit(body: ItemCommit): Promise<ItemCommitOut> {
     cache: "no-store",
   });
   return handle<ItemCommitOut>(res);
-}
-
-// fallow-ignore-next-line unused-export -- Preserved public API client contract.
-export async function putItemKeywords(
-  artifactId: number,
-  body: ItemKeywordReassign,
-): Promise<ItemReassignOut> {
-  const res = await fetch(`${baseUrl()}/admin/items/${artifactId}/keywords`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
-  return handle<ItemReassignOut>(res);
 }
 
 export async function putAdminItem(

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { corpusMetrics } from "@/lib/server/metrics";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 
 /**
  * ``GET /api/metrics`` — corpus + live-table metrics for the homepage and

@@ -13,6 +13,8 @@ import {
 import { setStateCookie } from "@/lib/server/oauth-state-cookie";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 
 /**
  * Start member Google OpenID Connect: bind a signed PKCE flow cookie to this

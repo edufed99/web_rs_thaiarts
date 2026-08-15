@@ -4,6 +4,8 @@ import { completeAuthorization, GMAIL_STATE_COOKIE } from "@/lib/server/gmail-oa
 import { frontendBaseUrl, oauthRedirect, readStateCookie, timingSafeEqualText } from "@/lib/server/oauth-state-cookie";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 
 const PENDING_TTL_MS = 10 * 60 * 1000;
 

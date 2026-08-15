@@ -435,8 +435,6 @@ before(async () => {
       FRONTEND_BASE_URL: baseUrl,
       PASSWORD_RESET_TOKEN_MINUTES: "30",
       OAUTH_STATE_SECRET: OAUTH_STATE_SECRET,
-      MODEL_SERVICE_URL: "http://127.0.0.1:9",
-      COMPATIBILITY_SERVICE_URL: "http://127.0.0.1:9",
     },
     shell: process.platform === "win32",
     detached: process.platform !== "win32",

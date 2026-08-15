@@ -11,8 +11,6 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-ARG MODEL_SERVICE_URL=http://backend:8001
-ENV MODEL_SERVICE_URL=$MODEL_SERVICE_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 

@@ -1,5 +1,6 @@
 # Production Docker Compose definition for Thai Arts Recommender.
-# Runs PostgreSQL 18, FastAPI Backend, and Next.js Frontend.
+# Runs PostgreSQL 18, the FastAPI Private Model Service, and the Next.js
+# Application Backend (the only public API surface, issue #10).
 # Pulls public images from Docker Hub (pichaya5502/...).
 # Exposes internal ports on 127.0.0.1 for reverse proxy (IIS / Nginx / Caddy).
 # No source code is required on the server — runs only from pre-built images.
@@ -24,41 +25,18 @@ services:
       timeout: 5s
       retries: 10
 
+  # Private Model Service — the ONLY FastAPI process (issue #10). It is
+  # database-free, serves no public endpoints, and is reachable only by the
+  # Next.js Application Backend over the internal Docker network with the
+  # Internal Service Credential.
   backend:
     image: pichaya5502/web_rs_thaiarts-backend:latest
     pull_policy: always
     container_name: thaiarts-backend
     restart: always
-    depends_on:
-      postgres:
-        condition: service_healthy
     env_file:
       - .env
     environment:
-      RECSYS_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-web_rs_thaiarts}
-      RECSYS_DB_ENABLED: "1"
-      RECSYS_ARTIFACT_DIR: /app/artifacts
-      RECSYS_UPLOAD_DIR: /app/data/uploads
-    volumes:
-      - uploads_data:/app/data/uploads
-    ports:
-      - "127.0.0.1:8001:8001"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:8001/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  model-service:
-    image: pichaya5502/web_rs_thaiarts-backend:latest
-    pull_policy: always
-    container_name: thaiarts-model-service
-    restart: always
-    env_file:
-      - .env
-    environment:
-      RECSYS_UVICORN_APP: app.private_main:app
-      RECSYS_DB_ENABLED: "0"
       RECSYS_ARTIFACT_DIR: /app/artifacts
       RECSYS_INTERNAL_SERVICE_SECRET: ${MODEL_SERVICE_SHARED_SECRET:-}
     expose:
@@ -83,9 +61,8 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-web_rs_thaiarts}
-      COMPATIBILITY_SERVICE_URL: http://backend:8001
       MEDIA_STORE_ROOT: /app/data/uploads
-      PRIVATE_MODEL_SERVICE_URL: http://model-service:8001
+      PRIVATE_MODEL_SERVICE_URL: http://backend:8001
       MODEL_SERVICE_SHARED_SECRET: ${MODEL_SERVICE_SHARED_SECRET:-}
     volumes:
       - uploads_data:/app/data/uploads

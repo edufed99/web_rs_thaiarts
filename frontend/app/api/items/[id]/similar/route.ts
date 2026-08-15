@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 
 import { apiError, internalApiError } from "@/lib/server/api-response";
 import { getSimilarItems } from "@/lib/server/catalogue";
-import { catalogueCompatibilityResponse } from "@/lib/server/compatibility";
 import { ModelServiceUnavailableError } from "@/lib/server/model-service";
 import { integerInRange } from "@/lib/server/request-values";
 import { authenticatedUser } from "@/lib/server/sessions";
@@ -16,13 +15,11 @@ interface SimilarItemsRouteContext {
   params: { id: string };
 }
 
-// fallow-ignore-next-line complexity -- Route preserves compatibility, validation, not-found, and database error contracts.
+// fallow-ignore-next-line complexity -- Route preserves validation, not-found, and database error contracts.
 export async function GET(
   request: NextRequest,
   context: SimilarItemsRouteContext,
 ): Promise<Response> {
-  const compatibility = catalogueCompatibilityResponse(request);
-  if (compatibility) return compatibility;
   const itemId = integerInRange(context.params.id, 1, Number.MAX_SAFE_INTEGER);
   const limit = integerInRange(request.nextUrl.searchParams.get("limit") ?? "4", 1, 20);
   if (itemId === undefined || limit === undefined) {

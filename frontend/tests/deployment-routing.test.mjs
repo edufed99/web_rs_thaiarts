@@ -4,7 +4,7 @@ import { test } from "node:test";
 
 const deploymentRoot = new URL("../../deployment/", import.meta.url);
 
-test("IIS routes only migrated API paths to Next.js before compatibility", async () => {
+test("IIS routes the entire public API surface to Next.js; nothing targets FastAPI", async () => {
   const config = await readFile(new URL("web.config", deploymentRoot), "utf8");
   const rules = [...config.matchAll(/<rule name="([^"]+)"[\s\S]*?<match url="([^"]+)"[\s\S]*?<action [^>]*url="([^"]+)"[^>]*\/>[\s\S]*?<\/rule>/g)]
     .map((match) => ({ name: match[1], pattern: new RegExp(match[2]), target: match[3] }))
@@ -15,7 +15,7 @@ test("IIS routes only migrated API paths to Next.js before compatibility", async
     return rule?.target.includes(":3000") ? 3000 : rule?.target.includes(":8001") ? 8001 : undefined;
   }
 
-  for (const migratedPath of [
+  for (const path of [
     "api/health",
     "api/items",
     "api/items/batch",
@@ -35,11 +35,17 @@ test("IIS routes only migrated API paths to Next.js before compatibility", async
     "api/uploads/items/cover.jpg",
     "api/uploads/items",
     "api/uploads/avatars/member.png",
+    "api/recommendations",
+    "api/recommendations/profile",
     "api/auth/signup",
     "api/auth/login",
     "api/auth/logout",
     "api/auth/me",
+    "api/auth/google/login/start",
+    "api/auth/google/login/callback",
     "api/auth/google/login/exchange",
+    "api/auth/password-reset/request",
+    "api/auth/password-reset/confirm",
     "api/actions/like",
     "api/actions/save",
     "api/actions/rating",
@@ -47,18 +53,19 @@ test("IIS routes only migrated API paths to Next.js before compatibility", async
     "api/me/profile",
     "api/me/profile/avatar",
     "api/me/dashboard",
+    "api/admin/users",
+    "api/admin/items",
+    "api/admin/publication",
   ]) {
-    assert.equal(selectedPort(migratedPath), 3000, migratedPath);
+    assert.equal(selectedPort(path), 3000, path);
   }
 
-  for (const compatibilityPath of [
-    "api/recommendations",
-    "api/auth/google/login/start",
-    "api/auth/google/login/callback",
-    "api/auth/password-reset/request",
-  ]) {
-    assert.equal(selectedPort(compatibilityPath), 8001, compatibilityPath);
-  }
+  // The retire step (issue #10): no IIS rule may target the FastAPI port.
+  assert.equal(
+    rules.some((rule) => rule.target.includes(":8001")),
+    false,
+    "web.config must not route any public path to the retired FastAPI application",
+  );
 });
 
 test("Next.js mounts the shared uploads volume for authenticated avatar writes", async () => {

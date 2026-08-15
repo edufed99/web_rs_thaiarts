@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { requestTrend } from "@/lib/server/metrics";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 
 /**
  * ``GET /api/metrics/requests?months=N`` — monthly recommendation-request

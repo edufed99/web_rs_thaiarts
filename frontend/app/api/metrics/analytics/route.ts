@@ -5,6 +5,8 @@ import { buildAnalyticsPayload } from "@/lib/server/analytics";
 import { parseRangeDays } from "@/lib/server/dashboard";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 
 /**
  * ``GET /api/metrics/analytics?range=30d`` — aggregate admin analytics:

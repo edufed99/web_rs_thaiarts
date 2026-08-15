@@ -96,7 +96,6 @@ async function startServer(connectionString) {
     env: {
       ...process.env,
       DATABASE_URL: connectionString,
-      MODEL_SERVICE_URL: "http://127.0.0.1:9",
     },
     stdio: "ignore",
   });

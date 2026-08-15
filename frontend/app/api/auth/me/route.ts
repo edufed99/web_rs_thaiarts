@@ -8,6 +8,8 @@ import { apiError } from "@/lib/server/api-response";
 import { authenticatedJsonMutation, isResponse, jsonError, requireUser } from "@/lib/server/member-route";
 import { rotateSession, setSessionCookie, userOut } from "@/lib/server/sessions";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest): Promise<Response> {
   const user = await requireUser(request);
   return isResponse(user) ? user : NextResponse.json(userOut(user));

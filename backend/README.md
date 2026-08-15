@@ -1,14 +1,20 @@
-# Backend — Thai Arts Recommender API
+# Backend — Private Model Service
 
-FastAPI service that loads pre-built recommender artifacts at startup and
-serves recommendations over HTTP. Optionally connects to a Postgres DB for
-live user-interaction data (legacy ratings imported from the old system).
+FastAPI process that loads pre-built recommender artifacts at startup and
+scores exactly the candidate sets the Next.js Application Backend sends it.
+Since issue #10 the FastAPI package contains **only** the authenticated
+private model contract — the public application surface (auth, catalogue,
+media, member, admin, actions, metrics, analytics, compatibility) has been
+retired and is served by the Next.js Application Backend.
+
+This process never connects to PostgreSQL, never reads CSV, and never
+serves browser-facing responses.
 
 ## Requirements
 
 - Python 3.10+ (developed with 3.12)
-- Artifacts already generated under `../artifacts/`
-- (Optional) Postgres 16 via Docker Compose (see `../docker-compose.yml`)
+- Artifacts already generated under `../artifacts/` (see the offline
+  pipeline `../pipelines/train_or_generate_artifacts.py`)
 
 ## Setup
 
@@ -19,32 +25,27 @@ pip install -r requirements.txt
 
 ## Run
 
-### Without DB (artifacts only)
 ```bash
-RECSYS_DB_ENABLED=0 uvicorn app.main:app --reload --port 8001
+# The Internal Service Credential is required: an unset secret makes the
+# private contract unavailable (503) instead of weakening auth.
+RECSYS_INTERNAL_SERVICE_SECRET=<long-random-secret> \
+  RECSYS_ARTIFACT_DIR=../artifacts \
+  uvicorn app.private_main:app --port 8001
 ```
 
-### With Postgres
-```bash
-# Start Postgres
-cd ..
-docker compose up -d postgres
+The app intentionally disables `/docs`, `/redoc`, and `/openapi.json` — it
+is an internal service, not a public API.
 
-# Import legacy data
-python pipelines/migrate_sqlite_to_postgres.py \
-    --sqlite "C:/Users/Pichaya/Downloads/web_appRS/thai_arts_webapp/db.sqlite3" \
-    --target-url "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/web_rs_thaiarts"
+## Endpoints (all require `Authorization: Bearer <secret>`)
 
-# Start backend (auto-detects DB via RECSYS_DATABASE_URL)
-cd backend
-uvicorn app.main:app --reload --port 8001
-```
+| Method | Path | Purpose |
+|---|---|---|
+| GET  | `/internal/v1/health` | Loaded artifact schema version + item count |
+| POST | `/internal/v1/inference` | Score an Eligible Candidate Set (CBF + ItemKNN + Hybrid) |
+| POST | `/internal/v1/similarity` | Rank supplied candidates against a reference item |
 
-Open:
-- Swagger UI: http://127.0.0.1:8001/docs
-- ReDoc:      http://127.0.0.1:8001/redoc
-- OpenAPI:    http://127.0.0.1:8001/openapi.json
-- DB health:  http://127.0.0.1:8001/db/health
+See `../docs/private-model-service.md` for the full request/response
+contract and `../docs/api.md` for the public (Next.js) API tour.
 
 ## Tests
 
@@ -52,60 +53,50 @@ Open:
 pytest                                            # default with --cov-fail-under=90
 pytest --cov=app --cov-report=term-missing        # show missing lines
 pytest --cov=app --cov-report=html --open         # HTML report
-pytest tests/test_db.py -v                        # DB integration tests
 ```
 
-Coverage threshold is enforced by `pytest.ini` (≥ 90%). Current: **92.46%** (109 tests).
+Coverage threshold is enforced by `pytest.ini` (≥ 90%). Current: **95.01%** (108 tests).
 
 ## Configuration
 
 All settings are env vars prefixed `RECSYS_`. See `app/core/config.py` for
-the full list. Common ones:
+the full list. Common ones for the model service:
 
 | Var | Default | Purpose |
 |---|---|---|
 | `RECSYS_ARTIFACT_DIR` | `<repo>/artifacts` | Where to load artifacts from |
-| `RECSYS_DATABASE_URL` | `postgresql+psycopg://postgres:postgres@127.0.0.1:5432/web_rs_thaiarts` | Postgres URL |
-| `RECSYS_DB_ENABLED` | `1` | `0` to skip DB and run on artifacts only |
+| `RECSYS_INTERNAL_SERVICE_SECRET` | — | Internal Service Credential (no default) |
 | `RECSYS_HYBRID_ALPHA` | 0.7 | CBF weight in hybrid |
 | `RECSYS_CBF_KEYWORD_BOOST` | 0.05 | Additive boost on keyword hit |
-| `RECSYS_CORS_ORIGINS` | `["http://localhost:3000"]` | Allowed CORS origins |
-| `RECSYS_GOOGLE_LOGIN_CLIENT_FILE` | `data/secrets/google_login_client.json` | Private Web OAuth client for member login |
-| `RECSYS_GOOGLE_LOGIN_REDIRECT_URI` | `http://localhost:8001/auth/google/login/callback` | Exact Google member callback URI |
-
-Member Google login uses Authorization Code + PKCE through
-`/auth/google/login/start`, `/auth/google/login/callback`, and
-`/auth/google/login/exchange`. It is separate from the admin Gmail sender
-OAuth flow and requests only `openid email profile`.
+| `RECSYS_ITEMKNN_K` | 10 | Top-K neighbours for ItemKNN |
+| `RECSYS_ITEMKNN_SHRINK` | 50.0 | Shrinkage term in ItemKNN cosine |
+| `RECSYS_POSITIVE_THRESHOLD` | 4 | Minimum rating to count as positive |
+| `RECSYS_NEGATIVE_PENALTY_ALPHA` | 1.0 | Additive negative-rating penalty strength |
+| `RECSYS_MIN_CANDS` / `RECSYS_MAX_CANDS` | 10 / — | Eligibility-gate caps (mirrored by Next.js) |
+| `RECSYS_E5_ENABLED` | 1 | 0 to skip E5 model load |
+| `RECSYS_PRELOAD_E5` | 0 | 1 to warm the E5 model during lifespan |
 
 ## Layout
 
 ```
 backend/
 ├── app/
-│   ├── main.py                FastAPI entry, lifespan, CORS, exception handlers
-│   ├── model_loader.py        ArtifactLoader (loads 7 files at startup)
-│   ├── db.py                  SQLAlchemy engine + session factory
-│   ├── models_db.py           ORM models (Context, Item, Keyword, LegacyInteraction, ...)
-│   ├── explanations.py        Thai explanation builder
+│   ├── private_main.py        ASGI entry point (the only app)
+│   ├── model_loader.py        ArtifactLoader (loads artifact set at startup)
 │   ├── core/
 │   │   ├── config.py          Settings (RECSYS_* env vars)
 │   │   └── exceptions.py      DomainError hierarchy + handlers
-│   ├── schemas/               Pydantic v2 request/response models
-│   ├── services/              Algorithm + DB queries
-│   │   ├── eligibility.py     context + keyword filter
+│   ├── schemas/
+│   │   └── inference.py       Pydantic v2 private-contract models
+│   ├── services/
 │   │   ├── cbf_service.py     E5 cosine + keyword boost
-│   │   ├── cf_service.py      ItemKNN + zero-CF cold start + live-DB merge
-│   │   ├── hybrid_service.py  z-score weighted sum
-│   │   ├── db_query.py        live DB queries (live_positive_users_per_item)
-│   │   └── recommendation_service.py
-│   └── routers/               FastAPI routers
-│       ├── health.py
-│       ├── recommendations.py
-│       ├── catalog.py
-│       ├── metrics.py
-│       └── legacy.py          /items/{id}/legacy-stats, /db/health
-├── tests/                     109 pytest tests (incl. DB)
+│   │   ├── hybrid_service.py  z-score weighted sum + negative penalty
+│   │   ├── model_inference.py Candidate-set scoring (ItemKNN inside)
+│   │   ├── model_similarity.py Artifact similarity ranking
+│   │   └── embedding.py       Lazy E5 loader
+│   └── routers/
+│       └── private_model.py   /internal/v1/* routes + credential check
+├── tests/                     108 pytest tests
 ├── pytest.ini                 enforces ≥90% coverage
 └── requirements.txt
 ```

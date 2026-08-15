@@ -709,3 +709,62 @@ would be discarded the same way. **Fix before Phase C step 1.**
 **Phase C**
 11. `items/page.tsx:272` no longer discards server ordering.
 12. "เรียงตามความนิยม" appears in the sort dropdown and matches backend order.
+
+---
+
+# ADR-003: Retire the public FastAPI application surface (expand–contract complete)
+
+## 1. Problem
+
+ADR-001 defined FastAPI as the public API (`/health`, `/recommendations`,
+`/items`, `/metrics`, ...) with Next.js as a thin browser client. Issues
+#2–#9 then **expanded** the Next.js Application Backend to own auth,
+sessions, catalogue, media, member journeys, admin management, actions,
+analytics, recommendations (+ fallback), and Artifact Publication — with a
+public-boundary `node --test` suite per journey. During that transition the
+old public FastAPI routers stayed mounted as a compatibility service.
+
+## 2. Decision
+
+**Issue #10 completes the contract:** the public FastAPI application is
+deleted. FastAPI now ships only `app.private_main` — the database-free
+**Private Model Service** — exposing exactly three authenticated endpoints:
+
+| Method | Path | Credential |
+|---|---|---|
+| GET  | `/internal/v1/health` | Bearer Internal Service Credential |
+| POST | `/internal/v1/inference` | Bearer Internal Service Credential |
+| POST | `/internal/v1/similarity` | Bearer Internal Service Credential |
+
+Consequences locked in by this ADR:
+
+* The browser talks **only** to Next.js (same-origin `/api/*`). There is no
+  `NEXT_PUBLIC_API_BASE_URL`, no compatibility proxy, and no Next.js
+  fallback rewrite to a Python origin. Server-side route handlers are the
+  only callers of the model service, always with the shared secret.
+* FastAPI no longer connects to PostgreSQL. TypeORM under
+  `frontend/db/migrations/` is the sole schema authority (the Alembic layer
+  was removed with the public app).
+* The model contract stays in immutable Artifact Item Identifier space:
+  eligible candidate sets and personalization history only — PostgreSQL
+  primary keys never cross the boundary.
+* `RECSYS_INTERNAL_SERVICE_SECRET` remains deliberately without a default;
+  an unset secret disables the contract (503) instead of weakening auth.
+
+## 3. Consequences
+
+**Positive**
+
+* One public API surface to secure, document, and test (Next.js).
+* FastAPI image is smaller, DB-free, and cannot leak application data.
+* The private contract is exhaustively testable: credential rejection,
+  malformed-payload rejection, and unknown-artifact-id rejection are all
+  covered by `backend/tests/test_private_model_contract.py`.
+
+**Negative / risks**
+
+| Risk | Mitigation |
+|---|---|
+| A future browser feature must be added in Next.js, not FastAPI | Public-boundary tests (frontend `tests/*.test.mjs`) enforce the seam |
+| Model service still reachable if exposed by the host proxy | Compose `expose`s 8001 (never `ports`), IIS routes nothing to 8001, health check requires the credential |
+| Deleted FastAPI routers referenced by stale docs/scripts | `docs/api.md`, `AGENTS.md`, deployment scripts, and this ADR updated in the same change |

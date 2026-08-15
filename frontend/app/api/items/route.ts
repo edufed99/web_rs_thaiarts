@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 
 import { apiError, internalApiError } from "@/lib/server/api-response";
 import { listItems } from "@/lib/server/catalogue";
-import { catalogueCompatibilityResponse } from "@/lib/server/compatibility";
 import { integerInRange, integerWithDefault } from "@/lib/server/request-values";
 import { authenticatedUser } from "@/lib/server/sessions";
 import { personalizeItems } from "@/lib/server/members";
@@ -11,10 +10,8 @@ import { personalizeItems } from "@/lib/server/members";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-// fallow-ignore-next-line complexity -- Route preserves validation, compatibility, not-found, and database error contracts.
+// fallow-ignore-next-line complexity -- Route preserves validation, not-found, and database error contracts.
 export async function GET(request: NextRequest): Promise<Response> {
-  const compatibility = catalogueCompatibilityResponse(request);
-  if (compatibility) return compatibility;
   const params = request.nextUrl.searchParams;
   const limit = integerWithDefault(params.get("limit"), 20, 1, 200);
   const offset = integerWithDefault(params.get("offset"), 0, 0, Number.MAX_SAFE_INTEGER);

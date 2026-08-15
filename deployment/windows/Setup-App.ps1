@@ -25,21 +25,22 @@ if ($PythonVersion -notin @("3.11", "3.12")) {
     Write-Warning "Python $PythonVersion detected. Python 3.11 or 3.12 is recommended."
 }
 
+$RandomBytes = New-Object byte[] 48
+$RandomGenerator = [Security.Cryptography.RandomNumberGenerator]::Create()
+try {
+    $RandomGenerator.GetBytes($RandomBytes)
+} finally {
+    $RandomGenerator.Dispose()
+}
+$InternalServiceSecret = [Convert]::ToHexString($RandomBytes).ToLowerInvariant()
+
 $BackendEnv = Join-Path $Backend ".env"
 if (-not (Test-Path -LiteralPath $BackendEnv)) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "backend.env.production.example") -Destination $BackendEnv
-    $RandomBytes = New-Object byte[] 48
-    $RandomGenerator = [Security.Cryptography.RandomNumberGenerator]::Create()
-    try {
-        $RandomGenerator.GetBytes($RandomBytes)
-    } finally {
-        $RandomGenerator.Dispose()
-    }
-    $JwtSecret = [Convert]::ToHexString($RandomBytes).ToLowerInvariant()
     $EnvText = Get-Content -Raw -LiteralPath $BackendEnv
-    $EnvText = $EnvText.Replace("<GENERATED_DURING_SETUP>", $JwtSecret)
+    $EnvText = $EnvText.Replace("<GENERATED_DURING_SETUP>", $InternalServiceSecret)
     [IO.File]::WriteAllText($BackendEnv, $EnvText, [Text.UTF8Encoding]::new($false))
-    Write-Host "Created backend/.env with a random JWT secret. Review it before production."
+    Write-Host "Created backend/.env with a random Internal Service Credential. Review it before production."
 } else {
     Write-Host "Keeping existing backend/.env."
 }
@@ -47,9 +48,12 @@ if (-not (Test-Path -LiteralPath $BackendEnv)) {
 $FrontendEnv = Join-Path $Frontend ".env.production"
 if (-not (Test-Path -LiteralPath $FrontendEnv)) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "frontend.env.production.example") -Destination $FrontendEnv
-    Write-Host "Created frontend/.env.production. Set the public backend URL before production."
+    $EnvText = Get-Content -Raw -LiteralPath $FrontendEnv
+    $EnvText = $EnvText.Replace("<GENERATED_DURING_SETUP>", $InternalServiceSecret)
+    [IO.File]::WriteAllText($FrontendEnv, $EnvText, [Text.UTF8Encoding]::new($false))
+    Write-Host "Created frontend/.env.production with the matching Internal Service Credential."
 } else {
-    Write-Host "Keeping existing frontend/.env.production."
+    Write-Host "Keeping existing frontend/.env.production. Verify MODEL_SERVICE_SHARED_SECRET matches backend/.env."
 }
 
 if (-not $SkipPythonInstall) {

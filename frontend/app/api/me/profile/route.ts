@@ -7,6 +7,8 @@ import { authenticatedJsonMutation, isResponse, requireUser } from "@/lib/server
 import { ensureProfile } from "@/lib/server/members";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest) { const user = await requireUser(request); return isResponse(user) ? user : NextResponse.json(await ensureProfile(user)); }
 // fallow-ignore-next-line complexity -- Field allow-listing and bounded normalization enforce profile authorization.
 export async function PATCH(request: NextRequest) {

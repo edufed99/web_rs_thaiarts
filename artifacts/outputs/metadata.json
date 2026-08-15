@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0.0",
   "build_timestamp": "2026-08-12T07:16:10.830633+00:00",
-  "source_root": "C:\\Users\\Pichaya\\Downloads\\web_appRS\\old code\\4.recommendation\\input",
+  "source_root": "offline-source-data",
   "item_count": 115,
   "context_count": 25,
   "keyword_link_count": 1077,
@@ -22,7 +22,7 @@
   "best_model_config": {
     "schema_version": "1.0.0",
     "generated_at": "2026-08-12T07:16:10.824630+00:00",
-    "experiment_output_dir": "C:\\Users\\Pichaya\\Downloads\\web_appRS1\\old code\\4.recommendation\\output",
+    "experiment_output_dir": "offline-experiment-output",
     "selection_metric": "nDCG_mean",
     "selected_model": {
       "candidate_strategy": "EligibilityGate",
@@ -68,12 +68,12 @@
       }
     },
     "source_files": [
-      "C:\\Users\\Pichaya\\Downloads\\web_appRS1\\old code\\4.recommendation\\output\\results_overall.csv",
-      "C:\\Users\\Pichaya\\Downloads\\web_appRS1\\old code\\4.recommendation\\output\\results_cbf.csv",
-      "C:\\Users\\Pichaya\\Downloads\\web_appRS1\\old code\\4.recommendation\\output\\results_cf.csv",
-      "C:\\Users\\Pichaya\\Downloads\\web_appRS1\\old code\\4.recommendation\\output\\results_hybrid_methods.csv",
-      "C:\\Users\\Pichaya\\Downloads\\web_appRS1\\old code\\4.recommendation\\output\\tuned_params.csv",
-      "C:\\Users\\Pichaya\\Downloads\\web_appRS1\\old code\\4.recommendation\\output\\experiment_config.json"
+      "results_overall.csv",
+      "results_cbf.csv",
+      "results_cf.csv",
+      "results_hybrid_methods.csv",
+      "tuned_params.csv",
+      "experiment_config.json"
     ]
   }
 }

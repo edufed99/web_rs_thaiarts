@@ -184,8 +184,29 @@ ignored in this mode. `404 context_not_found` if the id is unknown.
   Do NOT add `CREATE TABLE IF NOT EXISTS` to the migration script or to
   service code. The new tables (`likes`, `saved_items`, `ratings`,
   `interaction_logs`) are managed by revision `0003_live_actions`.
+- **Database Standard**: PostgreSQL 18 (`image: postgres:18`). Per PostgreSQL Docker Hub documentation, volume mounts must target `/var/lib/postgresql` (e.g. `postgres_data:/var/lib/postgresql`), never `/var/lib/postgresql/data`.
 - **DB driver** is `psycopg` (sync). Do not introduce `asyncpg` — it
   is no longer listed in `requirements.txt`.
+
+## Production Deployment (Server: `thaiperform`)
+
+- **Host**: `ssh thaiperform` (Public Key authentication configured).
+- **Target Path**: `C:\Apps\ThaiArtsRecommender` (or `C:\Apps`).
+- **Zero Source Code on Server**: Production runs **strictly from Docker Compose and `.env`**. No source code, git trees, or test fixtures reside on the server.
+- **Docker Hub Images** (Public under `pichaya5502` account):
+  - `pichaya5502/web_rs_thaiarts-backend:latest`
+  - `pichaya5502/web_rs_thaiarts-frontend:latest`
+- **Topology**:
+  - `postgres` (PostgreSQL 18, `postgres_data:/var/lib/postgresql`)
+  - `backend` (FastAPI on port 8001, auto-runs Alembic migrations on container startup, persistent `uploads_data:/app/data/uploads`)
+  - `frontend` (Next.js standalone on port 3000)
+- **Host Reverse Proxy**: IIS maps incoming domain traffic to internal container endpoints:
+  - Web: `http://127.0.0.1:3000`
+  - API: `http://127.0.0.1:8001` (under `/api/*`)
+- **Deploy Command**:
+  ```bash
+  ssh thaiperform "cd C:\Apps\ThaiArtsRecommender && docker compose pull && docker compose up -d"
+  ```
 
 ## Tooling conventions
 
@@ -194,12 +215,23 @@ ignored in this mode. `404 context_not_found` if the id is unknown.
 - **CLAUDE.md auto-update:** when adding features that future Claude
   instances should know about, update this file in the same change.
 
-## What this file deliberately does NOT contain
+## Agent skills
 
-- No login/auth setup — out of scope per ADR §11. (Live actions use
-  an opaque `anon:<uuid>` user key, not a real account.)
-- No production deployment scripts — out of scope.
-- No CI/CD — out of scope.
+### Issue tracker
+
+GitHub Issues (`edufed99/web_rs_thaiarts` via `gh` CLI). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five canonical triage labels (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context (`CONTEXT.md` + `docs/adr/` at repo root). See `docs/agents/domain.md`.
+
+## Out of scope
+
 - No multi-encoder / multi-CF / multi-hybrid strategy implementation —
   out of scope per ADR §11; only the single-model thesis configuration
   (E5 + ItemKNN + WeightedSum) is reproduced.
+

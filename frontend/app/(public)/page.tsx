@@ -17,6 +17,7 @@ import {
   getItems,
   getMetrics,
 } from "@/lib/api";
+import { buildOccasionSummaries, occasionImageFor } from "@/lib/occasionCatalog";
 import { getUserKey } from "@/lib/user";
 import type { ContextOut, EngagementOut, ItemOut, LegacyStatsOut, UserOut } from "@/lib/types";
 
@@ -73,14 +74,6 @@ const CATEGORY_IMAGE_BY_NAME: Record<string, string> = {
   "รำฉุยฉาย": "/img/home/category-chui-chai.jpg",
   "ระบำโบราณคดี": "/img/home/category-archaeology.jpg",
 };
-const OCCASION_IMAGES = [
-  "/img/home/occasion-1.png",
-  "/img/home/occasion-2.png",
-  "/img/home/occasion-3.png",
-  "/img/home/occasion-4.png",
-  "/img/home/occasion-5.png",
-] as const;
-
 // ---------------------------------------------------------------------------
 // Live data shape populated by the page's single useEffect.
 // ---------------------------------------------------------------------------
@@ -248,27 +241,11 @@ export default function HomePage() {
       .slice(0, 6);
   }, [live.items]);
 
-  // Occasion cards: the 7 main context groups from the live catalog
-  // ("งานมงคล", "งานเทศกาล", ...). Pick top 5 by total active_item_count
-  // summed across each group's sub-contexts.
-  const occasionTop5 = useMemo(() => {
-    const groups = new Map<string, { count: number; sample_name: string }>();
-    for (const ctx of live.contexts) {
-      const key = (ctx.group || "").trim();
-      if (!key) continue;
-      const cur = groups.get(key);
-      const inc = ctx.active_item_count ?? 0;
-      if (cur) {
-        cur.count += inc;
-      } else {
-        groups.set(key, { count: inc, sample_name: ctx.name });
-      }
-    }
-    return Array.from(groups.entries())
-      .map(([name, info]) => ({ name, count: info.count, sample: info.sample_name }))
-      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "th"))
-      .slice(0, 5);
-  }, [live.contexts]);
+  // Preview the same ordered sub-contexts shown on /occasions.
+  const occasionPreview = useMemo(
+    () => buildOccasionSummaries(live.contexts).slice(0, 5),
+    [live.contexts],
+  );
 
   const itemCount = live.metrics?.item_count ?? live.items.length;
   const totalItemsLabel = itemCount > 0 ? new Intl.NumberFormat("th-TH").format(itemCount) : "—";
@@ -375,24 +352,24 @@ export default function HomePage() {
         <SectionHead title="เลือกตามโอกาสสำคัญ" href="/occasions" />
         {!liveReady ? (
           <SkeletonGrid count={5} variant="square" />
-        ) : occasionTop5.length === 0 ? (
+        ) : occasionPreview.length === 0 ? (
           <EmptyState text="ยังไม่มีข้อมูลโอกาส" />
         ) : (
           <div className="home-occasion-grid">
-            {occasionTop5.map((occ, idx) => (
+            {occasionPreview.map((occ, idx) => (
               <Link
-                key={occ.name}
-                href={`/items?occasion=${encodeURIComponent(occ.name)}`}
+                key={occ.context.id}
+                href={`/items?context=${occ.context.id}`}
                 className="home-occasion-card"
               >
                 <img
-                  src={OCCASION_IMAGES[idx] ?? OCCASION_IMAGES[0]}
+                  src={occasionImageFor(occ.context.name, occ.groupLabel, idx)}
                   alt=""
                   aria-hidden="true"
                 />
-                <span className="home-occasion-icon" aria-hidden="true">{chipIcon(occ.name)}</span>
-                <h3>{occ.name}</h3>
-                <p>{formatCount(occ.count)} ชุดการแสดงตามโอกาสนี้</p>
+                <span className="home-occasion-icon" aria-hidden="true">{chipIcon(occ.groupLabel)}</span>
+                <h3>{occ.context.name}</h3>
+                <p>{formatCount(occ.context.active_item_count)} ชุดการแสดงตามโอกาสนี้</p>
               </Link>
             ))}
           </div>

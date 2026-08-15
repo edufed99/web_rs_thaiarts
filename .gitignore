@@ -83,3 +83,8 @@ backend/data/
 cascade_dump.txt
 facets.json
 test.png
+tmp/
+output/
+public key/
+**/.next*
+

@@ -2,8 +2,7 @@
 suitability.py — Display-only match-percent computation for catalog cards.
 
 Ported from ``catalog.views.catalog_match_percent`` / ``catalog.views.suitability_label``
-in the legacy Django project
-(``C:/Users/Pichaya/Downloads/web_appRS/thai_arts_webapp/catalog/views.py`` lines 157-181).
+in the legacy Django project's ``catalog/views.py`` (lines 157-181).
 
 This module is **purely presentational** — it never influences the
 recommendation ranking.  The hybrid score computed by

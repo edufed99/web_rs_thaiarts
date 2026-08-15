@@ -1,20 +1,23 @@
-# docker-compose.yml — Local Development & Build Configuration
-# Builds and runs PostgreSQL 18, FastAPI Backend, and Next.js Frontend.
-name: web_rs_thaiarts
+# Production Docker Compose definition for Thai Arts Recommender.
+# Runs PostgreSQL 18, FastAPI Backend, and Next.js Frontend.
+# Pulls public images from Docker Hub (pichaya5502/...).
+# Exposes internal ports on 127.0.0.1 for reverse proxy (IIS / Nginx / Caddy).
+# No source code is required on the server — runs only from pre-built images.
+name: thaiarts-recommender
 
 services:
   postgres:
     image: postgres:18
-    container_name: web_rs_thaiarts-postgres
-    restart: unless-stopped
+    container_name: thaiarts-postgres
+    restart: always
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-web_rs_thaiarts}
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
+    ports:
+      - "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-web_rs_thaiarts}"]
       interval: 5s
@@ -23,14 +26,14 @@ services:
 
   backend:
     image: pichaya5502/web_rs_thaiarts-backend:latest
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-    container_name: web_rs_thaiarts-backend
-    restart: unless-stopped
+    pull_policy: always
+    container_name: thaiarts-backend
+    restart: always
     depends_on:
       postgres:
         condition: service_healthy
+    env_file:
+      - .env
     environment:
       RECSYS_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-web_rs_thaiarts}
       RECSYS_DB_ENABLED: "1"
@@ -39,7 +42,7 @@ services:
     volumes:
       - uploads_data:/app/data/uploads
     ports:
-      - "8001:8001"
+      - "127.0.0.1:8001:8001"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8001/health"]
       interval: 10s
@@ -48,21 +51,19 @@ services:
 
   frontend:
     image: pichaya5502/web_rs_thaiarts-frontend:latest
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: web_rs_thaiarts-frontend
-    restart: unless-stopped
+    pull_policy: always
+    container_name: thaiarts-frontend
+    restart: always
     depends_on:
       backend:
         condition: service_healthy
-    environment:
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:8001
+    env_file:
+      - .env
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
 
 volumes:
   postgres_data:
-    name: web_rs_thaiarts_postgres_data
+    name: thaiarts_postgres_data
   uploads_data:
-    name: web_rs_thaiarts_uploads_data
+    name: thaiarts_uploads_data

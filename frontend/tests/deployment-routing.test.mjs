@@ -19,8 +19,17 @@ test("IIS routes only migrated API paths to Next.js before compatibility", async
     "api/health",
     "api/items",
     "api/items/batch",
+    "api/items/engagement",
     "api/items/168393376",
     "api/items/168393376/similar",
+    "api/items/168393376/legacy-stats",
+    "api/legacy-stats",
+    "api/metrics",
+    "api/metrics/requests",
+    "api/metrics/config",
+    "api/metrics/dashboard",
+    "api/metrics/analytics",
+    "api/metrics/dashboard/export",
     "api/contexts",
     "api/keywords",
     "api/uploads/items/cover.jpg",
@@ -43,8 +52,6 @@ test("IIS routes only migrated API paths to Next.js before compatibility", async
   }
 
   for (const compatibilityPath of [
-    "api/items/engagement",
-    "api/items/168393376/legacy-stats",
     "api/recommendations",
     "api/auth/google/login/start",
     "api/auth/google/login/callback",

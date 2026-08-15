@@ -63,17 +63,32 @@ export async function personalizeItems(user: ApplicationUser, items: ItemOut[]):
   });
 }
 
+/**
+ * Resolve a public recommendation ``request_id`` to the persisted
+ * ``recommendation_requests`` row id, or null when the id is not a
+ * persisted numeric row (e.g. the fallback uuid) — attribution is only
+ * meaningful against rows the analytics tables actually own.
+ */
+// fallow-ignore-next-line complexity -- Empty-string, integer, and positive-value guards are one validation.
+function persistedRequestId(requestId: string | null | undefined): number | null {
+  const raw = String(requestId ?? "").trim();
+  const parsed = Number(raw);
+  return raw !== "" && Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 // fallow-ignore-next-line complexity -- Five idempotent action verbs share one transaction and audit-log boundary.
 export async function setStateAction(
   user: ApplicationUser,
   artifactItemId: number,
   action: "like" | "unlike" | "save" | "unsave" | "rate",
   rating?: number,
+  requestId?: string | null,
 ) {
   const identity = await itemIdentity(artifactItemId);
   if (!identity) return undefined;
   const dataSource = await getDataSource();
   const key = userKey(user);
+  const attributedRequestId = persistedRequestId(requestId);
   // fallow-ignore-next-line complexity -- The action branches must share one atomic state+audit transaction.
   await dataSource.transaction(async (manager) => {
     if (action === "like") {
@@ -92,7 +107,7 @@ export async function setStateAction(
       itemId: Number(identity.id),
       actionType: action,
       metadataJson: JSON.stringify(rating ? { rating } : {}),
-      recommendationRequestId: null,
+      recommendationRequestId: attributedRequestId,
     });
   });
   const item = await itemForUser(user, artifactItemId);
@@ -104,11 +119,12 @@ export async function setStateAction(
   };
 }
 
-export async function logView(user: ApplicationUser, artifactItemId: number) {
+export async function logView(user: ApplicationUser, artifactItemId: number, requestId?: string | null) {
   const identity = await itemIdentity(artifactItemId);
   if (!identity) return undefined;
   const dataSource = await getDataSource();
   const key = userKey(user);
+  const attributedRequestId = persistedRequestId(requestId);
   const cutoff = new Date(Date.now() - 30 * 60 * 1000);
   const existing = await dataSource.getRepository(InteractionLogEntity)
     .createQueryBuilder("log")
@@ -120,7 +136,7 @@ export async function logView(user: ApplicationUser, artifactItemId: number) {
   if (!existing) {
     await dataSource.getRepository(InteractionLogEntity).save({
       userKey: key, itemId: Number(identity.id), actionType: "item_view",
-      metadataJson: "{}", recommendationRequestId: null,
+      metadataJson: "{}", recommendationRequestId: attributedRequestId,
     });
   }
   return { action: "viewed", item_id: artifactItemId, deduped: Boolean(existing) };

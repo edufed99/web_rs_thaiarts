@@ -88,3 +88,7 @@ tmp/
 output/
 public key/
 **/.next*
+
+# Playwright artifacts
+frontend/test-results/
+frontend/playwright-report/

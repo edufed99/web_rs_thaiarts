@@ -752,7 +752,12 @@ export interface KeywordRow {
   count: number;
 }
 
-export interface KeywordListOut {
+/**
+ * Top-keywords table inside the dashboard payload (``top_keywords``).
+ * Kept separate from ``KeywordListOut`` (the keyword picker contract) —
+ * the two mirror distinct backend schemas and must not merge.
+ */
+export interface TopKeywordListOut {
   items: KeywordRow[];
 }
 
@@ -803,7 +808,7 @@ export interface DashboardOut {
   model_quality: ModelQualityOut;
   quality_trend_30d: TrendOut;
   algorithm_kpis: AlgorithmKpiOut;
-  top_keywords: KeywordListOut;
+  top_keywords: TopKeywordListOut;
   page_quality: PageQualityOut;
   recent_activity: RecentActivityListOut;
 }

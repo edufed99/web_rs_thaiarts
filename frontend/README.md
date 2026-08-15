@@ -23,6 +23,16 @@ Starting Next.js never changes the database schema or seed data. Run the
 explicit commands above before the server, including after a deployment that
 contains new migrations.
 
+The standalone container includes a compiled migration CLI. Run its one-shot
+Compose service explicitly before starting a new release:
+
+```bash
+docker compose --profile tools run --rm migrate
+```
+
+The normal frontend command remains `node server.js` and never invokes this
+tooling.
+
 ## Run dev server
 
 ```bash

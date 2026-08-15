@@ -62,6 +62,9 @@ cd frontend
 npm run migration:run
 npm run seed
 npm run dev
+
+# Apply migrations and seeds from the standalone image (explicit; never startup)
+docker compose --profile tools run --rm migrate
 ```
 
 ### Verification & Testing
@@ -98,5 +101,5 @@ docker push pichaya5502/web_rs_thaiarts-frontend:latest
 scp deployment/docker-compose.prod.yml thaiperform:C:/Apps/ThaiArtsRecommender/docker-compose.yml
 
 # Pull latest images and restart containers
-ssh thaiperform "cd C:\Apps\ThaiArtsRecommender && docker compose pull && docker compose up -d"
+ssh thaiperform "cd C:\Apps\ThaiArtsRecommender && docker compose pull && docker compose --profile tools run --rm migrate && docker compose up -d"
 ```

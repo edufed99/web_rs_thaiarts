@@ -1,6 +1,7 @@
 node_modules
 .next
 .next-dev
+.db-dist
 .next-*
 *.log
 .git

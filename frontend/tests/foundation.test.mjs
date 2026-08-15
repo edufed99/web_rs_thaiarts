@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { after, before, test } from "node:test";
 
 import pg from "pg";
@@ -68,16 +69,21 @@ async function waitForHealth(url, timeoutMs = 60_000) {
 }
 
 async function stopServer() {
-  if (!server || server.exitCode !== null) return;
-  if (process.platform === "win32") {
-    await new Promise((resolve) => {
-      const killer = spawn("taskkill", ["/pid", String(server.pid), "/t", "/f"], {
-        stdio: "ignore",
+  const activeServer = server;
+  if (!activeServer) return;
+  if (activeServer.exitCode === null) {
+    const exited = once(activeServer, "exit");
+    if (process.platform === "win32") {
+      await new Promise((resolve) => {
+        const killer = spawn("taskkill", ["/pid", String(activeServer.pid), "/t", "/f"], {
+          stdio: "ignore",
+        });
+        killer.on("close", resolve);
       });
-      killer.on("close", resolve);
-    });
-  } else {
-    process.kill(-server.pid, "SIGTERM");
+    } else {
+      process.kill(-activeServer.pid, "SIGTERM");
+    }
+    await exited;
   }
   server = undefined;
 }
@@ -128,6 +134,32 @@ test("an empty development database is rebuilt from migrations and seed data", a
     assert.deepEqual(migrations.rows, [
       { name: "CreateApplicationStatus1723708800000" },
     ]);
+  } finally {
+    await client.end();
+  }
+});
+
+test("the compiled operational CLI migrates and seeds without starting Next.js", async () => {
+  await emptyTestDatabase();
+  const built = await runNpm(["run", "build:db"]);
+  assert.equal(built.code, 0, `${built.stdout}\n${built.stderr}`);
+
+  const migrated = await runNpm(["run", "migration:run:compiled"], {
+    DATABASE_URL: databaseUrl.toString(),
+  });
+  assert.equal(migrated.code, 0, `${migrated.stdout}\n${migrated.stderr}`);
+  const seeded = await runNpm(["run", "seed:compiled"], {
+    DATABASE_URL: databaseUrl.toString(),
+  });
+  assert.equal(seeded.code, 0, `${seeded.stdout}\n${seeded.stderr}`);
+
+  const client = new Client({ connectionString: databaseUrl.toString() });
+  await client.connect();
+  try {
+    const status = await client.query(
+      "SELECT value FROM application_status WHERE key = 'database'",
+    );
+    assert.deepEqual(status.rows, [{ value: "ready" }]);
   } finally {
     await client.end();
   }

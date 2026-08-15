@@ -49,6 +49,26 @@ services:
       timeout: 5s
       retries: 5
 
+  model-service:
+    image: pichaya5502/web_rs_thaiarts-backend:latest
+    pull_policy: always
+    container_name: thaiarts-model-service
+    restart: always
+    env_file:
+      - .env
+    environment:
+      RECSYS_UVICORN_APP: app.private_main:app
+      RECSYS_DB_ENABLED: "0"
+      RECSYS_ARTIFACT_DIR: /app/artifacts
+      RECSYS_INTERNAL_SERVICE_SECRET: ${MODEL_SERVICE_SHARED_SECRET:-}
+    expose:
+      - "8001"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f -H \"Authorization: Bearer $$RECSYS_INTERNAL_SERVICE_SECRET\" http://127.0.0.1:8001/internal/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   frontend:
     image: pichaya5502/web_rs_thaiarts-frontend:latest
     pull_policy: always

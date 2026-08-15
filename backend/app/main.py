@@ -29,6 +29,7 @@ from .core.exceptions import (
 from .model_loader import ArtifactLoader, set_singleton
 from .services.embedding import preload_model
 from .routers import actions, admin, auth, catalog, health, legacy, member, metrics, recommendations
+from .private_main import create_private_model_app
 
 logger = logging.getLogger("recsys")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")

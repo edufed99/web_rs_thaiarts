@@ -12,4 +12,5 @@ if [ "${RECSYS_DB_ENABLED:-1}" != "0" ]; then
 fi
 
 echo "Starting Uvicorn..."
-exec uvicorn app.main:app --host 0.0.0.0 --port 8001
+recsys_uvicorn_app="${RECSYS_UVICORN_APP:-app.main:app}"
+exec uvicorn "$recsys_uvicorn_app" --host 0.0.0.0 --port 8001

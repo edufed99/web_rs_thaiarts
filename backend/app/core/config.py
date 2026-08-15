@@ -118,6 +118,10 @@ class Settings(BaseSettings):
     recommendation_method: str = "Hybrid-WeightedSum"
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     app_version: str = "1.0.0"
+    # Shared only by the Application Backend and Private Model Service.
+    # There is deliberately no code default: an unset credential makes the
+    # private contract unavailable instead of silently weakening auth.
+    internal_service_secret: str = ""
     db_enabled: bool = True
     database_url: str = "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/web_rs_thaiarts"
 

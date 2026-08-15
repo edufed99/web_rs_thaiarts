@@ -12,8 +12,10 @@ if (-not (Test-Path -LiteralPath (Join-Path $Backend ".env"))) {
 
 Push-Location $Backend
 try {
-    & $Python -m uvicorn app.main:app --host 127.0.0.1 --port 8001 --workers 1 --proxy-headers --forwarded-allow-ips 127.0.0.1
+    # Issue #10: the backend is the Private Model Service only — it serves
+    # /internal/v1/* with the Internal Service Credential and must never be
+    # exposed by the reverse proxy.
+    & $Python -m uvicorn app.private_main:app --host 127.0.0.1 --port 8001 --workers 1
 } finally {
     Pop-Location
 }
-

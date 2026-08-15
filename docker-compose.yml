@@ -1,5 +1,6 @@
 # docker-compose.yml — Local Development & Build Configuration
-# Builds and runs PostgreSQL 18, FastAPI Backend, and Next.js Frontend.
+# Builds and runs PostgreSQL 18, the FastAPI Private Model Service, and the
+# Next.js Application Backend (the only public API surface, issue #10).
 name: web_rs_thaiarts
 
 services:
@@ -21,6 +22,10 @@ services:
       timeout: 5s
       retries: 10
 
+  # Private Model Service — the ONLY FastAPI process (issue #10). It is
+  # database-free, serves no public endpoints, and is reachable only by the
+  # Next.js Application Backend over the internal Docker network with the
+  # Internal Service Credential.
   backend:
     image: pichaya5502/web_rs_thaiarts-backend:latest
     build:
@@ -28,34 +33,7 @@ services:
       dockerfile: backend/Dockerfile
     container_name: web_rs_thaiarts-backend
     restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
     environment:
-      RECSYS_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-web_rs_thaiarts}
-      RECSYS_DB_ENABLED: "1"
-      RECSYS_ARTIFACT_DIR: /app/artifacts
-      RECSYS_UPLOAD_DIR: /app/data/uploads
-    volumes:
-      - uploads_data:/app/data/uploads
-    ports:
-      - "8001:8001"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://127.0.0.1:8001/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  model-service:
-    image: pichaya5502/web_rs_thaiarts-backend:latest
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
-    container_name: web_rs_thaiarts-model-service
-    restart: unless-stopped
-    environment:
-      RECSYS_UVICORN_APP: app.private_main:app
-      RECSYS_DB_ENABLED: "0"
       RECSYS_ARTIFACT_DIR: /app/artifacts
       RECSYS_INTERNAL_SERVICE_SECRET: ${MODEL_SERVICE_SHARED_SECRET:-}
     expose:
@@ -71,8 +49,6 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      args:
-        MODEL_SERVICE_URL: http://backend:8001
     container_name: web_rs_thaiarts-frontend
     restart: unless-stopped
     depends_on:
@@ -82,9 +58,8 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-web_rs_thaiarts}
-      COMPATIBILITY_SERVICE_URL: http://backend:8001
       MEDIA_STORE_ROOT: /app/data/uploads
-      PRIVATE_MODEL_SERVICE_URL: http://model-service:8001
+      PRIVATE_MODEL_SERVICE_URL: http://backend:8001
       MODEL_SERVICE_SHARED_SECRET: ${MODEL_SERVICE_SHARED_SECRET:-}
       SESSION_COOKIE_SECURE: "0"
       # Member Google Login + admin Gmail sender + password reset (issue #6).
@@ -119,8 +94,6 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      args:
-        MODEL_SERVICE_URL: http://backend:8001
     profiles: ["tools"]
     depends_on:
       postgres:

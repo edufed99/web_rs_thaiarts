@@ -186,8 +186,6 @@ before(async () => {
       ...process.env,
       DATABASE_URL: databaseUrl.toString(),
       MEDIA_STORE_ROOT: mediaRoot,
-      MODEL_SERVICE_URL: "http://127.0.0.1:9",
-      COMPATIBILITY_SERVICE_URL: "http://127.0.0.1:9",
       PRIVATE_MODEL_SERVICE_URL: modelServiceUrl,
       MODEL_SERVICE_SHARED_SECRET: "catalogue-test-secret",
     },

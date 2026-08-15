@@ -3,6 +3,8 @@ import { apiError } from "@/lib/server/api-response";
 import { legacyStatsForItem } from "@/lib/server/live-stats";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 
 /**
  * ``GET /api/items/{id}/legacy-stats`` — count and average rating of

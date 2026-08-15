@@ -186,7 +186,7 @@ export async function executePublication(
 // fallow-ignore-next-line complexity -- Reachability, credential, and response-shape checks are distinct failure clauses.
 async function fetchModelServiceHealth(): Promise<ModelServiceHealth> {
   const serviceUrl = (
-    process.env.PRIVATE_MODEL_SERVICE_URL || "http://model-service:8001"
+    process.env.PRIVATE_MODEL_SERVICE_URL || "http://backend:8001"
   ).replace(/\/+$/, "");
   const credential = process.env.MODEL_SERVICE_SHARED_SECRET?.trim();
   if (!credential) {

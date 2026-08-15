@@ -11,10 +11,10 @@ import {
 /**
  * Recommendation request/result analytics owned by the Application Backend.
  *
- * Adopts the legacy Alembic 0006 table shapes when they already exist (the
- * staged-migration database is shared with the compatibility FastAPI), and
- * creates them fresh for brand-new databases. Fresh creation also restores
- * the ``interaction_logs.recommendation_request_id`` FK the legacy revision
+ * Adopts the legacy Alembic 0006 table shapes when they already exist (from
+ * pre-issue-#10 databases), and creates them fresh for brand-new databases.
+ * Fresh creation also restores the
+ * ``interaction_logs.recommendation_request_id`` FK the legacy revision
  * added, so view-attribution telemetry keeps its referential integrity.
  */
 export class CreateRecommendationRequests1787025600000 implements MigrationInterface {

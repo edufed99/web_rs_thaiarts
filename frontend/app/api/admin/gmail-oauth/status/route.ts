@@ -6,6 +6,8 @@ import { authorized as gmailAuthorized, clientConfigured } from "@/lib/server/gm
 import { deliveryConfigured } from "@/lib/server/mailer";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 
 /** Admin-only: report sender setup state without returning credential material. */
 export async function GET(request: NextRequest): Promise<Response> {

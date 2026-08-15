@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { activeModelConfig } from "@/lib/server/metrics";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 
 /**
  * ``GET /api/metrics/config`` — the active recommender configuration the

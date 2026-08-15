@@ -505,10 +505,6 @@ export interface ItemCommitOut {
   warnings: string[];
 }
 
-export interface ItemKeywordReassign {
-  keyword_ids: number[];
-}
-
 export interface ItemReassignOut {
   item: ItemOut;
   warnings: string[];

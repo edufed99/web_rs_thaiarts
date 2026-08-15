@@ -7,6 +7,8 @@ import { clearStateCookie, frontendBaseUrl, oauthRedirect, readStateCookie } fro
 import { setSessionCookie } from "@/lib/server/sessions";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 
 function frontendPageUrl(path: string): string {
   return `${frontendBaseUrl()}${path}`;

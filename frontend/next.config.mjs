@@ -7,23 +7,6 @@ const baseConfig = {
   experimental: {
     serverComponentsExternalPackages: ["pg", "typeorm"],
   },
-  async rewrites() {
-    const modelServiceUrl = (
-      process.env.MODEL_SERVICE_URL || "http://127.0.0.1:8001"
-    ).replace(/\/+$/, "");
-    return {
-      beforeFiles: [],
-      afterFiles: [],
-      // Application Backend route handlers win first. Unmigrated API paths
-      // retain their public contract through the private service during cutover.
-      fallback: [
-        {
-          source: "/api/:path*",
-          destination: `${modelServiceUrl}/:path*`,
-        },
-      ],
-    };
-  },
 };
 
 /**

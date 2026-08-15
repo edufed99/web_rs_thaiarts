@@ -4,6 +4,8 @@ import { buildDashboardPayload, parseRangeDays } from "@/lib/server/dashboard";
 import { buildDashboardReport } from "@/lib/server/dashboard-export";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 
 /**
  * ``GET /api/metrics/dashboard/export?range=30d`` — styled multi-sheet

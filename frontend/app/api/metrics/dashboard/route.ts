@@ -4,6 +4,8 @@ import { requireAdmin } from "@/lib/server/admin-route";
 import { buildDashboardPayload, parseRangeDays } from "@/lib/server/dashboard";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 
 /**
  * ``GET /api/metrics/dashboard?range=30d`` — full admin dashboard payload

@@ -5,11 +5,11 @@ Instructions and architectural invariants for AI agents working in this reposito
 ## System Architecture
 
 `web_rs_thaiarts` is a production web application for Thai arts and crafts recommendation, consisting of:
-- **Public Application / Application Backend**: Next.js 14 (App Router) + TypeScript + Vanilla CSS (port `3000`). Migrated public routes and PostgreSQL access live here.
-- **Compatibility Backend / future Private Model Service**: FastAPI + Python 3.11/3.12 with Uvicorn (port `8001`). It remains published during the staged transition; a later cutover ticket will make it private.
+- **Application Backend / public API**: Next.js 14 (App Router) + TypeScript + Vanilla CSS (port `3000`). Since issue #10 it is the **only** public surface — auth, sessions, catalogue, media, member journeys, admin management, actions, analytics, recommendations (+ fallback), and Artifact Publication all live here, with PostgreSQL via TypeORM.
+- **Private Model Service**: FastAPI + Python 3.11/3.12 with Uvicorn (port `8001`, internal only). It exposes exactly three authenticated endpoints (`/internal/v1/health`, `/internal/v1/inference`, `/internal/v1/similarity`) behind the Internal Service Credential. The old public FastAPI application was deleted in issue #10 — do not reintroduce public routes into FastAPI.
 - **Database**: PostgreSQL 18 (`postgres:18` Docker image).
 - **Algorithm**: Eligibility-Gated Hybrid Recommender (CBF with multilingual E5 embeddings + CF ItemKNN + Hybrid WeightedSum).
-- **Runtime Design**: Zero runtime CSV reads or Python pipeline runs at request time. FastAPI continues to load pre-generated recommender artifacts under `artifacts/` (`models/` and `outputs/`) while application persistence moves to Next.js/TypeORM.
+- **Runtime Design**: Zero runtime CSV reads or Python pipeline runs at request time. The model service loads pre-generated recommender artifacts under `artifacts/` (`models/` and `outputs/`) once at startup; the browser never talks to it.
 
 ## Environment & Server Deployments
 
@@ -24,8 +24,8 @@ Instructions and architectural invariants for AI agents working in this reposito
      - `postgres_data` (PostgreSQL 18 database files).
      - `uploads_data` (User uploaded media, mounted at `/app/data/uploads`).
 - **Reverse Proxy**: Host IIS maps incoming domain traffic (`http://thaiperform.fed.bpi.ac.th`) to internal containers:
-  - Frontend: `127.0.0.1:3000`
-  - Backend API: `127.0.0.1:8001` (forwarded under `/api/*`)
+  - Web + API: `127.0.0.1:3000` (all of `/api/*`; see `deployment/web.config`)
+  - The Private Model Service (`127.0.0.1:8001`) is **never** exposed by IIS (issue #10)
 
 ### Database Standard: PostgreSQL 18
 - **PostgreSQL Version**: PostgreSQL 18 is required for both local development and remote production (`image: postgres:18`).
@@ -39,9 +39,9 @@ Instructions and architectural invariants for AI agents working in this reposito
 ## Core Invariants
 
 1. **Working Directory Rule**: All new code lives in `C:\Users\Pichaya\Downloads\web_appRS1`. Never touch `../web_appRS/thai_arts_webapp/` (read-only reference).
-2. **Artifact-Driven Serving**: FastAPI loads models from `artifacts/` once during lifespan into the `ArtifactLoader` singleton. Browser code uses same-origin `/api/*` calls through `frontend/lib/api.ts`; Next.js owns migrated routes and uses a server-only compatibility route for endpoints not yet migrated. Browser bundles never receive PostgreSQL or internal-service addresses.
-3. **Database Schema & Migrations**: TypeORM under `frontend/db/` is the schema authority for the Next.js Application Backend and the target architecture. Every schema change uses an explicit TypeORM migration; seed data uses explicit seed commands. Keep `synchronize: false` in every environment. Next.js server startup must never run migrations or seeds. Never create tables manually or introduce `CREATE TABLE IF NOT EXISTS` in service code. Existing Alembic files are historical compatibility references during the transition: do not add new Alembic revisions for application schema.
-4. **Database Drivers**: Next.js uses TypeORM with `pg`. Existing Python compatibility code may continue using synchronous `psycopg` with SQLAlchemy 2.x until its database responsibilities are migrated. Do not introduce `asyncpg`.
+2. **Artifact-Driven Serving**: the Private Model Service loads models from `artifacts/` once during lifespan into the `ArtifactLoader` singleton. Browser code uses same-origin `/api/*` calls through `frontend/lib/api.ts`; server-side route handlers are the only callers of the model service, always with the Internal Service Credential. Browser bundles never receive PostgreSQL or internal-service addresses. There is no compatibility proxy and no Next.js rewrite to a Python origin (issue #10).
+3. **Database Schema & Migrations**: TypeORM under `frontend/db/` is the sole schema authority. Every schema change uses an explicit TypeORM migration; seed data uses explicit seed commands. Keep `synchronize: false` in every environment. Next.js server startup must never run migrations or seeds. Never create tables manually or introduce `CREATE TABLE IF NOT EXISTS` in service code. The Python Alembic layer was removed with the public FastAPI application (issue #10) — do not reintroduce it.
+4. **Database Drivers**: Next.js uses TypeORM with `pg`. The FastAPI process is database-free; do not add SQLAlchemy/psycopg code back to `backend/app/`.
 5. **User Identity & State**: `user_key VARCHAR(150)` identifies users (e.g. `anon:<uuid>` or member profile).
 6. **Dual ID Mapping**: Dual item ID spaces exist: legacy Django ID (1..114) and pipeline artifact stable ID (`stable_id("item", name)`). Always map queries via `items.artifact_item_id` using `app.services.db_query` helpers.
 7. **OAuth Client Separation**: `google_oauth_client.json` is reserved for admin Gmail sending; `google_login_client.json` is reserved for member OpenID Connect sign-in. Never persist access/refresh tokens in query params.
@@ -53,11 +53,12 @@ Instructions and architectural invariants for AI agents working in this reposito
 # Start local PostgreSQL 18
 docker compose up -d postgres
 
-# Run backend (FastAPI on port 8001)
+# Run the Private Model Service (FastAPI on port 8001, internal only)
 cd backend
-uvicorn app.main:app --reload --port 8001
+RECSYS_INTERNAL_SERVICE_SECRET=<long-random-secret> \
+  uvicorn app.private_main:app --reload --port 8001
 
-# Run frontend (Next.js on port 3000)
+# Run the frontend (Next.js on port 3000 — owns the public API + schema)
 cd frontend
 npm run migration:run
 npm run seed

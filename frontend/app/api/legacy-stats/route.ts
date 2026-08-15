@@ -4,6 +4,8 @@ import { apiError } from "@/lib/server/api-response";
 import { legacyStatsBatch } from "@/lib/server/live-stats";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 
 /**
  * ``GET /api/legacy-stats?ids=...`` — batch form of the per-item legacy

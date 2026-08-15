@@ -88,11 +88,6 @@ db/
 ## Environment
 
 - `DATABASE_URL` — PostgreSQL connection used only by Next.js server code.
-- `MODEL_SERVICE_URL` — private compatibility target for API paths that have
-  not moved to the Application Backend yet. Next.js resolves rewrites while
-  building, so container builds pass this as a server-only build argument.
-- `COMPATIBILITY_SERVICE_URL` — runtime target used only when a migrated
-  catalogue route must preserve authenticated member state through FastAPI.
 - `MEDIA_STORE_ROOT` — uploads volume root. Only files directly beneath its
   `items/` and `avatars/` directories are publicly served.
 - `PRIVATE_MODEL_SERVICE_URL` and `MODEL_SERVICE_SHARED_SECRET` — server-only
@@ -137,7 +132,8 @@ entirely by Next.js:
 Anonymous visitors personalize through the opaque `anon:<uuid>` user key;
 session members personalize through `user:<id>`.
 
-Anonymous catalogue reads (`/api/items`, item detail/similar routes,
-`/api/contexts`, and `/api/keywords`) use PostgreSQL through TypeORM.
-Authenticated catalogue requests retain staged FastAPI compatibility until
-server sessions and member state migrate.
+Catalogue reads (`/api/items`, item detail/similar routes, `/api/contexts`,
+and `/api/keywords`) use PostgreSQL through TypeORM. Since issue #10 there
+is no FastAPI compatibility path — the Application Backend is the only
+public API, and the only Python process (the Private Model Service) is
+called server-side with the Internal Service Credential.

@@ -229,7 +229,7 @@ function validateInferenceResponse(
 
 function modelServiceUrl(): string {
   return (
-    process.env.PRIVATE_MODEL_SERVICE_URL || "http://model-service:8001"
+    process.env.PRIVATE_MODEL_SERVICE_URL || "http://backend:8001"
   ).replace(/\/+$/, "");
 }
 

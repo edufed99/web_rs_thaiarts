@@ -161,23 +161,10 @@ def test_inference_rejects_missing_or_invalid_internal_credential(private_client
     assert response.json()["error"]["code"] == "invalid_internal_service_credential"
 
 
-def test_inference_returns_ordered_artifact_ids_and_scores_only(private_client, monkeypatch):
-    """A DB call or browser-facing enrichment would make this contract test fail."""
-    from app.services import db_query
-
-    def db_access_forbidden(*_args, **_kwargs):
-        raise AssertionError("Private Model Service attempted PostgreSQL access")
-
-    for name in (
-        "live_positive_users_per_item_artifact",
-        "live_user_positive_items",
-        "live_user_negative_ratings",
-        "live_user_state_for_items",
-        "live_item_media_for_items",
-    ):
-        if hasattr(db_query, name):
-            monkeypatch.setattr(db_query, name, db_access_forbidden)
-
+def test_inference_returns_ordered_artifact_ids_and_scores_only(private_client):
+    """No DB or browser-facing enrichment exists in this process — the module
+    graph (see ``app/private_main.py``) contains no SQLAlchemy/psycopg code,
+    so an inference response can only carry artifact ids and model scores."""
     response = private_client.post(
         "/internal/v1/inference", json=_request(), headers=_auth()
     )
@@ -239,3 +226,23 @@ def test_private_health_requires_internal_credential(private_client):
     response = private_client.get("/internal/v1/health", headers=_auth())
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+
+
+def test_private_contract_unavailable_when_secret_not_configured(
+    artifacts_dir, monkeypatch
+):
+    """An unset Internal Service Credential disables the private contract
+    (503) instead of silently weakening authentication."""
+    vectors = np.eye(5, dtype=np.float32)
+    np.savez_compressed(artifacts_dir / "models" / "item_embeddings.npz", vectors=vectors)
+    monkeypatch.setenv("RECSYS_ARTIFACT_DIR", str(artifacts_dir))
+    monkeypatch.delenv("RECSYS_INTERNAL_SERVICE_SECRET", raising=False)
+    reset_settings_cache()
+    reset_singleton()
+    private_main = import_module("app.private_main")
+    with TestClient(private_main.create_private_model_app()) as client:
+        response = client.post("/internal/v1/inference", json=_request())
+        assert response.status_code == 503
+        assert response.json()["error"]["code"] == "internal_service_not_configured"
+    reset_singleton()
+    reset_settings_cache()

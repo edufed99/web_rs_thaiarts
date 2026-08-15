@@ -21,7 +21,6 @@ Required layout under ``artifact_dir``::
 from __future__ import annotations
 
 import json
-import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -241,98 +240,6 @@ class ArtifactLoader:
                 f"(looked under {directory})"
             )
 
-    # ---- runtime mutation (admin ingest) ----
-
-    def append_item(
-        self,
-        *,
-        row: Dict[str, Any],
-        embedding: np.ndarray,
-        kw_names: Optional[List[str]] = None,
-        ctx_names: Optional[List[str]] = None,
-        taxonomy_paths: Optional[List[str]] = None,
-    ) -> int:
-        """Append a new item to the in-memory loader. Returns its artifact id.
-
-        The caller (admin ingest orchestrator) is responsible for holding
-        ``get_lock()`` around this call so that concurrent reads see a
-        consistent state. The embedder should run BEFORE acquiring the
-        lock (see ``services.ingestion.ingest_new_item``).
-
-        Updates ``_items``, ``_embeddings``, ``_item_ids``, ``_id_to_row``,
-        ``_cf_item_users`` (initialised to ``[]``) and bumps
-        ``_metadata['item_count']`` + ``_loaded_at``.
-        """
-        if self._items is None or self._embeddings is None:
-            raise ArtifactsNotLoadedError(
-                "Cannot append_item() before load(). Call loader.load() first."
-            )
-        if embedding.ndim != 1:
-            raise ValueError(
-                f"append_item() expects a 1-D embedding, got shape {embedding.shape}"
-            )
-        if embedding.shape[0] != self._embeddings.shape[1]:
-            raise ValueError(
-                f"Embedding dim mismatch: loader has dim {self._embeddings.shape[1]}, "
-                f"new vector has {embedding.shape[0]}"
-            )
-
-        from .services._ids import stable_id  # avoid circular at module top
-
-        name = str(row.get("name", "")).strip()
-        if not name:
-            raise ValueError("append_item() requires row['name'] to be non-empty")
-        aid = int(stable_id("item", name))
-        if aid in self._id_to_row:
-            raise ValueError(
-                f"append_item() duplicate artifact id {aid} for name {name!r}"
-            )
-
-        # Build the new row, normalising list columns to Python lists.
-        kw_names = list(kw_names or [])
-        ctx_names = list(ctx_names or [])
-        taxonomy_paths = list(taxonomy_paths or [])
-        new_row = dict(row)
-        new_row["item_id"] = aid
-        new_row.setdefault("description", "")
-        new_row.setdefault("category_group", "")
-        new_row.setdefault("performance_type", "")
-        new_row.setdefault("performers_count", 0)
-        new_row.setdefault("duration_minutes", 0)
-        new_row.setdefault("price_text", "")
-        new_row.setdefault("is_active", True)
-        new_row["keyword_names"] = list(kw_names)
-        new_row["context_names"] = list(ctx_names)
-        new_row["taxonomy_paths"] = list(taxonomy_paths)
-
-        new_df = pd.DataFrame([new_row])
-        # Align columns with the existing frame so concat works.
-        for col in self._items.columns:
-            if col not in new_df.columns:
-                new_df[col] = [[] if col in {"keyword_names", "context_names", "taxonomy_paths"} else ""]
-        for col in new_df.columns:
-            if col not in self._items.columns:
-                # Append a fresh column to the loader too (preserve dtype if possible).
-                self._items[col] = new_df[col].iloc[0] if len(new_df) == 1 else new_df[col].tolist()
-        self._items = pd.concat([self._items, new_df], ignore_index=True)
-
-        new_idx = len(self._item_ids)
-        self._item_ids.append(aid)
-        self._id_to_row[aid] = new_idx
-        self._embeddings = np.concatenate(
-            [self._embeddings, embedding.reshape(1, -1).astype(np.float32, copy=False)],
-            axis=0,
-        )
-        self._cf_item_users.setdefault(aid, [])
-        self._cf_user_item.setdefault("__new_items__", [])
-        # Note: live users who interact with the new item are merged at read
-        # time via cf_service._merged_cf_index; we don't write static
-        # artifacts to disk for live items.
-        self._metadata["item_count"] = len(self._item_ids)
-        self._loaded_at = datetime.now(timezone.utc).isoformat()
-        return aid
-
-
 def _ensure_list(value):
     """Coerce None / NaN / ndarray to a Python list.
 
@@ -382,18 +289,9 @@ def _load_best_model_config(outputs_dir: Path, metadata: Dict[str, Any]) -> Dict
         return {}
 
 
-# Module-level singleton placeholder. Real instance is created in app.main.
+# Module-level singleton placeholder. Real instance is created in
+# app.private_main (the only ASGI entry point since issue #10).
 _singleton: Optional[ArtifactLoader] = None
-
-# Module-level lock used by the admin ingest slice to serialise mutations
-# against in-flight reads. Use ``with get_lock():`` in callers so reads
-# during an append block until the append commits.
-_loader_lock = threading.Lock()
-
-
-def get_lock() -> threading.Lock:
-    """Return the loader mutation lock. Acquire it before mutating the singleton."""
-    return _loader_lock
 
 
 def set_singleton(loader: ArtifactLoader) -> None:

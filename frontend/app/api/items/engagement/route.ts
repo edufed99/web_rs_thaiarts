@@ -4,6 +4,8 @@ import { apiError } from "@/lib/server/api-response";
 import { engagementForArtifactIds } from "@/lib/server/live-stats";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 
 const RANGE_ALIASES: Record<string, number | undefined> = {
   all: undefined,

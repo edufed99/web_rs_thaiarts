@@ -14,11 +14,14 @@ Before exposing the application to untrusted/public networks:
    resolves the reported advisories.
 2. Repeat `npm audit --omit=dev`, production build, authentication, upload,
    recommendation, and administrator regression tests.
-3. Keep ports 3000, 8001, and 5432 bound to localhost. Publish only HTTPS
-   through the approved IIS reverse proxy/WAF and apply request-size/rate limits.
+3. Since issue #10 the FastAPI process is the Private Model Service only:
+   bind ports 3000 and 5432 to localhost, and do **not** publish port 8001
+   at all — the model service is reachable only by the Application Backend
+   over the loopback interface with the Internal Service Credential. Publish
+   only HTTPS through the approved IIS reverse proxy/WAF and apply
+   request-size/rate limits.
 4. Run both application processes with a dedicated low-privilege service
    account and restrict NTFS access to `.env`, secrets, uploads, and logs.
 
 No real `.env`, OAuth token/client JSON, API key, database password, private
 key, Git history, test cache, or development log is included in the archive.
-

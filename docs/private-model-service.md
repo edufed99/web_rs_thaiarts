@@ -1,15 +1,17 @@
 # Private Model Service v1
 
-The Private Model Service is an internal, artifact-only FastAPI process. It
-does not connect to PostgreSQL, mount `uploads_data`, serve media, or construct
-browser-facing recommendation cards. During the staged migration, the legacy
-FastAPI application remains available separately as the `backend` Compose
-service.
+The Private Model Service is the **only** FastAPI process left in the
+repository (issue #10 retired the public FastAPI application after Next.js
+achieved full application-surface parity). It is an internal, artifact-only
+process: it does not connect to PostgreSQL, mount `uploads_data`, serve
+media, or construct browser-facing responses. The Next.js Application
+Backend is the sole caller, over the internal Docker network.
 
 Set `MODEL_SERVICE_SHARED_SECRET` to a strong, independently generated secret
 in each Compose environment. Compose passes it to the model process as
-`RECSYS_INTERNAL_SERVICE_SECRET`; an empty value leaves both private endpoints
-unavailable. Callers authenticate with:
+`RECSYS_INTERNAL_SERVICE_SECRET`; an empty value leaves the private
+endpoints unavailable (503 `internal_service_not_configured`). Callers
+authenticate with:
 
 ```http
 Authorization: Bearer <shared-secret>

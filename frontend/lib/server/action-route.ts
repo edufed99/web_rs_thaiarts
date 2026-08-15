@@ -15,16 +15,19 @@ export async function actionRoute(
   const { user, body } = authenticated;
   const itemId = Number(body.item_id);
   if (!Number.isSafeInteger(itemId) || itemId <= 0) return apiError(422, "validation_error", "Invalid item id.");
+  // Optional recommendation attribution — persisted when request_id is a
+  // numeric row id so the admin analytics funnel reflects real outcomes.
+  const requestId = typeof body.request_id === "string" ? body.request_id : null;
   if (action === "rate") {
     const rating = Number(body.rating);
     if (!Number.isInteger(rating) || rating < 1 || rating > 5) return apiError(422, "validation_error", "Rating must be between 1 and 5.");
-    const output = await setStateAction(user, itemId, action, rating);
+    const output = await setStateAction(user, itemId, action, rating, requestId);
     return output ? NextResponse.json(output) : apiError(404, "item_not_found", `Item id ${itemId} is not known.`);
   }
   if (action === "view") {
-    const output = await logView(user, itemId);
+    const output = await logView(user, itemId, requestId);
     return output ? NextResponse.json(output) : apiError(404, "item_not_found", `Item id ${itemId} is not known.`);
   }
-  const output = await setStateAction(user, itemId, action);
+  const output = await setStateAction(user, itemId, action, undefined, requestId);
   return output ? NextResponse.json(output) : apiError(404, "item_not_found", `Item id ${itemId} is not known.`);
 }

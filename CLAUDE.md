@@ -161,13 +161,18 @@ recommendations require the session (`401 unauthorized` otherwise).
 | GET  | /api/recommendations/profile | Next.js: session-gated profile recommendations |
 | GET  | /items | Catalog browse (`?search=`, `?context=` ranked mode, `?user_key=`) |
 | GET  | /items/{id} | One item with keywords, contexts, user_state |
+| GET  | /items/{id}/legacy-stats | Legacy interaction count + avg rating (artifact id) |
+| GET  | /items/engagement | Batch live engagement (likes + saves + positive ratings) |
+| GET  | /legacy-stats | Batch form of the per-item legacy stats (`?ids=`, max 200) |
 | GET  | /contexts | List sub-contexts |
 | GET  | /keywords | List keywords (optional `?search=`) |
-| GET  | /metrics | Corpus + CF index stats |
-| GET  | /metrics/requests | Monthly recommendation-request trend (admin) |
-| GET  | /metrics/config | Active recommender config (admin) |
-| GET  | /metrics/dashboard | Admin dashboard payload (14 sections, admin-only JWT) |
-| GET  | /docs, /redoc, /openapi.json | Swagger / ReDoc / schema |
+| GET  | /metrics | Corpus + live-table counts (artifact CF fields zeroed in Next.js) |
+| GET  | /metrics/requests | Monthly recommendation-request trend (anonymous, like legacy) |
+| GET  | /metrics/config | Active recommender config (Next.js: derived from `RECSYS_*` env) |
+| GET  | /metrics/dashboard | Admin dashboard payload (14 sections, admin-only) |
+| GET  | /metrics/analytics | Aggregate admin analytics (funnel, segments, rule insights; admin-only) |
+| GET  | /metrics/dashboard/export | Styled multi-sheet Excel snapshot (admin-only) |
+| GET  | /docs, /redoc, /openapi.json | Swagger / ReDoc / schema (legacy backend only) |
 | POST | /auth/signup, /auth/login | Password accounts → HttpOnly server session cookie |
 | GET/PATCH | /auth/me | Current member (session cookie) |
 | GET  | /auth/google/login/start | Member Google Login: bind PKCE state cookie, 303 to Google |
@@ -242,6 +247,48 @@ migration 0004) — renames never change the identifier. Admin routes are
 enforced server-side (401 anonymous / 403 non-admin) plus the CSRF
 contract for mutations; `lib/server/admin-route.ts` is the shared
 boundary.
+
+### Member and administrator analytics (issue #9)
+
+All analytics journeys now run inside Next.js — the legacy FastAPI
+routes are read-only reference only:
+
+* **Member journeys** (`/api/me/*`): dashboard aggregate, history,
+  summary, liked/saved/rated lists, rating summary, recent views —
+  session-gated (401 anonymous), each member sees only their own rows
+  (`user:<id>` keys; anonymous members are not part of these journeys).
+* **Admin journeys** (`/api/metrics/dashboard`, `/api/metrics/analytics`,
+  `/api/metrics/dashboard/export`): admin-only via `requireAdmin()`
+  (401 anonymous / 403 non-admin). The dashboard payload is the legacy
+  14-section `DashboardOut` built by `lib/server/dashboard.ts` from the
+  TypeORM tables (`recommendation_requests` / `recommendation_results` /
+  `interaction_logs` / `likes` / `saved_items` / `ratings` / `users` /
+  catalogue), the analytics payload by `lib/server/analytics.ts`
+  (funnel + audience segments + deterministic rule insights, `engine:
+  "rules"` — the legacy Gemini rewrite is not re-implemented).
+* **Compatibility endpoints** (`/api/metrics`, `/api/metrics/requests`,
+  `/api/metrics/config`, `/api/items/{id}/legacy-stats`,
+  `/api/items/engagement`, `/api/legacy-stats`): same response shapes as
+  the legacy service. `GET /metrics` returns live table counts; the
+  artifact-owned CF fields (`positive_user_count`,
+  `unique_item_user_edges`, `embedding_dim`, `config_hash`) are zeroed
+  because the Application Backend never opens `artifacts/`. `GET
+  /metrics/config` derives `ModelConfigOut` from `RECSYS_*` env vars
+  (`RECSYS_HYBRID_ALPHA`, `RECSYS_ITEMKNN_K`, `RECSYS_ITEMKNN_SHRINK`,
+  `RECSYS_CBF_KEYWORD_BOOST`, `RECSYS_POSITIVE_THRESHOLD`,
+  `RECSYS_E5_MODEL`).
+* **Legacy-only tables**: `legacy_interactions` (points KPI,
+  legacy-stats) and `evaluation_runs` (model quality) are read through
+  guarded raw queries — when the table does not exist (fresh
+  deployments) the sections degrade to zeros / `unavailable`, never 500.
+* **Request attribution**: member actions and views sent with a numeric
+  `request_id` persist `interaction_logs.recommendation_request_id`, so
+  the analytics funnel reflects real recommendation outcomes
+  (`persistedRequestId` in `lib/server/members.ts`).
+* **Export**: the Excel report (`lib/server/dashboard-export.ts`,
+  exceljs) keeps the legacy sheet layout and data tables; embedded
+  openpyxl charts are deliberately not re-created (documented in the
+  workbook's readme sheet).
 
 ## Conventions
 

@@ -20,12 +20,14 @@
     "test:catalogue": "node --test tests/catalogue.test.mjs",
     "test:members": "node --test tests/members.test.mjs",
     "test:admin": "node --test tests/admin.test.mjs",
+    "test:analytics": "node --test tests/analytics.test.mjs",
     "test:deployment": "node --test tests/deployment-routing.test.mjs",
     "test:e2e": "playwright test",
     "test:e2e:list": "playwright test --list"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",
+    "exceljs": "^4.4.0",
     "jose": "^5.9.6",
     "next": "^14.2.35",
     "nodemailer": "^6.9.16",

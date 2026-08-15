@@ -4,7 +4,7 @@ import { test } from "node:test";
 
 const deploymentRoot = new URL("../../deployment/", import.meta.url);
 
-test("IIS routes only migrated catalogue and media paths to Next.js before compatibility", async () => {
+test("IIS routes only migrated API paths to Next.js before compatibility", async () => {
   const config = await readFile(new URL("web.config", deploymentRoot), "utf8");
   const rules = [...config.matchAll(/<rule name="([^"]+)"[\s\S]*?<match url="([^"]+)"[\s\S]*?<action [^>]*url="([^"]+)"[^>]*\/>[\s\S]*?<\/rule>/g)]
     .map((match) => ({ name: match[1], pattern: new RegExp(match[2]), target: match[3] }))
@@ -16,6 +16,7 @@ test("IIS routes only migrated catalogue and media paths to Next.js before compa
   }
 
   for (const migratedPath of [
+    "api/health",
     "api/items",
     "api/items/batch",
     "api/items/168393376",

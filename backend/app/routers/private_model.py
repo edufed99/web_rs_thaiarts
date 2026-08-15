@@ -11,8 +11,15 @@ from ..core.exceptions import (
     InvalidInternalServiceCredentialError,
 )
 from ..model_loader import ArtifactLoader, get_singleton
-from ..schemas.inference import InferenceRequest, InferenceResponse, PrivateHealthResponse
+from ..schemas.inference import (
+    InferenceRequest,
+    InferenceResponse,
+    PrivateHealthResponse,
+    SimilarityRequest,
+    SimilarityResponse,
+)
 from ..services.model_inference import score_inference
+from ..services.model_similarity import rank_similar_items
 
 
 def require_internal_service_credential(
@@ -61,3 +68,11 @@ def inference(
     settings: Settings = Depends(get_settings),
 ) -> InferenceResponse:
     return score_inference(loader, request, settings)
+
+
+@router.post("/similarity", response_model=SimilarityResponse)
+def similarity(
+    request: SimilarityRequest,
+    loader: ArtifactLoader = Depends(get_singleton),
+) -> SimilarityResponse:
+    return rank_similar_items(loader, request)

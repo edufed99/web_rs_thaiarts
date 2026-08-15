@@ -98,6 +98,40 @@ class InferenceResponse(BaseModel):
     ranked_candidates: list[RankedCandidate]
 
 
+class SimilarityRequest(BaseModel):
+    """Artifact-only request for item-to-item similarity ranking."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reference_artifact_item_id: ArtifactItemId
+    candidate_artifact_item_ids: list[ArtifactItemId] = Field(
+        min_length=1, max_length=1000
+    )
+    limit: int = Field(default=4, ge=1, le=20)
+
+    @field_validator("candidate_artifact_item_ids")
+    @classmethod
+    def validate_unique_candidate_ids(cls, values: list[int]) -> list[int]:
+        if len(set(values)) != len(values):
+            raise ValueError("candidate_artifact_item_ids must be unique")
+        return values
+
+
+class SimilarityCandidate(BaseModel):
+    """One ranked artifact identity and its item-similarity score."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    artifact_item_id: ArtifactItemId
+    score: float
+
+
+class SimilarityResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ranked_candidates: list[SimilarityCandidate]
+
+
 class PrivateHealthResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { apiError, internalApiError } from "@/lib/server/api-response";
 import { getSimilarItems } from "@/lib/server/catalogue";
 import { catalogueCompatibilityResponse } from "@/lib/server/compatibility";
+import { ModelServiceUnavailableError } from "@/lib/server/model-service";
 import { integerInRange } from "@/lib/server/request-values";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +34,10 @@ export async function GET(
       });
     }
     return NextResponse.json(result);
-  } catch {
+  } catch (error) {
+    if (error instanceof ModelServiceUnavailableError) {
+      return apiError(503, "model_service_unavailable", error.message);
+    }
     return internalApiError();
   }
 }

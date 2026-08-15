@@ -1,0 +1,50 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { test } from "node:test";
+
+const deploymentRoot = new URL("../../deployment/", import.meta.url);
+
+test("IIS routes only migrated catalogue and media paths to Next.js before compatibility", async () => {
+  const config = await readFile(new URL("web.config", deploymentRoot), "utf8");
+  const rules = [...config.matchAll(/<rule name="([^"]+)"[\s\S]*?<match url="([^"]+)"[\s\S]*?<action [^>]*url="([^"]+)"[^>]*\/>[\s\S]*?<\/rule>/g)]
+    .map((match) => ({ name: match[1], pattern: new RegExp(match[2]), target: match[3] }))
+    .filter((rule) => rule.name.includes("ThaiArtsRecommender"));
+
+  function selectedPort(path) {
+    const rule = rules.find((candidate) => candidate.pattern.test(path));
+    return rule?.target.includes(":3000") ? 3000 : rule?.target.includes(":8001") ? 8001 : undefined;
+  }
+
+  for (const migratedPath of [
+    "api/items",
+    "api/items/batch",
+    "api/items/168393376",
+    "api/items/168393376/similar",
+    "api/contexts",
+    "api/keywords",
+    "api/uploads/items/cover.jpg",
+    "api/uploads/items",
+    "api/uploads/avatars/member.png",
+  ]) {
+    assert.equal(selectedPort(migratedPath), 3000, migratedPath);
+  }
+
+  for (const compatibilityPath of [
+    "api/items/engagement",
+    "api/items/168393376/legacy-stats",
+    "api/recommendations",
+    "api/auth/login",
+  ]) {
+    assert.equal(selectedPort(compatibilityPath), 8001, compatibilityPath);
+  }
+});
+
+test("Next.js mounts the shared uploads volume read-only in both Compose topologies", async () => {
+  for (const filename of ["../docker-compose.yml", "docker-compose.prod.yml"]) {
+    const compose = await readFile(new URL(filename, deploymentRoot), "utf8");
+    const frontend = compose.match(
+      /\n  frontend:\r?\n([\s\S]*?)(?=\n  [a-z][a-z-]*:\r?\n|\nvolumes:)/,
+    )?.[1] ?? "";
+    assert.match(frontend, /uploads_data:\/app\/data\/uploads:ro/);
+  }
+});

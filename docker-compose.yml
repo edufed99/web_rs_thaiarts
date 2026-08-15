@@ -84,8 +84,10 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-web_rs_thaiarts}
       COMPATIBILITY_SERVICE_URL: http://backend:8001
       MEDIA_STORE_ROOT: /app/data/uploads
+      PRIVATE_MODEL_SERVICE_URL: http://model-service:8001
+      MODEL_SERVICE_SHARED_SECRET: ${MODEL_SERVICE_SHARED_SECRET:-}
     volumes:
-      - uploads_data:/app/data/uploads
+      - uploads_data:/app/data/uploads:ro
     ports:
       - "3000:3000"
 

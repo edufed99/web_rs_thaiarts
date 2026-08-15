@@ -95,6 +95,9 @@ db/
   catalogue route must preserve authenticated member state through FastAPI.
 - `MEDIA_STORE_ROOT` — uploads volume root. Only files directly beneath its
   `items/` and `avatars/` directories are publicly served.
+- `PRIVATE_MODEL_SERVICE_URL` and `MODEL_SERVICE_SHARED_SECRET` — server-only
+  endpoint and Internal Service Credential used for artifact-ranked similar
+  items. The browser receives only enriched catalogue responses.
 
 None of these values is public browser configuration.
 

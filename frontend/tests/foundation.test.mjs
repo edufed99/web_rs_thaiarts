@@ -134,6 +134,7 @@ test("an empty development database is rebuilt from migrations and seed data", a
     assert.deepEqual(migrations.rows, [
       { name: "CreateApplicationStatus1723708800000" },
       { name: "CreateCatalogue1786766400000" },
+      { name: "ProtectArtifactItemId1786766500000" },
     ]);
   } finally {
     await client.end();

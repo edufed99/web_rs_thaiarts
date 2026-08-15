@@ -15,7 +15,6 @@ Two list modes:
 from __future__ import annotations
 
 import hashlib
-import math
 import threading
 import time
 from typing import Any, List, Optional
@@ -35,6 +34,7 @@ from ..services._ids import stable_id
 from ..services.db_query import live_item_engagement, live_user_state_for_items
 from ..services.eligibility import context_name_for_id
 from ..services.suitability import catalog_match_percent, suitability_label
+from ..services.model_similarity import artifact_similarity_score
 from ._user_key import get_current_user_dep, resolve_user_key
 
 
@@ -391,33 +391,7 @@ def _similarity_rows(loader: ArtifactLoader) -> list[dict[str, Any]]:
 
 
 def _similarity_score(loader: ArtifactLoader, reference: dict[str, Any], candidate: dict[str, Any]) -> float:
-    ref_id = int(reference["item_id"])
-    candidate_id = int(candidate["item_id"])
-    embedding_score = 0.0
-    try:
-        ref_embedding = loader.embedding_for(ref_id)
-        candidate_embedding = loader.embedding_for(candidate_id)
-        if ref_embedding is not None and candidate_embedding is not None:
-            dot = float(sum(float(a) * float(b) for a, b in zip(ref_embedding, candidate_embedding)))
-            ref_norm = math.sqrt(sum(float(v) ** 2 for v in ref_embedding))
-            candidate_norm = math.sqrt(sum(float(v) ** 2 for v in candidate_embedding))
-            if ref_norm and candidate_norm:
-                embedding_score = max(0.0, min(1.0, (dot / (ref_norm * candidate_norm) + 1.0) / 2.0))
-    except (KeyError, TypeError, ValueError):
-        embedding_score = 0.0
-
-    def jaccard(left: Any, right: Any) -> float:
-        a = {str(value) for value in (left or []) if value}
-        b = {str(value) for value in (right or []) if value}
-        return len(a & b) / len(a | b) if a or b else 0.0
-
-    keyword_score = jaccard(reference.get("keyword_names"), candidate.get("keyword_names"))
-    context_score = jaccard(reference.get("context_names"), candidate.get("context_names"))
-    category_score = float(
-        bool(reference.get("category_group"))
-        and str(reference.get("category_group")) == str(candidate.get("category_group"))
-    )
-    return 0.70 * embedding_score + 0.15 * keyword_score + 0.10 * context_score + 0.05 * category_score
+    return artifact_similarity_score(loader, reference, candidate)
 
 
 def _search_terms(search: Optional[str]) -> list[str]:

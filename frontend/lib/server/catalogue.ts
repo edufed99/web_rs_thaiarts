@@ -21,6 +21,7 @@ import {
   type ItemKeywordLink,
   type TaxonomyNode,
 } from "@/db/entities/Catalogue";
+import { rankSimilarArtifactIds } from "@/lib/server/model-service";
 
 interface CatalogueSnapshot {
   items: CatalogueItem[];
@@ -109,25 +110,21 @@ export async function getSimilarItems(
   const snapshot = await loadSnapshot();
   const reference = activeItemByArtifactId(snapshot, artifactItemId);
   if (!reference) return undefined;
-
-  const referenceMetadata = itemMetadata(snapshot, reference);
-  const items = snapshot.items
+  const candidates = snapshot.items
     .filter(
       (candidate) =>
         candidate.isActive && numberOf(candidate.artifactItemId) !== artifactItemId,
-    )
-    .map((candidate) => ({
-      candidate,
-      score: metadataSimilarity(referenceMetadata, itemMetadata(snapshot, candidate)),
-    }))
-    .sort(
-      (left, right) =>
-        right.score - left.score ||
-        left.candidate.name.localeCompare(right.candidate.name, "th") ||
-        numberOf(left.candidate.artifactItemId) - numberOf(right.candidate.artifactItemId),
-    )
-    .slice(0, limit)
-    .map(({ candidate }) => toItemOut(snapshot, candidate));
+    );
+  const candidateIds = candidates.map((candidate) => numberOf(candidate.artifactItemId));
+  const rankedIds = await rankSimilarArtifactIds({
+    referenceArtifactItemId: artifactItemId,
+    candidateArtifactItemIds: candidateIds,
+    limit,
+  });
+  const byArtifactId = new Map(
+    candidates.map((candidate) => [numberOf(candidate.artifactItemId), candidate]),
+  );
+  const items = rankedIds.map((rankedId) => toItemOut(snapshot, byArtifactId.get(rankedId)!));
   return { items, total: items.length };
 }
 
@@ -272,15 +269,6 @@ function taxonomyPath(nodes: TaxonomyNode[], rawNodeId: number | null): string {
   return names.join(" > ");
 }
 
-function itemMetadata(snapshot: CatalogueSnapshot, item: CatalogueItem) {
-  const itemId = numberOf(item.id);
-  return {
-    category: item.categoryGroup,
-    contexts: linkedIds(snapshot.itemContexts, itemId, "contextId"),
-    keywords: linkedIds(snapshot.itemKeywords, itemId, "keywordId"),
-  };
-}
-
 function activeItemByArtifactId(
   snapshot: CatalogueSnapshot,
   artifactItemId: number,
@@ -320,25 +308,6 @@ function activeItemCountForContext(
   return new Set(
     [...itemIdsForContext(snapshot, contextId)].filter((itemId) => activeItemIds.has(itemId)),
   ).size;
-}
-
-function metadataSimilarity(
-  left: ReturnType<typeof itemMetadata>,
-  right: ReturnType<typeof itemMetadata>,
-): number {
-  return (
-    0.45 * jaccard(left.keywords, right.keywords) +
-    0.35 * jaccard(left.contexts, right.contexts) +
-    0.2 * Number(Boolean(left.category) && left.category === right.category)
-  );
-}
-
-function jaccard(left: Set<number>, right: Set<number>): number {
-  const union = new Set([...left, ...right]);
-  if (union.size === 0) return 0;
-  let intersection = 0;
-  for (const value of left) if (right.has(value)) intersection += 1;
-  return intersection / union.size;
 }
 
 function searchTerms(search?: string): string[] {

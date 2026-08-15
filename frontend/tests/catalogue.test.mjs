@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
@@ -24,6 +25,8 @@ const imageBytes = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
 
 let mediaRoot;
 let server;
+let modelServer;
+let modelServiceUrl;
 
 async function resetTestDatabase({ create }) {
   const client = new Client({ connectionString: adminUrl });
@@ -114,7 +117,9 @@ async function seedCatalogue() {
           'โขน', 'การแสดง', 12, 45, 'ติดต่อสอบถาม',
           '/uploads/items/catalog.jpg', '', TRUE),
          (42, 900002, 'โขนใกล้เคียง', 'การแสดงที่มีข้อมูลใกล้เคียงกัน',
-          'โขน', 'การแสดง', 10, 30, '', '', '', TRUE)`,
+          'โขน', 'การแสดง', 10, 30, '', '', '', TRUE),
+         (43, 900003, 'ลิเกจากโมเดล', 'ตัวเลือกที่โมเดลจัดไว้ก่อน',
+          'ลิเก', 'การแสดง', 8, 25, '', '', '', TRUE)`,
       [artifactItemId],
     );
     await client.query(
@@ -130,6 +135,28 @@ async function seedCatalogue() {
   }
 }
 
+async function startModelServer() {
+  modelServer = createServer(async (request, response) => {
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    assert.equal(request.url, "/internal/v1/similarity");
+    assert.equal(request.headers.authorization, "Bearer catalogue-test-secret");
+    assert.equal(body.reference_artifact_item_id, artifactItemId);
+    assert.deepEqual(body.candidate_artifact_item_ids, [900002, 900003]);
+    response.writeHead(200, { "Content-Type": "application/json" });
+    response.end(JSON.stringify({
+      ranked_candidates: [
+        { artifact_item_id: 900003, score: 0.91 },
+        { artifact_item_id: 900002, score: 0.72 },
+      ],
+    }));
+  });
+  await new Promise((resolve) => modelServer.listen(0, "127.0.0.1", resolve));
+  const address = modelServer.address();
+  modelServiceUrl = `http://127.0.0.1:${address.port}`;
+}
+
 before(async () => {
   await resetTestDatabase({ create: true });
   mediaRoot = await mkdtemp(join(tmpdir(), "thaiarts-media-"));
@@ -139,6 +166,7 @@ before(async () => {
   await writeFile(join(mediaRoot, "items", "catalog.jpg"), imageBytes);
   await writeFile(join(mediaRoot, "avatars", "member.png"), Buffer.from("avatar"));
   await writeFile(join(mediaRoot, "private", "secret.txt"), "not public");
+  await startModelServer();
 
   const migrated = await runNpm(["run", "migration:run"], {
     DATABASE_URL: databaseUrl.toString(),
@@ -160,6 +188,8 @@ before(async () => {
       MEDIA_STORE_ROOT: mediaRoot,
       MODEL_SERVICE_URL: "http://127.0.0.1:9",
       COMPATIBILITY_SERVICE_URL: "http://127.0.0.1:9",
+      PRIVATE_MODEL_SERVICE_URL: modelServiceUrl,
+      MODEL_SERVICE_SHARED_SECRET: "catalogue-test-secret",
     },
     stdio: "ignore",
   });
@@ -168,6 +198,7 @@ before(async () => {
 
 after(async () => {
   await stopServer();
+  if (modelServer) await new Promise((resolve) => modelServer.close(resolve));
   if (mediaRoot) await rm(mediaRoot, { recursive: true, force: true });
   await resetTestDatabase({ create: false });
 });
@@ -219,7 +250,27 @@ test("anonymous visitors browse catalogue, discovery facets, and item detail thr
   const similar = await fetch(`${baseUrl}/api/items/${artifactItemId}/similar?limit=4`).then(
     (response) => response.json(),
   );
-  assert.deepEqual(similar.items.map((item) => item.id), [900002]);
+  assert.deepEqual(similar.items.map((item) => item.id), [900003, 900002]);
+});
+
+test("media rejects a symlink that escapes its selected public directory", async (t) => {
+  try {
+    await symlink(
+      join(mediaRoot, "avatars", "member.png"),
+      join(mediaRoot, "items", "avatar-link.png"),
+      "file",
+    );
+  } catch (error) {
+    if (["EPERM", "EACCES", "ENOTSUP"].includes(error?.code)) {
+      t.skip(`symlink creation is unavailable: ${error.code}`);
+      return;
+    }
+    throw error;
+  }
+
+  const response = await fetch(`${baseUrl}/api/uploads/items/avatar-link.png`);
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error.code, "unsafe_media_path");
 });
 
 test("unknown catalogue resources preserve stable public 404 behavior", async () => {
@@ -246,6 +297,23 @@ test("renaming a database item does not change its immutable Artifact Item Ident
   const item = await response.json();
   assert.equal(item.id, artifactItemId);
   assert.equal(item.name, "โขนเปลี่ยนชื่อ");
+});
+
+test("PostgreSQL rejects mutation of an established Artifact Item Identifier", async () => {
+  const client = new Client({ connectionString: databaseUrl.toString() });
+  await client.connect();
+  try {
+    await assert.rejects(
+      client.query("UPDATE items SET artifact_item_id = 777777777 WHERE id = 41"),
+      (error) => error?.code === "23514" && /immutable/i.test(error.message),
+    );
+  } finally {
+    await client.end();
+  }
+
+  const response = await fetch(`${baseUrl}/api/items/${artifactItemId}`);
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).id, artifactItemId);
 });
 
 test("catalogue and avatar media are served while unsafe paths and arbitrary files are rejected", async () => {

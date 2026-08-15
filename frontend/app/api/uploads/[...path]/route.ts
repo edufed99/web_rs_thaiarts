@@ -32,17 +32,22 @@ export async function GET(
   const root = resolve(
     process.env.MEDIA_STORE_ROOT || resolve(process.cwd(), "data", "uploads"),
   );
-  const candidate = resolve(root, ...safePath);
-  if (!isWithin(root, candidate)) {
+  const selectedDirectory = resolve(root, safePath[0]);
+  const candidate = resolve(selectedDirectory, safePath[1]);
+  if (!isWithin(root, selectedDirectory) || !isWithin(selectedDirectory, candidate)) {
     return apiError(400, "unsafe_media_path", "Media path is not allowed.");
   }
 
   try {
-    const [rootRealPath, candidateRealPath] = await Promise.all([
+    const [rootRealPath, selectedDirectoryRealPath, candidateRealPath] = await Promise.all([
       realpath(root),
+      realpath(selectedDirectory),
       realpath(candidate),
     ]);
-    if (!isWithin(rootRealPath, candidateRealPath)) {
+    if (
+      !isWithin(rootRealPath, selectedDirectoryRealPath) ||
+      !isWithin(selectedDirectoryRealPath, candidateRealPath)
+    ) {
       return apiError(400, "unsafe_media_path", "Media path is not allowed.");
     }
     const metadata = await stat(candidateRealPath);

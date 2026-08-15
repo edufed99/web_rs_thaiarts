@@ -19,13 +19,16 @@
     "test:foundation": "node --test tests/foundation.test.mjs",
     "test:catalogue": "node --test tests/catalogue.test.mjs",
     "test:members": "node --test tests/members.test.mjs",
+    "test:admin": "node --test tests/admin.test.mjs",
     "test:deployment": "node --test tests/deployment-routing.test.mjs",
     "test:e2e": "playwright test",
     "test:e2e:list": "playwright test --list"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",
+    "jose": "^5.9.6",
     "next": "^14.2.35",
+    "nodemailer": "^6.9.16",
     "pg": "^8.23.0",
     "react": "18.3.1",
     "react-dom": "18.3.1",
@@ -36,6 +39,7 @@
   "devDependencies": {
     "@playwright/test": "^1.55.1",
     "@types/node": "20.14.10",
+    "@types/nodemailer": "^6.4.16",
     "@types/pg": "^8.21.0",
     "@types/react": "18.3.3",
     "@types/react-dom": "18.3.0",

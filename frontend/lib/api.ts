@@ -39,28 +39,30 @@ import type {
   MemberDashboardOut,
   MemberProfileOut,
   MemberProfileUpdate,
-  RatedItemsOut,
-  RatingSummaryOut,
-  RecentViewsOut,
-  SavedItemsOut,
-  UserSummaryOut,
-  LegacyStatsOut,
-  MetricsOut,
-  ModelConfigOut,
   PasswordResetConfirm,
   PasswordResetConfirmOut,
   PasswordResetRequest,
   PasswordResetRequestOut,
   ProfileRecommendationResponseOut,
+  PublicationExecuteOut,
+  PublicationStatusOut,
+  RatedItemsOut,
+  RatingSummaryOut,
+  RecentViewsOut,
   RecommendationRequestIn,
   RecommendationResponseOut,
   RequestTrendOut,
+  SavedItemsOut,
   TokenOut,
   UserLogin,
   UserOut,
   UserProfileUpdate,
   UserSignup,
+  UserSummaryOut,
   ViewRequestIn,
+  LegacyStatsOut,
+  MetricsOut,
+  ModelConfigOut,
 } from "./types";
 
 import { getAuthHeaders } from "./auth";
@@ -629,25 +631,13 @@ export async function patchMe(body: UserProfileUpdate): Promise<UserOut> {
 export async function postPasswordResetRequest(
   body: PasswordResetRequest,
 ): Promise<PasswordResetRequestOut> {
-  const res = await fetch(`${baseUrl()}/auth/password-reset/request`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
-  return handle<PasswordResetRequestOut>(res);
+  return mutateJson("/auth/password-reset/request", "POST", body);
 }
 
 export async function postPasswordResetConfirm(
   body: PasswordResetConfirm,
 ): Promise<PasswordResetConfirmOut> {
-  const res = await fetch(`${baseUrl()}/auth/password-reset/confirm`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
-  return handle<PasswordResetConfirmOut>(res);
+  return mutateJson("/auth/password-reset/confirm", "POST", body);
 }
 
 export async function getGmailOAuthStatus(): Promise<GmailOAuthStatusOut> {
@@ -661,7 +651,8 @@ export async function getGmailOAuthStatus(): Promise<GmailOAuthStatusOut> {
 export async function startGmailOAuth(): Promise<GmailOAuthStartOut> {
   const res = await fetch(`${baseUrl()}/admin/gmail-oauth/start`, {
     method: "POST",
-    headers: { ...getAuthHeaders() },
+    headers: mutationHeaders({ ...getAuthHeaders() }),
+    credentials: "same-origin",
     cache: "no-store",
   });
   return handle<GmailOAuthStartOut>(res);
@@ -806,6 +797,41 @@ export async function uploadItemVideo(
     cache: "no-store",
   });
   return handle<ItemVideoUploadOut>(res);
+}
+
+/**
+ * Current Artifact Publication state (issue #8): the latest recorded
+ * build, pending catalogue rows, and the Private Model Service's own
+ * artifact report. Admin-only.
+ */
+export async function getPublicationStatus(): Promise<PublicationStatusOut> {
+  const res = await fetch(`${baseUrl()}/admin/publication`, {
+    headers: { ...getAuthHeaders() },
+    cache: "no-store",
+  });
+  return handle<PublicationStatusOut>(res);
+}
+
+/**
+ * Execute an explicit Artifact Publication (issue #8). Requires admin;
+ * fails with 503 when the Private Model Service is unreachable. On
+ * success every pending catalogue row becomes covered by the recorded
+ * build and re-enters personalized scoring.
+ */
+export async function executePublication(
+  note?: string,
+): Promise<PublicationExecuteOut> {
+  const res = await fetch(`${baseUrl()}/admin/publication`, {
+    method: "POST",
+    headers: mutationHeaders({
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+    }),
+    credentials: "same-origin",
+    body: JSON.stringify({ note: note ?? "" }),
+    cache: "no-store",
+  });
+  return handle<PublicationExecuteOut>(res);
 }
 
 export function getBaseUrl(): string {

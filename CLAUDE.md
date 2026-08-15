@@ -168,6 +168,25 @@ recommendations require the session (`401 unauthorized` otherwise).
 | GET  | /metrics/config | Active recommender config (admin) |
 | GET  | /metrics/dashboard | Admin dashboard payload (14 sections, admin-only JWT) |
 | GET  | /docs, /redoc, /openapi.json | Swagger / ReDoc / schema |
+| POST | /auth/signup, /auth/login | Password accounts → HttpOnly server session cookie |
+| GET/PATCH | /auth/me | Current member (session cookie) |
+| GET  | /auth/google/login/start | Member Google Login: bind PKCE state cookie, 303 to Google |
+| GET  | /auth/google/login/callback | Google Login redirect terminates here (Next.js): verify ID token, issue server session, 303 to /auth/google/callback |
+| POST | /auth/google/login/exchange | JSON Google Login exchange (`{code, state}`) → session cookie |
+| POST | /auth/password-reset/request | Email a one-time reset link (Gmail API or SMTP) |
+| POST | /auth/password-reset/confirm | Consume token once, change password, revoke all sessions |
+| GET  | /admin/gmail-oauth/status | Admin-only Gmail sender setup state |
+| POST | /admin/gmail-oauth/start | Admin-only: create consent URL + state cookie |
+| GET  | /admin/gmail-oauth/callback | Admin Gmail sender redirect terminates here (Next.js), persists refresh token |
+| GET,POST | /api/admin/users | List / create users (admin session) |
+| PUT,DELETE | /api/admin/users/{id} | Update / delete users (self-guards) |
+| POST | /api/admin/items/draft | Layer A keyword grounding for the create journey |
+| POST | /api/admin/items | Create a catalogue item from a grounded draft |
+| GET  | /api/admin/items/facets | Distinct category / performance values (form dropdowns) |
+| PUT,DELETE | /api/admin/items/{artifactId} | Edit / delete a catalogue item (artifact id immutable) |
+| POST | /api/admin/items/{artifactId}/image | Cover image upload (magic-byte sniffed, max 5 MB) |
+| POST | /api/admin/items/{artifactId}/video | Video upload (magic-byte sniffed, max 100 MB) |
+| GET,POST | /api/admin/publication | Artifact Publication status / execution |
 
 Every endpoint has `summary` + `description` in Swagger.
 
@@ -195,12 +214,44 @@ items sorted by `match_percent` desc, mirroring the legacy
 `catalog.views.item_list` ranked behaviour. `limit` and `offset` are
 ignored in this mode. `404 context_not_found` if the id is unknown.
 
+### Artifact Publication (issue #8)
+
+The offline pipeline (`pipelines/train_or_generate_artifacts.py`)
+rebuilds artifacts from the catalogue; the Private Model Service scores
+from those artifacts. An **explicit Artifact Publication** is the
+workflow that declares when changed catalogue data may re-enter
+personalized ranking:
+
+* Every successful admin mutation (create / update / delete / media)
+  marks the row `items.published_at = NULL` — the edit is **immediately
+  visible in browsing** (`GET /items`, `GET /items/{id}`) but the row is
+  excluded from model-service scoring (similarity candidates, and
+  recommendation eligibility) until a publication succeeds.
+* `GET /api/admin/publication` (admin) reports the latest recorded
+  build, the pending rows, and the Private Model Service's own artifact
+  report (`/internal/v1/health`).
+* `POST /api/admin/publication` (admin) records an
+  `artifact_publications` audit row (build id, coverage count, acting
+  admin, note) and marks every pending row published. It fails with
+  `503 model_service_unavailable` when the model service is unreachable.
+
+The recorded build identity comes from the model service's health
+report, so a publication can never claim a build the scoring process is
+not serving. `items.artifact_item_id` stays immutable (DB trigger,
+migration 0004) — renames never change the identifier. Admin routes are
+enforced server-side (401 anonymous / 403 non-admin) plus the CSRF
+contract for mutations; `lib/server/admin-route.ts` is the shared
+boundary.
+
 ## Conventions
 
 - Python: UTF-8 module docstrings matching legacy style.
 - TypeScript: strict mode (see `tsconfig.json`).
 - All configuration via env vars: `RECSYS_*` for backend, `NEXT_PUBLIC_*`
-  for frontend (only `NEXT_PUBLIC_API_BASE_URL` currently).
+  for frontend (only `NEXT_PUBLIC_API_BASE_URL` currently), plus server-only
+  frontend vars documented in `frontend/.env.example` (`GOOGLE_LOGIN_*`,
+  `GMAIL_OAUTH_*`, `SMTP_*`, `FRONTEND_BASE_URL`, `PASSWORD_RESET_TOKEN_MINUTES`,
+  `OAUTH_STATE_SECRET`).
 - Tests use the `artifacts_dir` / `loader` / `client` fixtures in
   `backend/tests/conftest.py`. They build a synthetic 5-item corpus in
   `tmp_path` so tests don't need real CSVs.

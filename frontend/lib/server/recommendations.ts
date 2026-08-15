@@ -31,9 +31,9 @@ import {
   CatalogueSnapshot,
   eligibleItemsForContext,
   keywordOut,
-  loadSnapshot,
+  loadCatalogueSnapshot,
   stableId,
-  toItemOut,
+  catalogueItemOut,
 } from "@/lib/server/catalogue";
 import {
   ModelServiceUnavailableError,
@@ -110,7 +110,7 @@ const PROFILE_FALLBACK_EXPLANATION =
 export async function generateRecommendations(
   input: RecommendationRequestInput,
 ): Promise<RecommendationResponseOut> {
-  const snapshot = await loadSnapshot();
+  const snapshot = await loadCatalogueSnapshot();
   const context = snapshot.contexts.find(
     (row) => stableId("context", row.name) === input.contextId,
   );
@@ -313,7 +313,7 @@ export async function generateProfileRecommendations(
   topK: number,
 ): Promise<ProfileRecommendationResponseOut> {
   const userKeyValue = `user:${Number(user.id)}`;
-  const snapshot = await loadSnapshot();
+  const snapshot = await loadCatalogueSnapshot();
   const personalization = await livePersonalization(userKeyValue);
   const historyCount = personalization.history_artifact_ids.size;
 
@@ -451,7 +451,7 @@ function buildResultRow(
   historyEvidence: HistoryEvidence,
   rank: number,
 ): RecommendationResultOut {
-  const itemOut = toItemOut(snapshot, item);
+  const itemOut = catalogueItemOut(snapshot, item);
   const itemKeywordNames = itemOut.keywords.map((keyword) => keyword.name);
   const matched = selectedKeywordNames.filter((name) => itemKeywordNames.includes(name));
   const historyReason =
@@ -485,7 +485,7 @@ function profileResultRow(
   overrideExplanation: string,
   rank: number,
 ): RecommendationResultOut {
-  const itemOut = toItemOut(snapshot, item);
+  const itemOut = catalogueItemOut(snapshot, item);
   return {
     rank,
     item: withUserState(itemOut, personalization.user_state_by_artifact.get(Number(item.artifactItemId))),
@@ -500,9 +500,9 @@ function profileResultRow(
 }
 
 function withUserState(
-  itemOut: ReturnType<typeof toItemOut>,
+  itemOut: ReturnType<typeof catalogueItemOut>,
   state: UserState | undefined,
-): ReturnType<typeof toItemOut> {
+): ReturnType<typeof catalogueItemOut> {
   return state ? { ...itemOut, user_state: state } : itemOut;
 }
 
@@ -526,7 +526,7 @@ async function fallbackRanking(
   );
   return eligible
     .map((item) => {
-      const itemOut = toItemOut(snapshot, item);
+      const itemOut = catalogueItemOut(snapshot, item);
       return {
         itemOut,
         engagement: engagement.get(Number(item.id)) ?? 0,
@@ -803,8 +803,8 @@ function categoryGroupPhrase(category: string): string {
 
 // fallow-ignore-next-line complexity -- Engagement, suitability hint, and name form the documented fallback ordering.
 function byEngagementThenSuitability(
-  left: { itemOut: ReturnType<typeof toItemOut>; engagement: number },
-  right: { itemOut: ReturnType<typeof toItemOut>; engagement: number },
+  left: { itemOut: ReturnType<typeof catalogueItemOut>; engagement: number },
+  right: { itemOut: ReturnType<typeof catalogueItemOut>; engagement: number },
 ): number {
   return (
     right.engagement - left.engagement ||

@@ -33,6 +33,13 @@ export interface CatalogueItem {
   imageUrl: string;
   videoUrl: string;
   isActive: boolean;
+  /**
+   * When the last explicit Artifact Publication covered this row's
+   * content. NULL marks the item as edited after the published build —
+   * visible in browsing, but unavailable to personalized scoring until
+   * the next publication succeeds.
+   */
+  publishedAt: Date | null;
 }
 
 export interface ItemContextLink {
@@ -101,6 +108,7 @@ export const CatalogueItemEntity = new EntitySchema<CatalogueItem>({
     imageUrl: { name: "image_url", type: String, length: 500, default: "" },
     videoUrl: { name: "video_url", type: String, length: 500, default: "" },
     isActive: { name: "is_active", type: Boolean, default: true },
+    publishedAt: { name: "published_at", type: "timestamptz", nullable: true },
   },
   indices: [
     {

@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { ApiClientError, postGoogleLoginExchange } from "@/lib/api";
+import { setSessionUser } from "@/lib/auth";
 
 const GOOGLE_ERRORS: Record<string, string> = {
   google_access_denied: "คุณยกเลิกการอนุญาตบัญชี Google",
@@ -23,14 +24,18 @@ let latestExchange:
     }
   | undefined;
 
-function exchangeGoogleLoginCode(code: string) {
+function exchangeGoogleLoginCode(code: string, state: string) {
   if (latestExchange?.code !== code) {
     latestExchange = {
       code,
-      request: postGoogleLoginExchange({ code }),
+      request: postGoogleLoginExchange({ code, state }),
     };
   }
   return latestExchange.request;
+}
+
+function safeNextPath(value: string): string {
+  return value.startsWith("/") && !value.startsWith("//") ? value : "/recommend";
 }
 
 function CallbackContent() {
@@ -45,28 +50,49 @@ function CallbackContent() {
       return;
     }
     const code = search.get("code") ?? "";
-    const requestedNext = search.get("next") ?? "/recommend";
-    const nextPath =
-      requestedNext.startsWith("/") && !requestedNext.startsWith("//")
-        ? requestedNext
-        : "/recommend";
-    if (!code) {
-      setMessage("ไม่พบรหัสยืนยันจาก Google กรุณาลองเข้าสู่ระบบใหม่");
-      return;
-    }
+    const state = search.get("state") ?? "";
+    const nextPath = safeNextPath(search.get("next") ?? "/recommend");
     let active = true;
-    exchangeGoogleLoginCode(code)
-      .then((out) => {
+
+    if (code) {
+      // Legacy direct-code path: the code was handed to this page, so exchange
+      // it through the JSON contract and store the returned member.
+      exchangeGoogleLoginCode(code, state)
+        .then((out) => {
+          if (!active) return;
+          setSessionUser(out.user);
+          router.replace(out.user.is_admin ? "/admin" : nextPath);
+        })
+        .catch((err) => {
+          if (!active) return;
+          setMessage(
+            err instanceof ApiClientError
+              ? err.message
+              : "เข้าสู่ระบบด้วย Google ไม่สำเร็จ กรุณาลองใหม่",
+          );
+        });
+      return () => {
+        active = false;
+      };
+    }
+
+    // Server-side flow: the Next.js callback route already verified the
+    // Google identity and set the HttpOnly session cookie; read the member
+    // and continue to the requested page.
+    fetch("/api/auth/me", { credentials: "same-origin", cache: "no-store" })
+      .then(async (res) => {
         if (!active) return;
-        router.replace(out.user.is_admin ? "/admin" : nextPath);
+        if (!res.ok) {
+          setMessage("ไม่พบเซสชันที่สร้างจาก Google กรุณาเข้าสู่ระบบใหม่อีกครั้ง");
+          return;
+        }
+        const user = await res.json();
+        setSessionUser(user);
+        router.replace(user.is_admin ? "/admin" : nextPath);
       })
-      .catch((err) => {
+      .catch(() => {
         if (!active) return;
-        setMessage(
-          err instanceof ApiClientError
-            ? err.message
-            : "เข้าสู่ระบบด้วย Google ไม่สำเร็จ กรุณาลองใหม่",
-        );
+        setMessage("เชื่อมต่อระบบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
       });
     return () => {
       active = false;

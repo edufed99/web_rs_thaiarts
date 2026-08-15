@@ -19,6 +19,7 @@
     "test:foundation": "node --test tests/foundation.test.mjs",
     "test:catalogue": "node --test tests/catalogue.test.mjs",
     "test:members": "node --test tests/members.test.mjs",
+    "test:admin": "node --test tests/admin.test.mjs",
     "test:deployment": "node --test tests/deployment-routing.test.mjs",
     "test:e2e": "playwright test",
     "test:e2e:list": "playwright test --list"

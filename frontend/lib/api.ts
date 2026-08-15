@@ -39,28 +39,30 @@ import type {
   MemberDashboardOut,
   MemberProfileOut,
   MemberProfileUpdate,
-  RatedItemsOut,
-  RatingSummaryOut,
-  RecentViewsOut,
-  SavedItemsOut,
-  UserSummaryOut,
-  LegacyStatsOut,
-  MetricsOut,
-  ModelConfigOut,
   PasswordResetConfirm,
   PasswordResetConfirmOut,
   PasswordResetRequest,
   PasswordResetRequestOut,
   ProfileRecommendationResponseOut,
+  PublicationExecuteOut,
+  PublicationStatusOut,
+  RatedItemsOut,
+  RatingSummaryOut,
+  RecentViewsOut,
   RecommendationRequestIn,
   RecommendationResponseOut,
   RequestTrendOut,
+  SavedItemsOut,
   TokenOut,
   UserLogin,
   UserOut,
   UserProfileUpdate,
   UserSignup,
+  UserSummaryOut,
   ViewRequestIn,
+  LegacyStatsOut,
+  MetricsOut,
+  ModelConfigOut,
 } from "./types";
 
 import { getAuthHeaders } from "./auth";
@@ -806,6 +808,41 @@ export async function uploadItemVideo(
     cache: "no-store",
   });
   return handle<ItemVideoUploadOut>(res);
+}
+
+/**
+ * Current Artifact Publication state (issue #8): the latest recorded
+ * build, pending catalogue rows, and the Private Model Service's own
+ * artifact report. Admin-only.
+ */
+export async function getPublicationStatus(): Promise<PublicationStatusOut> {
+  const res = await fetch(`${baseUrl()}/admin/publication`, {
+    headers: { ...getAuthHeaders() },
+    cache: "no-store",
+  });
+  return handle<PublicationStatusOut>(res);
+}
+
+/**
+ * Execute an explicit Artifact Publication (issue #8). Requires admin;
+ * fails with 503 when the Private Model Service is unreachable. On
+ * success every pending catalogue row becomes covered by the recorded
+ * build and re-enters personalized scoring.
+ */
+export async function executePublication(
+  note?: string,
+): Promise<PublicationExecuteOut> {
+  const res = await fetch(`${baseUrl()}/admin/publication`, {
+    method: "POST",
+    headers: mutationHeaders({
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+    }),
+    credentials: "same-origin",
+    body: JSON.stringify({ note: note ?? "" }),
+    cache: "no-store",
+  });
+  return handle<PublicationExecuteOut>(res);
 }
 
 export function getBaseUrl(): string {

@@ -379,3 +379,52 @@ The next `/recommendations` call from the same `user_key` will:
 | `invalid_action` | 400 | Unknown action or out-of-range rating. |
 | `db_disabled` | 503 | `RECSYS_DB_ENABLED=0` — actions require a live DB. |
 | `validation_error` | 422 | Pydantic validation on the request body (e.g. `rating: 0`). |
+
+---
+
+# Admin API (Next.js Application Backend)
+
+Administrative user and catalogue management (issue #8) lives in the
+Next.js Application Backend, not FastAPI. All admin endpoints require a
+same-origin session for an `is_admin=True` user; anonymous callers get
+`401 unauthorized` and non-admins get `403 forbidden`. Mutations also
+require the CSRF contract (`Origin`, `Sec-Fetch-Site: same-origin`,
+`X-CSRF-Token: same-origin`).
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET  | `/api/admin/users` | List users (max 500, id order) |
+| POST | `/api/admin/users` | Create user (bcrypt password) |
+| PUT  | `/api/admin/users/{id}` | Update user (self-demotion guard) |
+| DELETE | `/api/admin/users/{id}` | Delete user (self-delete guard) |
+| POST | `/api/admin/items/draft` | Layer A keyword grounding + context resolution |
+| POST | `/api/admin/items` | Create item from a grounded draft |
+| GET  | `/api/admin/items/facets` | Distinct category/performance values for form dropdowns |
+| PUT  | `/api/admin/items/{artifactId}` | Edit item (artifact id immutable) |
+| DELETE | `/api/admin/items/{artifactId}` | Delete item + linked rows |
+| POST | `/api/admin/items/{artifactId}/image` | Cover image upload (JPEG/PNG/WebP, max 5 MB) |
+| POST | `/api/admin/items/{artifactId}/video` | Video upload (MP4/WebM/MOV, max 100 MB) |
+| GET  | `/api/admin/publication` | Artifact Publication status |
+| POST | `/api/admin/publication` | Execute an Artifact Publication |
+
+## Artifact Publication
+
+Catalogue edits are visible in browsing immediately, but rows edited
+after the last published build are excluded from personalized scoring
+(model-service similarity/inference) until an explicit Artifact
+Publication succeeds:
+
+1. Every admin mutation marks the row `items.published_at = NULL`.
+2. `GET /api/admin/publication` reports the latest recorded build, the
+   pending rows, and what the Private Model Service says it is serving.
+3. `POST /api/admin/publication` (admin) verifies the Private Model
+   Service is reachable, records an `artifact_publications` audit row
+   (build id, coverage count, acting admin, note), and marks every
+   pending row published. It returns `503 model_service_unavailable`
+   when the model service is down.
+
+The build identity comes from the model service's own
+`/internal/v1/health` report (`artifact_version:item_count`) so a
+publication can never claim a build the scoring process is not actually
+serving. Rebuilding artifacts is the offline pipeline's job
+(`pipelines/train_or_generate_artifacts.py`), run before publishing.

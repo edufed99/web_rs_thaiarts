@@ -9,10 +9,12 @@ import {
   ApiClientError,
   deleteAdminItem,
   deleteAdminUser,
+  executePublication,
   getAdminUsers,
   getContexts,
   getItems,
   getKeywords,
+  getPublicationStatus,
   postAdminUser,
   putAdminItem,
   putAdminUser,
@@ -20,10 +22,17 @@ import {
   uploadItemVideo,
 } from "@/lib/api";
 import { getCurrentUser, isAdmin } from "@/lib/auth";
-import type { ContextOut, ItemOut, KeywordOut, ItemUpdate, UserOut } from "@/lib/types";
+import type {
+  ContextOut,
+  ItemOut,
+  KeywordOut,
+  ItemUpdate,
+  PublicationStatusOut,
+  UserOut,
+} from "@/lib/types";
 import { useCardPagination } from "@/lib/useCardPagination";
 
-type DataManagementTab = "items" | "users";
+type DataManagementTab = "items" | "users" | "publication";
 type UserFormMode = "create" | "edit" | null;
 type EditSaveStatus = "idle" | "saving" | "success" | "error";
 
@@ -105,6 +114,11 @@ export default function AdminItemsListPage() {
   const [editingUser, setEditingUser] = useState<UserOut | null>(null);
   const [deletingUserId, setDeletingUserId] = useState<number | null>(null);
   const [userFields, setUserFields] = useState<UserFields>(EMPTY_USER_FIELDS);
+  const [publicationStatus, setPublicationStatus] = useState<PublicationStatusOut | null>(null);
+  const [publicationLoading, setPublicationLoading] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publicationNote, setPublicationNote] = useState("");
+  const [publicationReloadKey, setPublicationReloadKey] = useState(0);
   const tableScrollY = useRef(0);
   const saveFeedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -198,6 +212,45 @@ export default function AdminItemsListPage() {
       cancelled = true;
     };
   }, [activeDataTab, ready, userReloadKey]);
+
+  useEffect(() => {
+    if (!ready || activeDataTab !== "publication") return;
+    let cancelled = false;
+    setPublicationLoading(true);
+    setError(null);
+    getPublicationStatus()
+      .then((data) => {
+        if (!cancelled) setPublicationStatus(data);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setError(e instanceof ApiClientError ? e.message : String(e));
+      })
+      .finally(() => {
+        if (!cancelled) setPublicationLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeDataTab, ready, publicationReloadKey]);
+
+  async function handlePublish() {
+    setPublishing(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await executePublication(publicationNote.trim() || undefined);
+      setPublicationStatus(await getPublicationStatus());
+      setPublicationNote("");
+      setNotice(
+        `เผยแพร่ Artifact สำเร็จ (build ${result.publication.build_id}) · ครอบคลุม ${result.publication.item_count} รายการ · ยังรอการเผยแพร่ ${result.pending_after} รายการ`,
+      );
+      setReloadKey((key) => key + 1);
+    } catch (e) {
+      setError(e instanceof ApiClientError ? e.message : String(e));
+    } finally {
+      setPublishing(false);
+    }
+  }
 
   const validationStats = useMemo(
     () => ({
@@ -844,6 +897,15 @@ export default function AdminItemsListPage() {
         >
           ข้อมูลผู้ใช้
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeDataTab === "publication"}
+          className={activeDataTab === "publication" ? "active" : undefined}
+          onClick={() => selectDataTab("publication")}
+        >
+          Artifact Publication
+        </button>
       </nav>
 
       {activeDataTab === "items" ? (
@@ -859,6 +921,17 @@ export default function AdminItemsListPage() {
           <button type="button" onClick={() => openCatalogAction("edit")}>
             <strong>แก้ไข</strong>
             <span>แก้ไขรายละเอียด Context และ Keyword</span>
+          </button>
+        </section>
+      ) : activeDataTab === "publication" ? (
+        <section className="admin-database-grid" aria-label="Artifact Publication">
+          <button type="button" onClick={() => selectDataTab("publication")}>
+            <strong>สถานะ</strong>
+            <span>ตรวจสอบ build ที่กำลังให้บริการและรายการที่รอเผยแพร่</span>
+          </button>
+          <button type="button" disabled={publishing} onClick={() => void handlePublish()}>
+            <strong>เผยแพร่</strong>
+            <span>ประกาศให้ Artifact build ปัจจุบันครอบคลุมรายการที่รออยู่</span>
           </button>
         </section>
       ) : (
@@ -982,6 +1055,121 @@ export default function AdminItemsListPage() {
             </div>
           </aside>
       </section>
+        </>
+      ) : activeDataTab === "publication" ? (
+        <>
+          <section className="admin-command-bar">
+            <label>
+              <span>บันทึกหมายเหตุสำหรับการเผยแพร่ครั้งถัดไป</span>
+              <input
+                type="text"
+                maxLength={255}
+                value={publicationNote}
+                onChange={(event) => setPublicationNote(event.target.value)}
+                placeholder="เช่น อัปเดตข้อมูลโขนจากงานวิจัยรอบ 2"
+              />
+            </label>
+            <span>
+              {publicationLoading
+                ? "กำลังโหลดสถานะ..."
+                : publicationStatus
+                  ? `${publicationStatus.pending.count} รายการรอเผยแพร่`
+                  : "ไม่สามารถโหลดสถานะได้"}
+            </span>
+          </section>
+
+          <section className="admin-workspace" aria-label="Artifact Publication">
+            <div className="research-panel admin-table-panel">
+              <div className="panel-head compact-head">
+                <div>
+                  <p className="eyebrow">Artifact Publication</p>
+                  <h2>สถานะการเผยแพร่ Artifact</h2>
+                </div>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={publicationLoading}
+                  onClick={() => setPublicationReloadKey((key) => key + 1)}
+                >
+                  รีเฟรช
+                </button>
+              </div>
+
+              {publicationStatus ? (
+                <div className="publication-status-grid">
+                  <div className="validation-list">
+                    <PublicationItem
+                      label="Model Service"
+                      value={publicationStatus.model.reachable ? "เชื่อมต่อแล้ว" : "ไม่พร้อมใช้งาน"}
+                      tone={publicationStatus.model.reachable ? "success" : "danger"}
+                      detail={
+                        publicationStatus.model.reachable
+                          ? `artifact version ${publicationStatus.model.artifact_version} · ${publicationStatus.model.artifact_item_count} items`
+                          : publicationStatus.model.error ?? "Private Model Service ตรวจไม่พบ"
+                      }
+                    />
+                    <PublicationItem
+                      label="Build ล่าสุดที่เผยแพร่"
+                      value={publicationStatus.published ? publicationStatus.published.build_id : "ยังไม่เคยเผยแพร่"}
+                      tone={publicationStatus.published ? "success" : "neutral"}
+                      detail={
+                        publicationStatus.published
+                          ? `เผยแพร่เมื่อ ${formatAdminDate(publicationStatus.published.published_at)} · ครอบคลุม ${publicationStatus.published.item_count} รายการ`
+                          : "รอการเผยแพร่ครั้งแรก"
+                      }
+                    />
+                    <PublicationItem
+                      label="รายการที่รอเผยแพร่"
+                      value={String(publicationStatus.pending.count)}
+                      tone={publicationStatus.pending.count > 0 ? "warning" : "success"}
+                      detail={
+                        publicationStatus.pending.count > 0
+                          ? "แก้ไขแล้ว ยังไม่เข้าสู่ personalized scoring"
+                          : "ข้อมูลทั้งหมดอยู่ใน build ปัจจุบันแล้ว"
+                      }
+                    />
+                  </div>
+
+                  {publicationStatus.pending.count > 0 ? (
+                    <div className="management-table-wrap">
+                      <table className="management-table">
+                        <thead>
+                          <tr>
+                            <th>รายการที่รอการเผยแพร่</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {publicationStatus.pending.items.map((item) => (
+                            <tr key={item.id}>
+                              <td>{item.name}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : null}
+
+                  <div className="publication-actions">
+                    <p className="muted">
+                      การแก้ไข catalog จะแสดงผลทันทีในหน้ารายการ แต่จะไม่ถูกใช้ใน
+                      การให้คะแนนส่วนบุคคล (personalized scoring) จนกว่าการเผยแพร่
+                      จะสำเร็จ
+                    </p>
+                    <button
+                      type="button"
+                      className="primary"
+                      disabled={publishing || !publicationStatus.model.reachable}
+                      onClick={() => void handlePublish()}
+                    >
+                      {publishing ? "กำลังเผยแพร่..." : "เผยแพร่ Artifact ฉบับปัจจุบัน"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="muted">กำลังโหลดสถานะ...</p>
+              )}
+            </div>
+          </section>
         </>
       ) : (
         <>
@@ -1176,6 +1364,26 @@ export default function AdminItemsListPage() {
           </section>
         </>
       )}
+    </div>
+  );
+}
+
+function PublicationItem({
+  label,
+  value,
+  detail,
+  tone,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  tone: "warning" | "danger" | "neutral" | "success";
+}) {
+  return (
+    <div className={`validation-item ${tone}`}>
+      <strong>{value}</strong>
+      <span>{label}</span>
+      <small>{detail}</small>
     </div>
   );
 }

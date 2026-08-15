@@ -14,7 +14,7 @@ export interface ApplicationUser {
   lastLoginAt: Date | null;
 }
 
-interface MemberProfile {
+export interface MemberProfile {
   id: number;
   userId: number;
   displayName: string;
@@ -38,6 +38,15 @@ interface UserSession {
   expiresAt: Date;
   createdAt: Date;
   lastSeenAt: Date;
+}
+
+interface PasswordResetToken {
+  id: number;
+  userId: number;
+  tokenHash: string;
+  expiresAt: Date;
+  usedAt: Date | null;
+  createdAt: Date;
 }
 
 interface MemberActionState {
@@ -114,6 +123,19 @@ export const UserSessionEntity = new EntitySchema<UserSession>({
   },
 });
 
+export const PasswordResetTokenEntity = new EntitySchema<PasswordResetToken>({
+  name: "PasswordResetToken",
+  tableName: "password_reset_tokens",
+  columns: {
+    id: { type: "bigint", primary: true, generated: "increment" },
+    userId: { name: "user_id", type: "bigint" },
+    tokenHash: { name: "token_hash", type: String, length: 64, unique: true },
+    expiresAt: { name: "expires_at", type: "timestamptz" },
+    usedAt: { name: "used_at", type: "timestamptz", nullable: true },
+    createdAt: { name: "created_at", type: "timestamptz", createDate: true },
+  },
+});
+
 function stateEntity(name: string, tableName: string): EntitySchema<MemberActionState> {
   return new EntitySchema<MemberActionState>({
     name,
@@ -161,6 +183,7 @@ export const memberEntities = [
   ApplicationUserEntity,
   MemberProfileEntity,
   UserSessionEntity,
+  PasswordResetTokenEntity,
   LikeEntity,
   SavedItemEntity,
   RatingEntity,

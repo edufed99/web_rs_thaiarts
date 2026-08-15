@@ -379,3 +379,81 @@ The next `/recommendations` call from the same `user_key` will:
 | `invalid_action` | 400 | Unknown action or out-of-range rating. |
 | `db_disabled` | 503 | `RECSYS_DB_ENABLED=0` — actions require a live DB. |
 | `validation_error` | 422 | Pydantic validation on the request body (e.g. `rating: 0`). |
+
+---
+
+## Member authentication flows (Next.js Application Backend)
+
+Issue #6 migrated member sign-in, password recovery, and the admin Gmail
+sender authorization from the FastAPI compatibility service into Next.js
+route handlers. All flows keep the documented `{ error: { code, message } }`
+envelope. Mutating JSON endpoints require the same-origin CSRF headers that
+the browser sends automatically (`Origin`, `Sec-Fetch-Site: same-origin`,
+`X-CSRF-Token: same-origin`).
+
+### `POST /auth/signup` / `POST /auth/login` / `GET|PATCH /auth/me`
+
+Password accounts. Responses carry the HttpOnly `thai_arts_session` cookie
+(seven-day lifetime) instead of a JWT; `access_token` is absent.
+
+### Google Login (member OpenID Connect)
+
+Three endpoints use the **separate** `google_login_client` OAuth client
+(identity scopes only, never persisted):
+
+1. `GET /api/auth/google/login/start?next=<path>` — 303 to Google with a
+   signed PKCE state cookie bound to the browser.
+2. `GET /api/auth/google/login/callback?code&state` — the Google redirect
+   **terminates in Next.js**. Verifies the ID token (JWKS + audience +
+   issuer + `email_verified`), resolves or creates the member, rotates a
+   fresh server session, and 303s to `/auth/google/callback?next=<path>`
+   (errors redirect with `?error=<code>`).
+3. `POST /api/auth/google/login/exchange` — JSON contract (`{ code, state }`)
+   for the callback page's legacy direct-code path; same verification, returns
+   `{ expires_in_seconds, user }` plus the session cookie.
+
+Callback page error codes: `google_access_denied`, `invalid_google_state`,
+`google_login_failed`, `ambiguous_google_email`, `google_account_not_persisted`.
+
+### Password recovery
+
+- `POST /api/auth/password-reset/request` — body `{ username, email }`.
+  Returns the documented `PasswordResetRequestOut` shape
+  (`accepted`, `credentials_valid`, `email_sent`, `delivery_configured`,
+  `message`). Tokens are single-use, expire per
+  `PASSWORD_RESET_TOKEN_MINUTES`, and a one-minute resend cooldown applies.
+  Delivery goes through the admin Gmail sender API when authorized, else SMTP.
+- `POST /api/auth/password-reset/confirm` — body
+  `{ username, token, new_password }`. Consumes the token once, sets the new
+  bcrypt password, strips the legacy `must_reset|` / `legacy:` display
+  markers, and **revokes every server session** for the account. Invalid,
+  expired, or reused tokens → 400 `invalid_reset_token`.
+
+### Admin Gmail sender authorization
+
+Uses the **separate** `google_oauth_client` (admin Gmail sender, `gmail.send`
+scope) with its own callback — never shared with member login.
+
+- `GET /api/admin/gmail-oauth/status` — admin-only (401 anonymous, 403 member).
+- `POST /api/admin/gmail-oauth/start` — admin-only; returns
+  `{ authorization_url }` and sets the signed state cookie.
+- `GET /api/admin/gmail-oauth/callback?code&state` — Google redirect that
+  terminates in Next.js at `/api/admin/gmail-oauth/callback`, persists the
+  refresh token to `GMAIL_OAUTH_TOKEN_FILE` / `GMAIL_OAUTH_REFRESH_TOKEN`,
+  and 303s to `/admin/email-settings?oauth=success|error`.
+
+### Environment variables (server-only, see `frontend/.env.example`)
+
+| variable | purpose |
+|---|---|
+| `GOOGLE_LOGIN_CLIENT_FILE/ID/SECRET` | member OpenID Connect client |
+| `GOOGLE_LOGIN_REDIRECT_URI` | must match the Google Console registration, e.g. `https://host/api/auth/google/login/callback` |
+| `GOOGLE_LOGIN_STATE_TTL_SECONDS` | pending-flow lifetime (default 600) |
+| `GMAIL_OAUTH_CLIENT_FILE/ID/SECRET` | admin Gmail sender client |
+| `GMAIL_OAUTH_REDIRECT_URI` | must match Google Console, e.g. `https://host/api/admin/gmail-oauth/callback` |
+| `GMAIL_OAUTH_TOKEN_FILE` / `GMAIL_OAUTH_REFRESH_TOKEN` | sender refresh token store |
+| `GMAIL_SENDER_EMAIL` | sender identity in reset emails |
+| `SMTP_*` | SMTP fallback for reset delivery |
+| `FRONTEND_BASE_URL` | public origin used to build callback/reset URLs |
+| `PASSWORD_RESET_TOKEN_MINUTES` | reset token lifetime (default 30) |
+| `OAUTH_STATE_SECRET` | HMAC secret signing both PKCE state cookies |

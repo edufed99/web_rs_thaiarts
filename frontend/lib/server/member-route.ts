@@ -16,6 +16,13 @@ export async function requireUser(request: NextRequest): Promise<ApplicationUser
   return user ?? apiError(401, "unauthorized", "Authentication required.");
 }
 
+export async function requireAdmin(request: NextRequest): Promise<ApplicationUser | Response> {
+  const user = await requireUser(request);
+  if (isResponse(user)) return user;
+  if (!user.isAdmin) return apiError(403, "admin_required", "Administrator privileges required.");
+  return user;
+}
+
 export async function sameOriginJson(request: NextRequest): Promise<Record<string, unknown> | Response> {
   const csrf = csrfFailure(request);
   if (csrf) return csrf;
@@ -35,6 +42,11 @@ export async function authenticatedJsonMutation(request: NextRequest): Promise<{
 
 export function isResponse(value: ApplicationUser | Response): value is Response {
   return value instanceof Response;
+}
+
+/** Trim a string body field; non-strings become the empty string. */
+export function trimField(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 // fallow-ignore-next-line complexity -- Database constraint codes are normalized without exposing internals.

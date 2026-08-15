@@ -55,7 +55,12 @@ export function userNeedsPasswordReset(user: Pick<UserOut, "username" | "display
 export function getAuthHeaders(): Record<string, string> { return {}; }
 export function isAdmin(): boolean { return Boolean(getCurrentUser()?.is_admin); }
 
-/** Compatibility shim for the Google flow that will be replaced in issue #6. */
+/**
+ * Compatibility shim for call sites that once received a bearer JWT from the
+ * FastAPI Google flow. Issue #6 removed bearer credentials entirely: Google
+ * Login now issues the HttpOnly server session directly, so only the display
+ * user snapshot is stored here.
+ */
 export function storeToken(_token: string, _seconds: number, user: UserOut): void {
   setSessionUser(user);
 }

@@ -452,6 +452,8 @@ export interface TokenOut {
 
 export interface GoogleLoginExchange {
   code: string;
+  /** OAuth state from the callback URL; must match the signed state cookie. */
+  state?: string;
 }
 
 export interface KeywordProposal {

@@ -631,25 +631,13 @@ export async function patchMe(body: UserProfileUpdate): Promise<UserOut> {
 export async function postPasswordResetRequest(
   body: PasswordResetRequest,
 ): Promise<PasswordResetRequestOut> {
-  const res = await fetch(`${baseUrl()}/auth/password-reset/request`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
-  return handle<PasswordResetRequestOut>(res);
+  return mutateJson("/auth/password-reset/request", "POST", body);
 }
 
 export async function postPasswordResetConfirm(
   body: PasswordResetConfirm,
 ): Promise<PasswordResetConfirmOut> {
-  const res = await fetch(`${baseUrl()}/auth/password-reset/confirm`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
-  return handle<PasswordResetConfirmOut>(res);
+  return mutateJson("/auth/password-reset/confirm", "POST", body);
 }
 
 export async function getGmailOAuthStatus(): Promise<GmailOAuthStatusOut> {
@@ -663,7 +651,8 @@ export async function getGmailOAuthStatus(): Promise<GmailOAuthStatusOut> {
 export async function startGmailOAuth(): Promise<GmailOAuthStartOut> {
   const res = await fetch(`${baseUrl()}/admin/gmail-oauth/start`, {
     method: "POST",
-    headers: { ...getAuthHeaders() },
+    headers: mutationHeaders({ ...getAuthHeaders() }),
+    credentials: "same-origin",
     cache: "no-store",
   });
   return handle<GmailOAuthStartOut>(res);

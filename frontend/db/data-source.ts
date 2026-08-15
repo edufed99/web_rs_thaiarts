@@ -12,6 +12,7 @@ import { CreateCatalogue1786766400000 } from "./migrations/1786766400000-CreateC
 import { ProtectArtifactItemId1786766500000 } from "./migrations/1786766500000-ProtectArtifactItemId";
 import { CreateMembersAndSessions1786939200000 } from "./migrations/1786939200000-CreateMembersAndSessions";
 import { AddArtifactPublication1787100000000 } from "./migrations/1787100000000-AddArtifactPublication";
+import { CreatePasswordResetTokens1787200000000 } from "./migrations/1787200000000-CreatePasswordResetTokens";
 
 export function createAppDataSource(databaseUrl = process.env.DATABASE_URL): DataSource {
   if (!databaseUrl) {
@@ -36,6 +37,7 @@ export function createAppDataSource(databaseUrl = process.env.DATABASE_URL): Dat
       ProtectArtifactItemId1786766500000,
       CreateMembersAndSessions1786939200000,
       AddArtifactPublication1787100000000,
+      CreatePasswordResetTokens1787200000000,
     ],
     logging: process.env.TYPEORM_LOGGING === "1",
   });

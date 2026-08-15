@@ -137,6 +137,7 @@ test("an empty development database is rebuilt from migrations and seed data", a
       { name: "ProtectArtifactItemId1786766500000" },
       { name: "CreateMembersAndSessions1786939200000" },
       { name: "AddArtifactPublication1787100000000" },
+      { name: "CreatePasswordResetTokens1787200000000" },
     ]);
   } finally {
     await client.end();

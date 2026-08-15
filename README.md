@@ -123,17 +123,27 @@ See `docs/adr.md` for the full Architecture Decision Record.
 ## Google sign-in for members
 
 Member sign-in uses its own Google Cloud Web OAuth client, separate from the
-admin Gmail sender. Keep the downloaded client outside Git at
-`backend/data/secrets/google_login_client.json` and configure:
+admin Gmail sender. The flow lives entirely in Next.js
+(`frontend/app/api/auth/google/login/*`); keep the downloaded client outside
+Git at `frontend/data/secrets/google_login_client.json` (or inject
+`GOOGLE_LOGIN_CLIENT_ID` / `GOOGLE_LOGIN_CLIENT_SECRET`) and configure:
 
 ```env
-RECSYS_GOOGLE_LOGIN_CLIENT_FILE=data/secrets/google_login_client.json
-RECSYS_GOOGLE_LOGIN_REDIRECT_URI=http://localhost:8001/auth/google/login/callback
+# frontend/.env.local
+GOOGLE_LOGIN_CLIENT_FILE=data/secrets/google_login_client.json
+GOOGLE_LOGIN_REDIRECT_URI=http://localhost:3000/api/auth/google/login/callback
+GMAIL_OAUTH_CLIENT_FILE=data/secrets/google_oauth_client.json
+GMAIL_OAUTH_REDIRECT_URI=http://localhost:3000/api/admin/gmail-oauth/callback
+FRONTEND_BASE_URL=http://localhost:3000
+OAUTH_STATE_SECRET=some-long-random-secret
 ```
 
 The Google client must allow `http://localhost:3000` as a JavaScript origin
-and the exact redirect URI above. Apply migrations with
-`python -m alembic -c alembic.ini upgrade head` from `backend/`.
+and the exact redirect URI above. The member callback terminates in Next.js
+at `/api/auth/google/login/callback`; the admin Gmail sender callback is a
+separate route at `/api/admin/gmail-oauth/callback` using a different OAuth
+client. See `frontend/.env.example` for all options and `docs/api.md` for the
+flow walkthrough.
 
 ## Run the pipeline (artifact generation)
 

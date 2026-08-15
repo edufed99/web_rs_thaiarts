@@ -2,12 +2,10 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
-import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 
-import { chromium } from "@playwright/test";
 import pg from "pg";
 
 const { Client } = pg;
@@ -19,12 +17,9 @@ const databaseUrl = new URL(adminUrl);
 databaseUrl.pathname = `/${databaseName}`;
 const port = 3102;
 const baseUrl = `http://127.0.0.1:${port}`;
-const compatibilityPort = 4102;
 
 let server;
-let compatibilityServer;
 let mediaStoreRoot;
-const compatibilityRequests = [];
 
 function runNpm(args, env = {}) {
   return new Promise((resolve) => {
@@ -105,43 +100,12 @@ before(async () => {
   );
   await client.end();
 
-  compatibilityServer = createServer((request, response) => {
-    if (request.method !== "POST" || request.url !== "/auth/google/login/exchange") {
-      response.writeHead(404).end();
-      return;
-    }
-    let requestBody = "";
-    request.on("data", (chunk) => (requestBody += chunk));
-    request.on("end", () => {
-      compatibilityRequests.push({ body: requestBody, authorization: request.headers.authorization });
-      response.writeHead(200, { "Content-Type": "application/json" });
-      response.end(JSON.stringify({
-        access_token: "legacy-jwt-must-not-reach-browser",
-        token_type: "bearer",
-        expires_in_seconds: 3600,
-        user: {
-          id: 9001,
-          username: "google_member",
-          email: "google@example.test",
-          display_name: "สมาชิก Google",
-          is_admin: false,
-          role: "user",
-          auth_provider: "google",
-          email_verified: true,
-        },
-      }));
-    });
-  });
-  compatibilityServer.listen(compatibilityPort, "127.0.0.1");
-  await once(compatibilityServer, "listening");
-
   server = spawn("npm", ["run", "dev", "--", "-p", String(port)], {
     cwd: process.cwd(),
     env: {
       ...process.env,
       DATABASE_URL: databaseUrl.toString(),
       NODE_ENV: "test",
-      COMPATIBILITY_SERVICE_URL: `http://127.0.0.1:${compatibilityPort}`,
       MEDIA_STORE_ROOT: mediaStoreRoot,
     },
     shell: process.platform === "win32",
@@ -153,10 +117,6 @@ before(async () => {
 
 after(async () => {
   await stopServer();
-  if (compatibilityServer) {
-    compatibilityServer.close();
-    await once(compatibilityServer, "close");
-  }
   if (mediaStoreRoot) await rm(mediaStoreRoot, { recursive: true, force: true });
   await resetDatabase(false);
 });
@@ -237,22 +197,9 @@ test("password signup issues only a secure opaque server session", async () => {
   assert.equal(setCookie.includes(sessions.rows[0].token_hash), false);
 });
 
-test("Google compatibility exchange creates a normal opaque Next session", async () => {
-  const client = new Client({ connectionString: databaseUrl.toString() });
-  await client.connect();
-  await client.query(
-    `INSERT INTO users
-       (id, username, email, password_hash, google_subject_id, auth_provider,
-        email_verified, display_name, is_admin)
-     VALUES (9001, 'google_member', 'google@example.test', 'not-a-password',
-       'google-subject-9001', 'google', TRUE, 'สมาชิก Google', FALSE)`,
-  );
-  await client.query(
-    `INSERT INTO accounts_userprofile (user_id, display_name)
-     VALUES (9001, 'สมาชิก Google')`,
-  );
-  await client.end();
-
+test("Google login exchange rejects a code without a browser-bound state", async () => {
+  // The OAuth state cookie is HttpOnly and scoped to the flow that started
+  // it, so a code replayed by another client cannot be exchanged.
   const exchange = await fetch(`${baseUrl}/api/auth/google/login/exchange`, {
     method: "POST",
     headers: {
@@ -261,61 +208,13 @@ test("Google compatibility exchange creates a normal opaque Next session", async
       "Sec-Fetch-Site": "same-origin",
       "X-CSRF-Token": "same-origin",
     },
-    body: JSON.stringify({ code: "single-use-google-code" }),
+    body: JSON.stringify({ code: "single-use-google-code", state: "forged-state" }),
   });
-  assert.equal(exchange.status, 200);
+  assert.equal(exchange.status, 401);
   const body = await exchange.json();
-  assert.equal(body.user.username, "google_member");
+  assert.equal(body.error.code, "invalid_google_state");
   assert.equal("access_token" in body, false);
-  assert.equal("token_type" in body, false);
-  assert.deepEqual(JSON.parse(compatibilityRequests.at(-1).body), { code: "single-use-google-code" });
-  assert.equal(compatibilityRequests.at(-1).authorization, undefined);
-  const cookie = cookieValue(exchange.headers.get("set-cookie"));
-  assert.match(cookie, /^thai_arts_session=/);
-
-  const me = await fetch(`${baseUrl}/api/auth/me`, { headers: { Cookie: cookie } });
-  assert.equal(me.status, 200);
-  assert.equal((await me.json()).username, "google_member");
-});
-
-test("Google browser callback keeps the legacy JWT out of browser storage and Bearer headers", async () => {
-  const browser = await chromium.launch();
-  try {
-    const context = await browser.newContext();
-    const page = await context.newPage();
-    const bearerRequests = [];
-    page.on("request", (request) => {
-      if (request.headers().authorization?.startsWith("Bearer ")) bearerRequests.push(request.url());
-    });
-    const exchangeResponse = page.waitForResponse(
-      (response) => response.url().includes("/api/auth/google/login/exchange"),
-    );
-    await page.goto(`http://localhost:${port}/auth/google/callback?code=browser-google-code&next=/items`);
-    const exchange = await exchangeResponse;
-    assert.equal(exchange.status(), 200);
-    assert.equal("access_token" in await exchange.json(), false);
-    await page.waitForURL((url) => url.pathname === "/items");
-    const browserState = await page.evaluate(async () => {
-      const me = await fetch("/api/auth/me");
-      return {
-        legacyJwt: localStorage.getItem("thai_arts_jwt"),
-        visibleCookie: document.cookie,
-        meStatus: me.status,
-        username: me.ok ? (await me.json()).username : null,
-      };
-    });
-    assert.equal(browserState.legacyJwt, null);
-    assert.doesNotMatch(browserState.visibleCookie, /thai_arts_session/);
-    assert.equal(browserState.meStatus, 200);
-    assert.equal(browserState.username, "google_member");
-    assert.deepEqual(bearerRequests, []);
-    const cookies = await context.cookies();
-    const sessionCookie = cookies.find((cookie) => cookie.name === "thai_arts_session");
-    assert.equal(sessionCookie?.httpOnly, true);
-    assert.equal(sessionCookie?.secure, true);
-  } finally {
-    await browser.close();
-  }
+  assert.equal(exchange.headers.get("set-cookie"), null);
 });
 
 test("member profile and avatar changes persist and cannot change role", async () => {

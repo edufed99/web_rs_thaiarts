@@ -132,6 +132,16 @@ When working on this repo, respect these:
 | GET  | /metrics/config | Active recommender config (admin) |
 | GET  | /metrics/dashboard | Admin dashboard payload (14 sections, admin-only JWT) |
 | GET  | /docs, /redoc, /openapi.json | Swagger / ReDoc / schema |
+| POST | /auth/signup, /auth/login | Password accounts → HttpOnly server session cookie |
+| GET/PATCH | /auth/me | Current member (session cookie) |
+| GET  | /auth/google/login/start | Member Google Login: bind PKCE state cookie, 303 to Google |
+| GET  | /auth/google/login/callback | Google Login redirect terminates here (Next.js): verify ID token, issue server session, 303 to /auth/google/callback |
+| POST | /auth/google/login/exchange | JSON Google Login exchange (`{code, state}`) → session cookie |
+| POST | /auth/password-reset/request | Email a one-time reset link (Gmail API or SMTP) |
+| POST | /auth/password-reset/confirm | Consume token once, change password, revoke all sessions |
+| GET  | /admin/gmail-oauth/status | Admin-only Gmail sender setup state |
+| POST | /admin/gmail-oauth/start | Admin-only: create consent URL + state cookie |
+| GET  | /admin/gmail-oauth/callback | Admin Gmail sender redirect terminates here (Next.js), persists refresh token |
 | GET,POST | /api/admin/users | List / create users (admin session) |
 | PUT,DELETE | /api/admin/users/{id} | Update / delete users (self-guards) |
 | POST | /api/admin/items/draft | Layer A keyword grounding for the create journey |
@@ -202,7 +212,10 @@ boundary.
 - Python: UTF-8 module docstrings matching legacy style.
 - TypeScript: strict mode (see `tsconfig.json`).
 - All configuration via env vars: `RECSYS_*` for backend, `NEXT_PUBLIC_*`
-  for frontend (only `NEXT_PUBLIC_API_BASE_URL` currently).
+  for frontend (only `NEXT_PUBLIC_API_BASE_URL` currently), plus server-only
+  frontend vars documented in `frontend/.env.example` (`GOOGLE_LOGIN_*`,
+  `GMAIL_OAUTH_*`, `SMTP_*`, `FRONTEND_BASE_URL`, `PASSWORD_RESET_TOKEN_MINUTES`,
+  `OAUTH_STATE_SECRET`).
 - Tests use the `artifacts_dir` / `loader` / `client` fixtures in
   `backend/tests/conftest.py`. They build a synthetic 5-item corpus in
   `tmp_path` so tests don't need real CSVs.

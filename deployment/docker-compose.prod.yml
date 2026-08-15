@@ -83,6 +83,10 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-web_rs_thaiarts}
+      COMPATIBILITY_SERVICE_URL: http://backend:8001
+      MEDIA_STORE_ROOT: /app/data/uploads
+    volumes:
+      - uploads_data:/app/data/uploads
     ports:
       - "127.0.0.1:3000:3000"
 

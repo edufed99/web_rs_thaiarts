@@ -342,17 +342,20 @@ routes are read-only reference only:
 - **Docker Hub Images** (Public under `pichaya5502` account):
   - `pichaya5502/web_rs_thaiarts-backend:latest`
   - `pichaya5502/web_rs_thaiarts-frontend:latest`
-- **Topology**:
-  - `postgres` (PostgreSQL 18, `postgres_data:/var/lib/postgresql`)
-  - `backend` (FastAPI on port 8001, auto-runs Alembic migrations on container startup, persistent `uploads_data:/app/data/uploads`)
-  - `frontend` (Next.js standalone on port 3000)
-- **Host Reverse Proxy**: IIS maps incoming domain traffic to internal container endpoints:
-  - Web: `http://127.0.0.1:3000`
-  - API: `http://127.0.0.1:8001` (under `/api/*`)
-- **Deploy Command**:
-  ```bash
-  ssh thaiperform "cd C:\Apps\ThaiArtsRecommender && docker compose pull && docker compose up -d"
-  ```
+- **Topology** (issue #11 network boundary — `deployment/docker-compose.prod.yml`):
+  - `postgres` (PostgreSQL 18, `postgres_data:/var/lib/postgresql`) — **no host-published port**; internal network only
+  - `backend` (FastAPI **Private Model Service** on internal 8001, `expose` only — no host port, no DB connection, no uploads volume, no `.env`; every `RECSYS_*` var is declared explicitly)
+  - `frontend` (Next.js standalone on port 3000, the **only** host-published port `127.0.0.1:3000`, mounts `uploads_data:/app/data/uploads`)
+  - `migrate` (one-shot tool profile: `migration:run` + `seed` + `migration:verify` — fails while any migration is pending)
+- **Host Reverse Proxy**: IIS maps incoming domain traffic to the Next.js container only (`deployment/web.config`):
+  - Web + API: `http://127.0.0.1:3000` (every path, including `api/*`; nothing targets 8001)
+- **Release Procedure** (issue #11 — `deployment/release/README.md`):
+  1. Pre-flight: record image digests (`docker compose images --format json`), tag running images as rollback target
+  2. `backup-and-migrate.ps1` — pg_dump + uploads + `.env` backups, then migrations + `migration:verify`
+  3. `docker compose pull && docker compose up -d`
+  4. `smoke-test.ps1` — model contract, public surface, model-backed recommendation, fallback check, network boundary
+  5. Flip IIS routing (apply `web.config`), re-verify
+  6. Rollback per `deployment/release/ROLLBACK.md`
 
 ## Tooling conventions
 

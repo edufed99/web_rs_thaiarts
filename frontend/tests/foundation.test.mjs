@@ -144,6 +144,23 @@ test("an empty development database is rebuilt from migrations and seed data", a
   }
 });
 
+test("migration:verify fails closed while migrations are pending (issue #11)", async () => {
+  // After db:rebuild the schema is current — the release gate passes.
+  const current = await runNpm(["run", "migration:verify"], {
+    DATABASE_URL: databaseUrl.toString(),
+  });
+  assert.equal(current.code, 0, `${current.stdout}\n${current.stderr}`);
+  assert.match(current.stdout, /current/);
+
+  // An empty database must fail the release gate (pending migrations).
+  await emptyTestDatabase();
+  const pending = await runNpm(["run", "migration:verify"], {
+    DATABASE_URL: databaseUrl.toString(),
+  });
+  assert.notEqual(pending.code, 0);
+  assert.match(pending.stderr, /Pending migrations/);
+});
+
 test("the compiled operational CLI migrates and seeds without starting Next.js", async () => {
   await emptyTestDatabase();
   const built = await runNpm(["run", "build:db"]);

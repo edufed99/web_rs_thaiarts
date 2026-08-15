@@ -1,4 +1,5 @@
 # Node / Next.js
+.worktrees/
 node_modules/
 .next/
 .next-dev/
@@ -87,4 +88,3 @@ tmp/
 output/
 public key/
 **/.next*
-

@@ -26,6 +26,18 @@ test("IIS routes only migrated API paths to Next.js before compatibility", async
     "api/uploads/items/cover.jpg",
     "api/uploads/items",
     "api/uploads/avatars/member.png",
+    "api/auth/signup",
+    "api/auth/login",
+    "api/auth/logout",
+    "api/auth/me",
+    "api/auth/google/login/exchange",
+    "api/actions/like",
+    "api/actions/save",
+    "api/actions/rating",
+    "api/actions/view",
+    "api/me/profile",
+    "api/me/profile/avatar",
+    "api/me/dashboard",
   ]) {
     assert.equal(selectedPort(migratedPath), 3000, migratedPath);
   }
@@ -34,18 +46,20 @@ test("IIS routes only migrated API paths to Next.js before compatibility", async
     "api/items/engagement",
     "api/items/168393376/legacy-stats",
     "api/recommendations",
-    "api/auth/login",
+    "api/auth/google/login/start",
+    "api/auth/google/login/callback",
+    "api/auth/password-reset/request",
   ]) {
     assert.equal(selectedPort(compatibilityPath), 8001, compatibilityPath);
   }
 });
 
-test("Next.js mounts the shared uploads volume read-only in both Compose topologies", async () => {
+test("Next.js mounts the shared uploads volume for authenticated avatar writes", async () => {
   for (const filename of ["../docker-compose.yml", "docker-compose.prod.yml"]) {
     const compose = await readFile(new URL(filename, deploymentRoot), "utf8");
     const frontend = compose.match(
       /\n  frontend:\r?\n([\s\S]*?)(?=\n  [a-z][a-z-]*:\r?\n|\nvolumes:)/,
     )?.[1] ?? "";
-    assert.match(frontend, /uploads_data:\/app\/data\/uploads:ro/);
+    assert.match(frontend, /uploads_data:\/app\/data\/uploads(?:\r?\n|$)/);
   }
 });

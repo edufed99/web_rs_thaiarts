@@ -4,6 +4,8 @@ import { NextResponse } from "next/server";
 import { internalApiError } from "@/lib/server/api-response";
 import { getItemsBatch } from "@/lib/server/catalogue";
 import { catalogueCompatibilityResponse } from "@/lib/server/compatibility";
+import { authenticatedUser } from "@/lib/server/sessions";
+import { personalizeItems } from "@/lib/server/members";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -13,7 +15,9 @@ export async function GET(request: NextRequest): Promise<Response> {
   if (compatibility) return compatibility;
   const ids = parseIds(request.nextUrl.searchParams.get("ids"));
   try {
-    return NextResponse.json(await getItemsBatch(ids));
+    const result = await getItemsBatch(ids);
+    const user = await authenticatedUser(request);
+    return NextResponse.json(user ? { ...result, items: await personalizeItems(user, result.items) } : result);
   } catch {
     return internalApiError();
   }

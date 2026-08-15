@@ -18,11 +18,13 @@
     "type-check": "tsc --noEmit",
     "test:foundation": "node --test tests/foundation.test.mjs",
     "test:catalogue": "node --test tests/catalogue.test.mjs",
+    "test:members": "node --test tests/members.test.mjs",
     "test:deployment": "node --test tests/deployment-routing.test.mjs",
     "test:e2e": "playwright test",
     "test:e2e:list": "playwright test --list"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.2",
     "next": "^14.2.35",
     "pg": "^8.23.0",
     "react": "18.3.1",

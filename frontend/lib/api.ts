@@ -63,12 +63,32 @@ import type {
   ViewRequestIn,
 } from "./types";
 
-import { getAuthHeaders, getCurrentUser } from "./auth";
+import { getAuthHeaders } from "./auth";
 
 const DEFAULT_BASE_URL = "/api";
 
 function baseUrl(): string {
   return DEFAULT_BASE_URL;
+}
+
+function mutationHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  return { "X-CSRF-Token": "same-origin", ...extra };
+}
+
+async function mutateJson<T>(
+  path: string,
+  method: "POST" | "PUT" | "PATCH" | "DELETE",
+  body: unknown,
+  extraHeaders: Record<string, string> = {},
+): Promise<T> {
+  const response = await fetch(`${baseUrl()}${path}`, {
+    method,
+    headers: mutationHeaders({ "Content-Type": "application/json", ...extraHeaders }),
+    credentials: "same-origin",
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  return handle<T>(response);
 }
 
 export class ApiClientError extends Error {
@@ -148,16 +168,8 @@ export async function getItems(opts?: {
   if (opts?.limit !== undefined) params.set("limit", String(opts.limit));
   if (opts?.offset !== undefined) params.set("offset", String(opts.offset));
   if (opts?.contextId !== undefined) params.set("context", String(opts.contextId));
-  // The backend's ``resolve_user_key`` prefers the JWT bearer token when
-  // present and only falls back to the legacy ``anon:<uuid>`` query param
-  // for fully anonymous callers. For anonymous users we deliberately omit
-  // ``user_key`` so the catalog endpoint skips the per-row live-user-state
-  // SELECT — anon users have no personalised likes / saves / ratings to
-  // surface, and the extra query was a measurable hot-path cost on the
-  // home → /items search flow.
-  if (opts?.userKey && getCurrentUser() != null) {
-    params.set("user_key", opts.userKey);
-  }
+  // Session cookies personalize member state server-side; user_key is never
+  // forwarded because it would re-enter the legacy FastAPI compatibility path.
   const url = `${baseUrl()}/items${params.toString() ? `?${params.toString()}` : ""}`;
   const res = await fetch(url, {
     headers: { ...getAuthHeaders(), ...(opts?.extraHeaders ?? {}) },
@@ -170,15 +182,7 @@ export async function getItem(
   itemId: number,
   opts?: { userKey?: string; extraHeaders?: Record<string, string> },
 ): Promise<ItemOut> {
-  const params = new URLSearchParams();
-  // Only forward user_key for authenticated members — anonymous callers
-  // would 401 on the backend auth check and gain nothing from the per-row
-  // user_state lookup anyway.
-  if (opts?.userKey && getCurrentUser() != null) {
-    params.set("user_key", opts.userKey);
-  }
-  const url = `${baseUrl()}/items/${itemId}${params.toString() ? `?${params.toString()}` : ""}`;
-  const res = await fetch(url, {
+  const res = await fetch(`${baseUrl()}/items/${itemId}`, {
     headers: { ...getAuthHeaders(), ...(opts?.extraHeaders ?? {}) },
     cache: "no-store",
   });
@@ -191,7 +195,6 @@ export async function getItemsBatch(
 ): Promise<ItemListOut> {
   if (itemIds.length === 0) return { items: [], total: 0 };
   const params = new URLSearchParams({ ids: itemIds.join(",") });
-  if (opts?.userKey && getCurrentUser() != null) params.set("user_key", opts.userKey);
   const res = await fetch(`${baseUrl()}/items/batch?${params.toString()}`, {
     headers: { ...getAuthHeaders(), ...(opts?.extraHeaders ?? {}) },
     cache: "no-store",
@@ -204,7 +207,6 @@ export async function getSimilarItems(
   opts?: { limit?: number; userKey?: string; extraHeaders?: Record<string, string> },
 ): Promise<ItemListOut> {
   const params = new URLSearchParams({ limit: String(opts?.limit ?? 4) });
-  if (opts?.userKey && getCurrentUser() != null) params.set("user_key", opts.userKey);
   const res = await fetch(`${baseUrl()}/items/${itemId}/similar?${params.toString()}`, {
     headers: { ...getAuthHeaders(), ...(opts?.extraHeaders ?? {}) },
     cache: "no-store",
@@ -362,7 +364,8 @@ export async function postRecommendations(
 ): Promise<RecommendationResponseOut> {
   const res = await fetch(`${baseUrl()}/recommendations`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...extraHeaders },
+    headers: mutationHeaders({ "Content-Type": "application/json", ...extraHeaders }),
+    credentials: "same-origin",
     body: JSON.stringify(body),
     cache: "no-store",
   });
@@ -398,65 +401,35 @@ export async function postLike(
   body: ActionRequestIn,
   extraHeaders: Record<string, string> = {},
 ): Promise<ItemActionOut> {
-  const res = await fetch(`${baseUrl()}/actions/like`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...extraHeaders },
-    body: JSON.stringify(actionBody(body)),
-    cache: "no-store",
-  });
-  return handle<ItemActionOut>(res);
+  return mutateJson("/actions/like", "POST", actionBody(body), extraHeaders);
 }
 
 export async function deleteLike(
   body: ActionRequestIn,
   extraHeaders: Record<string, string> = {},
 ): Promise<ItemActionOut> {
-  const res = await fetch(`${baseUrl()}/actions/like`, {
-    method: "DELETE",
-    headers: { "Content-Type": "application/json", ...extraHeaders },
-    body: JSON.stringify(actionBody(body)),
-    cache: "no-store",
-  });
-  return handle<ItemActionOut>(res);
+  return mutateJson("/actions/like", "DELETE", actionBody(body), extraHeaders);
 }
 
 export async function postSave(
   body: ActionRequestIn,
   extraHeaders: Record<string, string> = {},
 ): Promise<ItemActionOut> {
-  const res = await fetch(`${baseUrl()}/actions/save`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...extraHeaders },
-    body: JSON.stringify(actionBody(body)),
-    cache: "no-store",
-  });
-  return handle<ItemActionOut>(res);
+  return mutateJson("/actions/save", "POST", actionBody(body), extraHeaders);
 }
 
 export async function deleteSave(
   body: ActionRequestIn,
   extraHeaders: Record<string, string> = {},
 ): Promise<ItemActionOut> {
-  const res = await fetch(`${baseUrl()}/actions/save`, {
-    method: "DELETE",
-    headers: { "Content-Type": "application/json", ...extraHeaders },
-    body: JSON.stringify(actionBody(body)),
-    cache: "no-store",
-  });
-  return handle<ItemActionOut>(res);
+  return mutateJson("/actions/save", "DELETE", actionBody(body), extraHeaders);
 }
 
 export async function putRating(
   body: ActionRequestIn,
   extraHeaders: Record<string, string> = {},
 ): Promise<ItemActionOut> {
-  const res = await fetch(`${baseUrl()}/actions/rating`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json", ...extraHeaders },
-    body: JSON.stringify(actionBody(body)),
-    cache: "no-store",
-  });
-  return handle<ItemActionOut>(res);
+  return mutateJson("/actions/rating", "PUT", actionBody(body), extraHeaders);
 }
 
 /**
@@ -476,7 +449,8 @@ export async function postView(
   try {
     const res = await fetch(`${baseUrl()}/actions/view`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...extraHeaders },
+      headers: mutationHeaders({ "Content-Type": "application/json", ...extraHeaders }),
+      credentials: "same-origin",
       body: JSON.stringify({
         user_key: body.user_key,
         item_id: body.item_id,
@@ -585,13 +559,7 @@ export async function getMemberProfile(): Promise<MemberProfileOut> {
 export async function patchMemberProfile(
   body: MemberProfileUpdate,
 ): Promise<MemberProfileOut> {
-  const res = await fetch(`${baseUrl()}/me/profile`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
-  return handle<MemberProfileOut>(res);
+  return mutateJson("/me/profile", "PATCH", body, getAuthHeaders());
 }
 
 export async function uploadMemberAvatar(file: File): Promise<MemberProfileOut> {
@@ -599,7 +567,8 @@ export async function uploadMemberAvatar(file: File): Promise<MemberProfileOut> 
   form.set("file", file);
   const res = await fetch(`${baseUrl()}/me/profile/avatar`, {
     method: "POST",
-    headers: { ...getAuthHeaders() },
+    headers: mutationHeaders({ ...getAuthHeaders() }),
+    credentials: "same-origin",
     body: form,
     cache: "no-store",
   });
@@ -609,7 +578,8 @@ export async function uploadMemberAvatar(file: File): Promise<MemberProfileOut> 
 export async function deleteMemberAvatar(): Promise<MemberProfileOut> {
   const res = await fetch(`${baseUrl()}/me/profile/avatar`, {
     method: "DELETE",
-    headers: { ...getAuthHeaders() },
+    headers: mutationHeaders({ ...getAuthHeaders() }),
+    credentials: "same-origin",
     cache: "no-store",
   });
   return handle<MemberProfileOut>(res);
@@ -624,23 +594,11 @@ export async function getMemberDashboard(): Promise<MemberDashboardOut> {
 }
 
 export async function postSignup(body: UserSignup): Promise<TokenOut> {
-  const res = await fetch(`${baseUrl()}/auth/signup`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
-  return handle<TokenOut>(res);
+  return mutateJson("/auth/signup", "POST", body);
 }
 
 export async function postLogin(body: UserLogin): Promise<TokenOut> {
-  const res = await fetch(`${baseUrl()}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
-  return handle<TokenOut>(res);
+  return mutateJson("/auth/login", "POST", body);
 }
 
 export function googleLoginStartUrl(nextPath = "/recommend"): string {
@@ -651,13 +609,7 @@ export function googleLoginStartUrl(nextPath = "/recommend"): string {
 export async function postGoogleLoginExchange(
   body: GoogleLoginExchange,
 ): Promise<TokenOut> {
-  const res = await fetch(`${baseUrl()}/auth/google/login/exchange`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
-  return handle<TokenOut>(res);
+  return mutateJson("/auth/google/login/exchange", "POST", body);
 }
 
 // fallow-ignore-next-line unused-export -- Preserved public API client contract.
@@ -671,13 +623,7 @@ export async function getMe(): Promise<UserOut> {
 }
 
 export async function patchMe(body: UserProfileUpdate): Promise<UserOut> {
-  const res = await fetch(`${baseUrl()}/auth/me`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
-  return handle<UserOut>(res);
+  return mutateJson("/auth/me", "PATCH", body, getAuthHeaders());
 }
 
 export async function postPasswordResetRequest(

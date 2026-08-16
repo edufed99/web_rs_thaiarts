@@ -145,6 +145,8 @@ class MemberProfileOut(BaseModel):
     avatar_url: str = ""
     bio: str = ""
     role: Literal["user", "super_admin"] = "user"
+    requires_password_reset: bool = False
+    legacy_account: bool = False
     created_at: Optional[datetime] = None
     last_login_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

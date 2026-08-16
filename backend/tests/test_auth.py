@@ -696,7 +696,8 @@ def test_legacy_reset_marker_survives_profile_edit_until_password_change(client)
         headers=headers,
     )
     assert profile_update.status_code == 200
-    assert profile_update.json()["display_name"] == "must_reset|ชื่อใหม่"
+    assert profile_update.json()["display_name"] == "ชื่อใหม่"
+    assert profile_update.json()["requires_password_reset"] is True
 
     password_update = client.patch(
         "/auth/me",
@@ -705,7 +706,9 @@ def test_legacy_reset_marker_survives_profile_edit_until_password_change(client)
     )
     assert password_update.status_code == 200
     assert password_update.json()["display_name"] == "ชื่อใหม่"
+    assert password_update.json()["requires_password_reset"] is False
     assert client.get("/me/profile", headers=headers).json()["display_name"] == "ชื่อใหม่"
+    assert client.get("/me/profile", headers=headers).json()["requires_password_reset"] is False
 
 
 def test_update_me_rejects_wrong_current_password(client):

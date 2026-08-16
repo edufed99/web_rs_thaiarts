@@ -38,8 +38,8 @@ from ..schemas.user import (
     GmailOAuthStatusOut,
     UserOut,
 )
-from ..services import catalogue, gmail_oauth, ingestion, mailer, user_query
-from ..services.auth import get_current_admin, hash_password
+from ..services import catalogue, gmail_oauth, identity, ingestion, mailer, user_query
+from ..services.identity import get_current_admin, hash_password, user_to_out
 
 
 logger = logging.getLogger("recsys.admin")
@@ -56,21 +56,7 @@ _update_loader_row = ingestion.update_loader_row
 _invalidate_catalog_cache = ingestion.invalidate_catalog_cache
 _item_out_from_session = ingestion._item_out_from_session
 _names_for_keyword_ids = ingestion._names_for_keyword_ids
-
-
-def _admin_user_out(user) -> UserOut:
-    return UserOut(
-        id=int(user.id),
-        username=str(user.username),
-        email=str(user.email or ""),
-        display_name=str(user.display_name or ""),
-        is_admin=bool(user.is_admin),
-        role="super_admin" if bool(user.is_admin) else "user",
-        auth_provider=str(getattr(user, "auth_provider", "password") or "password"),
-        email_verified=bool(getattr(user, "email_verified", False)),
-        created_at=user.created_at,
-        last_login_at=user.last_login_at,
-    )
+_admin_user_out = user_to_out
 
 
 # --- User Management --------------------------------------------------------
@@ -78,9 +64,9 @@ def _admin_user_out(user) -> UserOut:
 
 @router.get("/users", response_model=AdminUserListOut)
 def list_admin_users(admin_user=Depends(get_current_admin)) -> AdminUserListOut:
-    rows = user_query.list_users(limit=500)
+    rows = identity.list_users(limit=500)
     return AdminUserListOut(
-        users=[_admin_user_out(row) for row in rows],
+        users=[user_to_out(row) for row in rows],
         total=len(rows),
     )
 
@@ -90,24 +76,14 @@ def create_admin_user(
     payload: AdminUserCreate,
     admin_user=Depends(get_current_admin),
 ) -> UserOut:
-    if user_query.find_user_by_username(payload.username) is not None:
-        raise InvalidRequestError(
-            "Username already taken",
-            extra={"code": "duplicate_username"},
-        )
-    user = user_query.create_user(
+    user = identity.create_admin_user(
         username=payload.username,
-        password_hash=hash_password(payload.password),
+        password=payload.password,
         email=payload.email or "",
         display_name=payload.display_name or "",
         is_admin=payload.is_admin,
     )
-    if user is None:
-        raise InvalidRequestError(
-            "User could not be created",
-            extra={"code": "user_not_created"},
-        )
-    return _admin_user_out(user)
+    return user_to_out(user)
 
 
 @router.put("/users/{user_id}", response_model=UserOut)
@@ -116,38 +92,16 @@ def update_admin_user(
     payload: AdminUserUpdate,
     admin_user=Depends(get_current_admin),
 ) -> UserOut:
-    target = user_query.find_user_by_id(user_id)
-    if target is None:
-        raise InvalidRequestError(
-            "User not found",
-            extra={"code": "user_not_found"},
-        )
-    if payload.username is not None and payload.username != target.username:
-        duplicate = user_query.find_user_by_username(payload.username)
-        if duplicate is not None and int(duplicate.id) != int(user_id):
-            raise InvalidRequestError(
-                "Username already taken",
-                extra={"code": "duplicate_username"},
-            )
-    if int(admin_user.id) == int(user_id) and payload.is_admin is False:
-        raise InvalidRequestError(
-            "You cannot remove your own administrator role",
-            extra={"code": "cannot_demote_self"},
-        )
-    updated = user_query.update_user_by_admin(
+    updated = identity.update_user_by_admin(
         user_id,
+        current_admin_id=admin_user.id,
         username=payload.username,
         email=payload.email,
         display_name=payload.display_name,
-        password_hash=hash_password(payload.password) if payload.password else None,
+        password=payload.password,
         is_admin=payload.is_admin,
     )
-    if updated is None:
-        raise InvalidRequestError(
-            "User not found",
-            extra={"code": "user_not_found"},
-        )
-    return _admin_user_out(updated)
+    return user_to_out(updated)
 
 
 @router.delete("/users/{user_id}", response_model=AdminUserDeleteOut)
@@ -155,21 +109,7 @@ def delete_admin_user(
     user_id: int,
     admin_user=Depends(get_current_admin),
 ) -> AdminUserDeleteOut:
-    if int(admin_user.id) == int(user_id):
-        raise InvalidRequestError(
-            "You cannot delete the account you are currently using",
-            extra={"code": "cannot_delete_self"},
-        )
-    if user_query.find_user_by_id(user_id) is None:
-        raise InvalidRequestError(
-            "User not found",
-            extra={"code": "user_not_found"},
-        )
-    if not user_query.delete_user(user_id):
-        raise InvalidRequestError(
-            "User could not be deleted",
-            extra={"code": "user_not_deleted"},
-        )
+    identity.delete_user_by_admin(user_id, current_admin_id=admin_user.id)
     return AdminUserDeleteOut(user_id=user_id)
 
 

@@ -139,6 +139,8 @@ class UserOut(BaseModel):
     role: Literal["user", "super_admin"] = "user"
     auth_provider: str = "password"
     email_verified: bool = False
+    requires_password_reset: bool = False
+    legacy_account: bool = False
     created_at: Optional[datetime] = None
     last_login_at: Optional[datetime] = None
 

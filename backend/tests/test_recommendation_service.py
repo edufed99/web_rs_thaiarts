@@ -240,12 +240,15 @@ def live_db_for_rec(monkeypatch, loader):
     monkeypatch.setattr(db_module, "session_scope", fake_scope)
     from app.services import db_query as dbq_module
     from app.services import recommendation_service as rec_module
+    from app.services import telemetry as tel_module
     monkeypatch.setattr(dbq_module, "is_db_enabled", lambda: True)
     monkeypatch.setattr(dbq_module, "session_scope", fake_scope)
     # The orchestrator also imports is_db_enabled as a module-local
     # binding — patch it there too so the response metadata sees the
     # patched value.
     monkeypatch.setattr(rec_module, "is_db_enabled", lambda: True)
+    monkeypatch.setattr(tel_module, "is_db_enabled", lambda: True)
+    monkeypatch.setattr(tel_module, "session_scope", fake_scope)
     db_module.reset_engine()
     config_module.reset_settings_cache()
     yield SessionLocal, aid_to_db
@@ -507,28 +510,54 @@ def test_generate_empty_candidate_set(loader):
     assert resp.results == []
 
 
-def test_generate_recommendations_falls_back_when_persist_returns_zero(loader, monkeypatch):
-    """When ``_persist_request_and_recompute_online_eval`` returns 0
-    (the DB was disabled or unreachable), the response is still
-    served with a uuid4 fallback ``request_id`` rather than failing."""
+def test_generate_recommendations_falls_back_when_persist_returns_zero(loader):
+    """When telemetry persistence returns 0 (the DB was disabled or unreachable),
+    the response is still served with a uuid4 fallback ``request_id`` rather than failing."""
     from app.services import recommendation_service as rec_svc
+    from app.services.telemetry import NullTelemetryAdapter
     from app.schemas.recommendation import RecommendationRequestIn
     from app.core.config import get_settings
 
     settings = get_settings()
-    monkeypatch.setattr(
-        rec_svc, "_persist_request_and_recompute_online_eval",
-        lambda *a, **kw: 0,
-    )
     req = RecommendationRequestIn(
         context_id=context_id("งานบวช"),
         keyword_ids=[keyword_id("ผู้หญิง")],
         top_k=3,
     )
-    resp = rec_svc.generate_recommendations(loader, req, settings=settings)
+    resp = rec_svc.generate_recommendations(
+        loader, req, settings=settings, telemetry=NullTelemetryAdapter()
+    )
     # request_id is set, but not an int (it's the uuid4 fallback).
     assert resp.request_id
     assert not resp.request_id.isdigit()
     # Results are still populated — the persist failure does not break
     # the recommendation path.
     assert isinstance(resp.results, list)
+    assert len(resp.results) > 0
+
+
+def test_generate_recommendations_with_in_memory_telemetry(loader):
+    """Verify recommendation scoring runs with InMemoryTelemetryAdapter and records call data."""
+    from app.services.telemetry import InMemoryTelemetryAdapter
+    from app.schemas.recommendation import RecommendationRequestIn
+
+    adapter = InMemoryTelemetryAdapter()
+    req = RecommendationRequestIn(
+        context_id=context_id("งานบวช"),
+        keyword_ids=[keyword_id("ผู้หญิง")],
+        top_k=3,
+        user_key="user:u1",
+    )
+    resp = generate_recommendations(loader, req, user_id=42, telemetry=adapter)
+    assert resp.request_id
+    assert len(resp.results) > 0
+    assert len(adapter.records) == 1
+    call = adapter.records[0]
+    assert call["request"] == req
+    assert call["ctx_name"] == "งานบวช"
+    assert call["user_id"] == 42
+    assert call["candidate_count"] == 3
+    assert len(call["results"]) == len(resp.results)
+    assert len(call["selected_keywords"]) == 1
+    assert call["selected_keywords"][0].name == "ผู้หญิง"
+

@@ -151,3 +151,31 @@ def test_authenticated_recommendation_uses_best_profile_key(client: TestClient):
 
     assert r.status_code == 200
     assert r.json()["metadata"]["user_key_provided"] is True
+
+
+def test_recommendations_with_in_memory_telemetry_dependency_override(client: TestClient):
+    from app.services.telemetry import InMemoryTelemetryAdapter, get_telemetry_adapter
+
+    adapter = InMemoryTelemetryAdapter()
+    app = client.app
+    app.dependency_overrides[get_telemetry_adapter] = lambda: adapter
+    try:
+        body = {
+            "context_id": context_id("งานบวช"),
+            "keyword_ids": [keyword_id("ผู้หญิง")],
+            "top_k": 3,
+            "user_key": "user:u1",
+        }
+        r = client.post("/recommendations", json=body)
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data["results"]) > 0
+        assert len(adapter.records) == 1
+        record = adapter.records[0]
+        assert record["ctx_name"] == "งานบวช"
+        assert record["candidate_count"] == 3
+        assert len(record["results"]) == len(data["results"])
+        assert len(record["selected_keywords"]) == 1
+        assert record["selected_keywords"][0].name == "ผู้หญิง"
+    finally:
+        app.dependency_overrides.clear()

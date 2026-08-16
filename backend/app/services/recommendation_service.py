@@ -49,6 +49,7 @@ from .eligibility import (
 )
 from .hybrid_service import apply_negative_penalty, weighted_sum
 from .suitability import catalog_match_percent, suitability_label
+from .telemetry import RecommendationTelemetry, get_telemetry_adapter
 
 
 logger = logging.getLogger(__name__)
@@ -440,8 +441,11 @@ def generate_recommendations(
     request: RecommendationRequestIn,
     settings: Optional[Settings] = None,
     user_id: Optional[int] = None,
+    telemetry: Optional[RecommendationTelemetry] = None,
 ) -> RecommendationResponseOut:
     settings = _effective_settings(loader, settings)
+    if telemetry is None:
+        telemetry = get_telemetry_adapter()
 
     # 1. Validate context
     ctx_name = context_name_for_id(loader, int(request.context_id))
@@ -469,8 +473,7 @@ def generate_recommendations(
     )
     if not candidates:
         response = _empty_response(request, ctx_name, selected_keyword_objs, settings)
-        persisted_id = _persist_request_and_recompute_online_eval(
-            loader,
+        persisted_id = telemetry.record_recommendation(
             request,
             ctx_name,
             [],
@@ -587,13 +590,8 @@ def generate_recommendations(
         )
 
     # 7b. Phase 3 — persist this request + its results to the live DB
-    #     and recompute online evaluation in the same flow. The persist
-    #     is wrapped in its own try/except so a DB hiccup never breaks
-    #     the recommendation response. The returned request_id is the
-    #     DB primary key (an int) so the client can correlate; we fall
-    #     back to a uuid when the DB was unreachable.
-    persisted_id = _persist_request_and_recompute_online_eval(
-        loader,
+    #     via the recommendation telemetry seam.
+    persisted_id = telemetry.record_recommendation(
         request,
         ctx_name,
         results,
@@ -636,146 +634,6 @@ def generate_recommendations(
         },
         results=results,
     )
-
-
-def _persist_request_and_recompute_online_eval(
-    loader: ArtifactLoader,
-    request: RecommendationRequestIn,
-    ctx_name: str,
-    results: List[RecommendationResultOut],
-    settings: Settings,
-    *,
-    user_id: Optional[int] = None,
-    candidate_count: Optional[int] = None,
-    selected_keywords: Optional[List[KeywordOut]] = None,
-) -> int:
-    """Persist this request + its results to the live DB, then trigger
-    an online-eval recompute so the dashboard's model-quality tiles
-    reflect fresh telemetry.
-
-    Wrapped in its own try/except — telemetry writes must never break
-    the recommendation response. Returns the persisted ``request_id``
-    (DB id) on success, 0 when persistence was skipped (DB disabled
-    or transient error).
-    """
-    if not is_db_enabled():
-        return 0
-    try:
-        with session_scope() as session:
-            if session is None:
-                return 0
-            # Map the artifact context id (what the API uses) back to
-            # the live ``contexts.id`` PK. When the context is missing
-            # in the live DB the request cannot be persisted; we still
-            # attempt the online-eval recompute because that path only
-            # needs ``recommendation_results`` + ``interaction_logs``.
-            from ..models_db import (
-                Context,
-                Item,
-                Keyword as DbKeyword,
-                RecommendationRequest as RR,
-                RecommendationRequestSelectedKeyword as RRSK,
-                RecommendationResult as RL,
-            )
-            ctx_row_id: Optional[int] = None
-            if ctx_name:
-                ctx_row = session.execute(
-                    select(Context.id).where(Context.name == ctx_name).limit(1)
-                ).scalar_one_or_none()
-                ctx_row_id = int(ctx_row) if ctx_row is not None else None
-            if ctx_row_id is None:
-                logger.warning(
-                    "Recommendation telemetry skipped: context %r is missing from the database",
-                    ctx_name,
-                )
-                return 0
-
-            rr = RR(
-                user_id=int(user_id) if user_id is not None else None,
-                selected_context_id=int(ctx_row_id),
-                candidate_count=(
-                    int(candidate_count) if candidate_count is not None else len(results)
-                ),
-                top_k=int(request.top_k),
-                method=str(settings.recommendation_method),
-                metadata_json=json.dumps(
-                    {
-                        "cbf_model": str(settings.e5_model_name),
-                        "hybrid_alpha": float(settings.hybrid_alpha),
-                        "user_key_provided": bool(request.user_key),
-                        "selected_keyword_names": [
-                            str(keyword.name) for keyword in (selected_keywords or [])
-                        ],
-                    },
-                    ensure_ascii=False,
-                ),
-            )
-            session.add(rr)
-            session.flush()  # populates rr.id
-            req_id = int(rr.id)
-
-            # Persist the exact keywords selected for this request in the
-            # existing M2M table. API ids can be artifact ids or DB ids, so
-            # resolve by the canonical keyword name before writing the FK.
-            selected_names = {
-                str(keyword.name).strip()
-                for keyword in (selected_keywords or [])
-                if str(keyword.name).strip()
-            }
-            if selected_names:
-                keyword_ids = session.execute(
-                    select(DbKeyword.id).where(DbKeyword.name.in_(selected_names))
-                ).scalars().all()
-                for keyword_id in keyword_ids:
-                    session.add(RRSK(request_id=req_id, keyword_id=int(keyword_id)))
-
-            # RecommendationResult.item_id is a DB FK, while the API result
-            # carries artifact ids. Translate the whole result set in one
-            # query; missing catalog rows are skipped without losing the
-            # request and its selected-keyword telemetry.
-            artifact_ids = [int(result.item.id) for result in results]
-            item_id_by_artifact = (
-                {
-                    int(artifact_id): int(db_id)
-                    for artifact_id, db_id in session.execute(
-                        select(Item.artifact_item_id, Item.id).where(
-                            Item.artifact_item_id.in_(artifact_ids)
-                        )
-                    ).all()
-                }
-                if artifact_ids
-                else {}
-            )
-
-            for r in results:
-                db_item_id = item_id_by_artifact.get(int(r.item.id))
-                if db_item_id is None:
-                    continue
-                session.add(
-                    RL(
-                        request_id=req_id,
-                        item_id=db_item_id,
-                        rank=int(r.rank),
-                        cbf_score=float(r.scores.cbf),
-                        cf_score=float(r.scores.cf),
-                        hybrid_score=float(r.scores.hybrid),
-                        is_context_valid=bool(r.is_context_valid),
-                        matched_keywords_json=json.dumps(list(r.matched_keywords or []), ensure_ascii=False),
-                        explanation=str(r.explanation or ""),
-                    )
-                )
-            return req_id
-    except Exception:  # noqa: BLE001 - telemetry writes must never break the request path
-        logger.exception("Failed to persist recommendation request telemetry")
-        return 0
-    finally:
-        # Online-eval recompute runs in its own session so a slow
-        # recompute never blocks the response. Cheap on small corpora.
-        try:
-            from .dashboard_query import recompute_online_eval
-            recompute_online_eval(window_days=30)
-        except Exception:  # noqa: BLE001
-            pass
 
 
 def _effective_settings(loader: ArtifactLoader, settings: Optional[Settings]) -> Settings:

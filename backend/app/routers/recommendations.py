@@ -23,6 +23,7 @@ from ..services.recommendation_service import (
     generate_profile_recommendations,
     generate_recommendations,
 )
+from ..services.telemetry import RecommendationTelemetry, get_telemetry_adapter
 from ._user_key import get_current_user_dep
 
 
@@ -53,6 +54,7 @@ def post_recommendations(
     payload: RecommendationRequestIn,
     user: Optional[User] = Depends(get_current_user_dep),
     loader: ArtifactLoader = Depends(get_singleton),
+    telemetry: RecommendationTelemetry = Depends(get_telemetry_adapter),
 ) -> RecommendationResponseOut:
     settings = get_settings()
     if user is not None:
@@ -63,6 +65,7 @@ def post_recommendations(
         payload,
         settings=settings,
         user_id=int(user.id) if user is not None else None,
+        telemetry=telemetry,
     )
 
 

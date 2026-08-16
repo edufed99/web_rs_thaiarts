@@ -54,12 +54,13 @@ def test_login_taxonomy_e5_top10(monkeypatch):
         "encode_query",
         lambda _text: np.ones(1024, dtype=np.float32) / np.sqrt(1024),
     )
+    from app.services.telemetry import NullTelemetryAdapter
     monkeypatch.setattr(recommendation_service, "live_user_negative_ratings", lambda *_a, **_k: {})
     monkeypatch.setattr(recommendation_service, "live_user_state_for_items", lambda *_a, **_k: {})
     monkeypatch.setattr(
         recommendation_service,
-        "_persist_request_and_recompute_online_eval",
-        lambda *_a, **_k: 0,
+        "get_telemetry_adapter",
+        lambda: NullTelemetryAdapter(),
     )
 
     with TestClient(create_app()) as client:

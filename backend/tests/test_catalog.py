@@ -6,11 +6,20 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from app.routers.catalog import _matches_all_terms
+from app.routers.catalog import _matches_all_terms, _parse_item_ids
 from tests.conftest import context_id, item_id
 
 
 _ANON = {"user_key": "anon:test"}
+
+
+def test_parse_item_ids():
+    assert _parse_item_ids("1,2,3") == [1, 2, 3]
+    assert _parse_item_ids("1,invalid,-1,2,2") == [1, 2]
+    # Cap at 200
+    long_ids = ",".join(str(i) for i in range(1, 250))
+    parsed = _parse_item_ids(long_ids)
+    assert len(parsed) == 200
 
 
 def test_list_items_default(client: TestClient):
@@ -240,26 +249,26 @@ def test_db_item_rows_cache_returns_same_instance(monkeypatch):
     object — the second call must not hit the DB joins or the recursive
     taxonomy walk.
     """
-    from app.routers import catalog as catalog_module
+    from app.services import catalogue as catalogue_module
 
     # Reset cache so this test is hermetic.
-    catalog_module._db_rows_cache["data"] = [{"marker": "cached"}]
-    catalog_module._db_rows_cache["expires_at"] = time.monotonic() + 60.0
+    catalogue_module._db_rows_cache["data"] = [{"marker": "cached"}]
+    catalogue_module._db_rows_cache["expires_at"] = time.monotonic() + 60.0
 
     seen = {"n": 0}
 
-    real_func = catalog_module._db_contexts_by_item
+    real_func = catalogue_module._db_contexts_by_item
 
     def counting_contexts(session, item_ids):
         seen["n"] += 1
         return real_func(session, item_ids)
 
-    monkeypatch.setattr(catalog_module, "_db_contexts_by_item", counting_contexts)
+    monkeypatch.setattr(catalogue_module, "_db_contexts_by_item", counting_contexts)
 
     # First call: cache hit, DB untouched.
-    first = catalog_module._db_item_rows()
+    first = catalogue_module._db_item_rows()
     # Second call inside the TTL: must reuse the cache too.
-    second = catalog_module._db_item_rows()
+    second = catalogue_module._db_item_rows()
 
     assert first == [{"marker": "cached"}]
     assert first is second
@@ -268,18 +277,18 @@ def test_db_item_rows_cache_returns_same_instance(monkeypatch):
 
 def test_db_item_rows_cache_invalidates_when_db_signature_changes(monkeypatch):
     """External PostgreSQL edits must invalidate the cached catalog rows."""
-    from app.routers import catalog as catalog_module
+    from app.services import catalogue as catalogue_module
 
-    catalog_module._db_rows_cache["data"] = [{"marker": "old"}]
-    catalog_module._db_rows_cache["expires_at"] = time.monotonic() + 60.0
-    catalog_module._db_rows_cache["signature"] = "old-signature"
+    catalogue_module._db_rows_cache["data"] = [{"marker": "old"}]
+    catalogue_module._db_rows_cache["expires_at"] = time.monotonic() + 60.0
+    catalogue_module._db_rows_cache["signature"] = "old-signature"
 
-    monkeypatch.setattr(catalog_module, "_db_catalog_signature", lambda: "new-signature")
+    monkeypatch.setattr(catalogue_module, "_db_catalog_signature", lambda: "new-signature")
 
-    catalog_module._db_item_rows()
+    catalogue_module._db_item_rows()
 
-    assert catalog_module._db_rows_cache["data"] != [{"marker": "old"}]
-    assert catalog_module._db_rows_cache["signature"] is None
+    assert catalogue_module._db_rows_cache["data"] != [{"marker": "old"}]
+    assert catalogue_module._db_rows_cache["signature"] is None
 
 
 def test_db_item_rows_cache_stale_entry_is_not_returned_after_ttl():
@@ -288,14 +297,15 @@ def test_db_item_rows_cache_stale_entry_is_not_returned_after_ttl():
     (as it does in the synthetic-DB test fixture). The cache should
     either be refreshed or cleared, never return the expired object.
     """
-    from app.routers import catalog as catalog_module
+    from app.services import catalogue as catalogue_module
 
     # Stale entry: already past its TTL.
-    catalog_module._db_rows_cache["data"] = [{"marker": "stale"}]
-    catalog_module._db_rows_cache["expires_at"] = time.monotonic() - 1.0
+    catalogue_module._db_rows_cache["data"] = [{"marker": "stale"}]
+    catalogue_module._db_rows_cache["expires_at"] = time.monotonic() - 1.0
 
     # After the call, the cache data must no longer be the stale sentinel.
     # (In the test fixture session_scope returns None → _db_item_rows()
     # returns None and the cache stays empty, which is correct.)
-    catalog_module._db_item_rows()
-    assert catalog_module._db_rows_cache["data"] != [{"marker": "stale"}]
+    catalogue_module._db_item_rows()
+    assert catalogue_module._db_rows_cache["data"] != [{"marker": "stale"}]
+

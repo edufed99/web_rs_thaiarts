@@ -240,11 +240,13 @@ def db_catalog_client(monkeypatch, artifacts_dir):
     )
     from app.routers import catalog as catalog_module
     from app.routers import metrics as metrics_module
+    from app.services import catalogue as catalogue_module
 
     monkeypatch.setenv("RECSYS_ARTIFACT_DIR", str(artifacts_dir))
     monkeypatch.setenv("RECSYS_DB_ENABLED", "1")
     config_module.reset_settings_cache()
     reset_singleton()
+    catalogue_module.invalidate_db_item_rows_cache()
 
     eng = create_engine(
         INMEM_THREAD_URL,
@@ -293,13 +295,16 @@ def db_catalog_client(monkeypatch, artifacts_dir):
     monkeypatch.setattr(db_module, "is_db_enabled", lambda: True)
     monkeypatch.setattr(db_module, "session_scope", fake_scope)
     monkeypatch.setattr(catalog_module, "session_scope", fake_scope)
+    monkeypatch.setattr(catalogue_module, "session_scope", fake_scope)
     monkeypatch.setattr(metrics_module, "session_scope", fake_scope)
     monkeypatch.setattr(catalog_module, "live_user_state_for_items", lambda _user_key, _ids: {})
+    monkeypatch.setattr(catalogue_module, "live_user_state_for_items", lambda _user_key, _ids: {})
     db_module.reset_engine()
 
     app = create_app()
     with TestClient(app) as client:
         yield client, {"dab_id": dab_id, "rabam_id": rabam_id, "khon_id": khon_id}
+    catalogue_module.invalidate_db_item_rows_cache()
     eng.dispose()
 
 

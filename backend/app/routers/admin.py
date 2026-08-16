@@ -600,76 +600,9 @@ def item_facets(
     ``category_groups_by_performance_type`` map so the form can cascade
     ``หมวดหมู่`` from the selected ``ประเภทการแสดง``.
     """
-    from sqlalchemy import select
+    from ..services import catalogue
 
-    from ..db import session_scope
-    from ..models_db import Item
-
-    try:
-        with session_scope() as session:
-            if session is None:
-                raise RuntimeError("db_disabled")
-            cat_rows = session.execute(
-                select(Item.category_group)
-                .where(Item.is_active.is_(True))
-                .group_by(Item.category_group)
-            ).all()
-            perf_rows = session.execute(
-                select(Item.performance_type)
-                .where(Item.is_active.is_(True))
-                .group_by(Item.performance_type)
-            ).all()
-            pair_rows = session.execute(
-                select(Item.category_group, Item.performance_type)
-                .where(Item.is_active.is_(True))
-            ).all()
-            cats = [str(c[0] or "").strip() for c in cat_rows if str(c[0] or "").strip()]
-            perfs = [str(p[0] or "").strip() for p in perf_rows if str(p[0] or "").strip()]
-            cats_by_perf: Dict[str, set] = {}
-            for cat_raw, perf_raw in pair_rows:
-                cat = str(cat_raw or "").strip()
-                perf = str(perf_raw or "").strip()
-                if not cat or not perf:
-                    continue
-                cats_by_perf.setdefault(perf, set()).add(cat)
-            # We always trust the DB rows when the query succeeded — empty
-            # lists here just mean no admin has filled in those fields yet,
-            # which is information the UI should display (vs. silently
-            # falling back to artifact values that may be stale).
-            return ItemFacetsOut(
-                category_groups=sorted(cats),
-                performance_types=sorted(perfs),
-                category_groups_by_performance_type={
-                    perf: sorted(vals) for perf, vals in cats_by_perf.items()
-                },
-                source="db",
-            )
-    except Exception:  # noqa: BLE001 - fall back to artifact loader
-        pass
-
-    loader = get_singleton()
-    df = loader.items
-    cats: List[str] = []
-    perfs: List[str] = []
-    cats_by_perf: Dict[str, set] = {}
-    if "category_group" in df.columns and "performance_type" in df.columns:
-        for _, row in df.iterrows():
-            cat = str(row.get("category_group") or "").strip()
-            perf = str(row.get("performance_type") or "").strip()
-            if cat:
-                cats.append(cat)
-            if perf:
-                perfs.append(perf)
-            if cat and perf:
-                cats_by_perf.setdefault(perf, set()).add(cat)
-    return ItemFacetsOut(
-        category_groups=sorted(set(cats)),
-        performance_types=sorted(set(perfs)),
-        category_groups_by_performance_type={
-            perf: sorted(vals) for perf, vals in cats_by_perf.items()
-        },
-        source="artifact",
-    )
+    return catalogue.get_item_facets()
 
 
 @router.post(

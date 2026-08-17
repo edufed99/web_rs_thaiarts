@@ -74,6 +74,7 @@ from ..schemas.keyword import KeywordOut
 from ..services import embedding as emb
 from ..services import grounding, storage
 from ..services._ids import stable_id
+from ..services.item_out import build_item_out
 from ..services.suitability import catalog_match_percent, suitability_label
 
 
@@ -243,17 +244,17 @@ def _item_out_from_session(session: Session, item: Item) -> ItemOut:
         description_length=len(str(item.description or "")),
     )
 
-    return ItemOut(
-        id=int(item.artifact_item_id),
-        name=str(item.name or ""),
-        description=str(item.description or ""),
-        category_group=str(item.category_group or ""),
-        performance_type=str(item.performance_type or ""),
+    return build_item_out(
+        artifact_item_id=int(item.artifact_item_id),
+        name=item.name,
+        description=item.description,
+        category_group=item.category_group,
+        performance_type=item.performance_type,
         performers_count=_coerce_int(item.performers_count),
         duration_minutes=_coerce_int(item.duration_minutes),
-        price_text=str(item.price_text or ""),
-        image_url=str(item.image_url or ""),
-        video_url=str(item.video_url or ""),
+        price_text=item.price_text,
+        image_url=item.image_url,
+        video_url=item.video_url,
         keywords=[
             KeywordOut(id=int(keyword_id), name=str(name or ""), taxonomy_path="")
             for keyword_id, name in keyword_rows
@@ -948,8 +949,8 @@ def ingest_new_item(
             )
 
             warnings = list(ctx_warnings)
-            item_out = ItemOut(
-                id=aid,
+            item_out = build_item_out(
+                artifact_item_id=aid,
                 name=name,
                 description=description,
                 category_group=category,

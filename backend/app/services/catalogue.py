@@ -31,6 +31,7 @@ from ..schemas.keyword import KeywordOut
 from ._ids import stable_id
 from .db_query import live_item_engagement, live_item_media_for_items, live_user_state_for_items
 from .eligibility import context_name_for_id
+from .item_out import build_item_out
 from .suitability import catalog_match_percent, suitability_label
 
 RANKED_MODE_LIMIT = 10
@@ -221,17 +222,17 @@ def _db_row_to_item_out(row: dict[str, Any], user_state: Optional[UserState] = N
         context_count=len(ctx_names),
         description_length=len(str(row.get("description") or "")),
     )
-    return ItemOut(
-        id=int(row["artifact_item_id"]),
-        name=str(row.get("name") or ""),
-        description=str(row.get("description") or ""),
-        category_group=str(row.get("category_group") or ""),
-        performance_type=str(row.get("performance_type") or ""),
+    return build_item_out(
+        artifact_item_id=int(row["artifact_item_id"]),
+        name=row.get("name"),
+        description=row.get("description"),
+        category_group=row.get("category_group"),
+        performance_type=row.get("performance_type"),
         performers_count=_clean_int(row.get("performers_count")),
         duration_minutes=_clean_int(row.get("duration_minutes")),
-        price_text=str(row.get("price_text") or ""),
-        image_url=str(row.get("image_url") or ""),
-        video_url=str(row.get("video_url") or ""),
+        price_text=row.get("price_text"),
+        image_url=row.get("image_url"),
+        video_url=row.get("video_url"),
         keywords=[KeywordOut(**k) for k in row["keywords"] if k.get("name")],
         contexts=[
             ContextOut(
@@ -244,7 +245,7 @@ def _db_row_to_item_out(row: dict[str, Any], user_state: Optional[UserState] = N
             for c in row["contexts"]
             if c.get("name")
         ],
-        user_state=user_state or UserState(),
+        user_state=user_state,
         match_percent=mp,
         suitability_label=suitability_label(mp),
     )
@@ -287,20 +288,20 @@ def _row_to_item_out(
     )
     img_url = str(media.get("image_url") or "") if media else ""
     vid_url = str(media.get("video_url") or "") if media else ""
-    return ItemOut(
-        id=iid,
-        name=str(row.get("name") or ""),
-        description=str(row.get("description") or ""),
-        category_group=str(row.get("category_group") or ""),
-        performance_type=str(row.get("performance_type") or ""),
+    return build_item_out(
+        artifact_item_id=iid,
+        name=row.get("name"),
+        description=row.get("description"),
+        category_group=row.get("category_group"),
+        performance_type=row.get("performance_type"),
         performers_count=_clean_int(row.get("performers_count")),
         duration_minutes=_clean_int(row.get("duration_minutes")),
-        price_text=str(row.get("price_text") or ""),
+        price_text=row.get("price_text"),
         image_url=img_url,
         video_url=vid_url,
         keywords=keyword_objs,
         contexts=context_objs,
-        user_state=user_state or UserState(),
+        user_state=user_state,
         match_percent=mp,
         suitability_label=suitability_label(mp),
     )

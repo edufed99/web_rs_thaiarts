@@ -586,7 +586,7 @@ def test_recompute_online_eval_returns_none_without_data(dashboard_client):
     added in migration 0006) does not need a full recommendation row
     setup to cover the common zero-data path.
     """
-    from app.services.dashboard_query import recompute_online_eval
+    from app.services.evaluation import recompute_online_eval
     client, _, _ = dashboard_client
     assert recompute_online_eval(window_days=30) is None
 
@@ -606,7 +606,7 @@ def test_online_eval_metrics_in_session(dashboard_client):
 
     # Patch _compute_online_eval_in_session by simulating the inner
     # work directly — keeps the test independent of the SQL fetch.
-    from app.services.dashboard_query import _log2
+    from app.services.evaluation import _log2
     ndcg = 0.0
     for idx, _ in enumerate(predictions["anon:u1"], start=1):
         if idx == 1:

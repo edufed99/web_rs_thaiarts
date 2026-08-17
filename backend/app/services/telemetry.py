@@ -228,7 +228,7 @@ class PostgresTelemetryAdapter:
             return 0
         finally:
             try:
-                from .dashboard_query import recompute_online_eval
+                from .evaluation import recompute_online_eval
 
                 recompute_online_eval(window_days=30)
             except Exception:  # noqa: BLE001

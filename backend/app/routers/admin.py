@@ -10,12 +10,15 @@ Delegates core domain operations to:
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import List
 
 from fastapi import APIRouter, Depends, File, UploadFile
 
 from ..core.config import get_settings
 from ..core.exceptions import InvalidRequestError
+from ..db import session_scope
+from ..models_db import User
 from ..schemas.admin import (
     ItemCommit,
     ItemCommitOut,
@@ -29,6 +32,7 @@ from ..schemas.admin import (
     ItemUpdate,
     ItemVideoUploadOut,
 )
+from ..schemas.popularity import PopularityWeightsOut, PopularityWeightsUpdateIn
 from ..schemas.user import (
     AdminUserCreate,
     AdminUserDeleteOut,
@@ -42,10 +46,74 @@ from ..schemas.user import (
 from ..services import catalogue, gmail_oauth, identity, ingestion, mailer
 from ..services.auth import get_current_admin
 from ..services.identity import hash_password
+from ..services.popularity import WeightsValidationError, set_weights
 
 
 logger = logging.getLogger("recsys.admin")
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+# --- Popularity weights write endpoint --------------------------------------
+#
+# ``PUT /metrics/popularity/weights`` is the *only* write endpoint among the
+# read-only ``/metrics`` routes. It is served from the admin router because
+# admin endpoints live here, but its external path must stay exactly
+# ``/metrics/popularity/weights`` (the client and existing tests call that
+# path). The main ``router`` above is prefixed ``/admin``, so this route is
+# declared on a separate un-prefixed sub-router that ``main`` includes
+# alongside ``router`` — keeping the mounted path byte-identical.
+
+
+metrics_router = APIRouter(tags=["metrics"])
+
+
+@metrics_router.put(
+    "/metrics/popularity/weights",
+    response_model=PopularityWeightsOut,
+    summary="Replace the active popularity weights",
+    description=(
+        "Validates the body (weights in [0, 1], sum 1.0 ± 1e-3, every "
+        "factor in the known set; half_life_days and bayes_m ≥ 0), "
+        "deactivates the previous active row in the same transaction, "
+        "and inserts the new one. Admin-only. ``updated_by`` is "
+        "populated by the operator for audit."
+    ),
+)
+def popularity_weights_update(
+    payload: PopularityWeightsUpdateIn,
+    admin: User = Depends(get_current_admin),
+) -> PopularityWeightsOut:
+    try:
+        with session_scope() as session:
+            if session is None:
+                from fastapi import HTTPException, status
+
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Database is not enabled.",
+                )
+            w = set_weights(
+                session,
+                weights_dict={k: float(v) for k, v in payload.weights.items()},
+                half_life_days=int(payload.half_life_days),
+                bayes_m=int(payload.bayes_m),
+                updated_by=str(payload.updated_by or admin.username or "admin"),
+            )
+            session.commit()
+            return PopularityWeightsOut(
+                id=int(w.id),
+                weights=w.weights(),
+                half_life_days=int(w.half_life_days),
+                bayes_m=int(w.bayes_m),
+                updated_at=(w.updated_at or datetime.now(timezone.utc)).isoformat(),
+                updated_by=str(w.updated_by or ""),
+            )
+    except WeightsValidationError as e:
+        from fastapi import HTTPException, status
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "invalid_weights", "message": str(e)},
+        )
 
 
 # --- Backward compatibility aliases -----------------------------------------

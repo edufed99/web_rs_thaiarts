@@ -48,6 +48,7 @@ from .eligibility import (
     get_context_valid_items,
 )
 from .hybrid_service import apply_negative_penalty, weighted_sum
+from .item_out import build_item_out
 from .suitability import catalog_match_percent, suitability_label
 from .telemetry import RecommendationTelemetry, get_telemetry_adapter
 
@@ -807,20 +808,20 @@ def _build_item_out(
         if c
     ]
     media = media or {}
-    return ItemOut(
-        id=int(item_id),
-        name=str(item.get("name") or ""),
-        description=str(item.get("description") or ""),
-        category_group=str(item.get("category_group") or ""),
-        performance_type=str(item.get("performance_type") or ""),
+    return build_item_out(
+        artifact_item_id=int(item_id),
+        name=item.get("name"),
+        description=item.get("description"),
+        category_group=item.get("category_group"),
+        performance_type=item.get("performance_type"),
         performers_count=item.get("performers_count"),
         duration_minutes=item.get("duration_minutes"),
-        price_text=str(item.get("price_text") or ""),
-        image_url=str(media.get("image_url") or item.get("image_url") or ""),
-        video_url=str(media.get("video_url") or item.get("video_url") or ""),
+        price_text=item.get("price_text"),
+        image_url=media.get("image_url") or item.get("image_url"),
+        video_url=media.get("video_url") or item.get("video_url"),
         keywords=keyword_objs,
         contexts=context_objs,
-        user_state=user_state or UserState(),
+        user_state=user_state,
     )
 
 

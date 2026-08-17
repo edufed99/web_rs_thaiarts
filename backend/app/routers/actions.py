@@ -30,6 +30,7 @@ from ..schemas.action import ActionRequestIn, ItemActionOut, ItemViewOut, ViewRe
 from ..schemas.item import ItemOut, UserState
 from ..services._ids import stable_id
 from ..services.actions import fetch_user_state, perform_item_action
+from ..services.item_out import build_item_out
 from ._user_key import get_current_user_dep, resolve_user_key
 
 
@@ -66,15 +67,15 @@ def _row_to_item_out(loader: ArtifactLoader, artifact_id: int, user_state: UserS
         for c in ctx_names
         if c
     ]
-    return ItemOut(
-        id=int(artifact_id),
-        name=str(row.get("name") or ""),
-        description=str(row.get("description") or ""),
-        category_group=str(row.get("category_group") or ""),
-        performance_type=str(row.get("performance_type") or ""),
+    return build_item_out(
+        artifact_item_id=int(artifact_id),
+        name=row.get("name"),
+        description=row.get("description"),
+        category_group=row.get("category_group"),
+        performance_type=row.get("performance_type"),
         performers_count=row.get("performers_count"),
         duration_minutes=row.get("duration_minutes"),
-        price_text=str(row.get("price_text") or ""),
+        price_text=row.get("price_text"),
         image_url="",
         video_url="",
         keywords=keyword_objs,

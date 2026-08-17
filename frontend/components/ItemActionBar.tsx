@@ -11,7 +11,6 @@ import {
   putRating,
 } from "@/lib/api";
 import { notifyMemberActivityChanged } from "@/lib/memberEvents";
-import { getJwt } from "@/lib/auth";
 import type { ItemActionOut, UserState } from "@/lib/types";
 
 export interface ItemActionBarProps {
@@ -47,7 +46,6 @@ export function ItemActionBar({
   const [rating, setRating] = useState<number>(userState.rating || 0);
   const [pending, setPending] = useState<Pending>(null);
   const [error, setError] = useState<string | null>(null);
-  const [jwt, setJwt] = useState<string | null>(null);
 
   // Sync with parent-provided state (e.g. when the parent re-fetches).
   useEffect(() => {
@@ -55,18 +53,6 @@ export function ItemActionBar({
     setSaved(userState.saved);
     setRating(userState.rating || 0);
   }, [userState.liked, userState.saved, userState.rating]);
-
-  // Read JWT on mount + on cross-tab login changes.
-  useEffect(() => {
-    setJwt(getJwt());
-    function onStorage(e: StorageEvent) {
-      if (e.key === "thai_arts_jwt") {
-        setJwt(getJwt());
-      }
-    }
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, []);
 
   function applyChange(out: ItemActionOut) {
     const s = out.item.user_state;
@@ -86,10 +72,6 @@ export function ItemActionBar({
     } as const;
   }
 
-  function authHeaders(): Record<string, string> {
-    return jwt ? { Authorization: `Bearer ${jwt}` } : {};
-  }
-
   async function toggleLike() {
     if (!userKey) return;
     setPending("like");
@@ -98,8 +80,8 @@ export function ItemActionBar({
     setLiked(!prev); // optimistic
     try {
       const out = liked
-        ? await deleteLike(baseBody(), authHeaders())
-        : await postLike(baseBody(), authHeaders());
+        ? await deleteLike(baseBody())
+        : await postLike(baseBody());
       applyChange(out);
     } catch (e) {
       setLiked(prev); // revert
@@ -117,8 +99,8 @@ export function ItemActionBar({
     setSaved(!prev);
     try {
       const out = saved
-        ? await deleteSave(baseBody(), authHeaders())
-        : await postSave(baseBody(), authHeaders());
+        ? await deleteSave(baseBody())
+        : await postSave(baseBody());
       applyChange(out);
     } catch (e) {
       setSaved(prev);
@@ -135,7 +117,7 @@ export function ItemActionBar({
     const prev = rating;
     setRating(value); // optimistic
     try {
-      const out = await putRating({ ...baseBody(), rating: value }, authHeaders());
+      const out = await putRating({ ...baseBody(), rating: value });
       applyChange(out);
     } catch (e) {
       setRating(prev);

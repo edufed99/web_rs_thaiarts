@@ -1,8 +1,7 @@
 // lib/api.ts — Typed REST client for the FastAPI backend.
 //
-// Reads the backend URL from NEXT_PUBLIC_API_BASE_URL. The frontend never
-// imports Python files, reads CSV, or reads model artifacts directly; all
-// data comes from this client.
+// Uses the same-origin Next.js Application Backend. Internal service
+// addresses stay server-only and are never embedded in browser bundles.
 
 import type {
   ActionRequestIn,
@@ -29,7 +28,6 @@ import type {
   ItemFacetsOut,
   ItemImageUploadOut,
   ItemVideoUploadOut,
-  ItemKeywordReassign,
   ItemListOut,
   ItemOut,
   ItemReassignOut,
@@ -40,38 +38,58 @@ import type {
   MemberDashboardOut,
   MemberProfileOut,
   MemberProfileUpdate,
-  RatedItemsOut,
-  RatingSummaryOut,
-  RecentViewsOut,
-  SavedItemsOut,
-  UserSummaryOut,
-  LegacyStatsOut,
-  MetricsOut,
-  ModelConfigOut,
   PasswordResetConfirm,
   PasswordResetConfirmOut,
   PasswordResetRequest,
   PasswordResetRequestOut,
   ProfileRecommendationResponseOut,
+  PublicationExecuteOut,
+  PublicationStatusOut,
+  RatedItemsOut,
+  RatingSummaryOut,
+  RecentViewsOut,
   RecommendationRequestIn,
   RecommendationResponseOut,
   RequestTrendOut,
+  SavedItemsOut,
   TokenOut,
   UserLogin,
   UserOut,
   UserProfileUpdate,
   UserSignup,
+  UserSummaryOut,
   ViewRequestIn,
+  LegacyStatsOut,
+  MetricsOut,
+  ModelConfigOut,
 } from "./types";
 
-import { getAuthHeaders, getCurrentUser } from "./auth";
+import { getAuthHeaders } from "./auth";
 
-const DEFAULT_BASE_URL = "http://127.0.0.1:8001";
+const DEFAULT_BASE_URL = "/api";
 
 function baseUrl(): string {
-  // process.env.NEXT_PUBLIC_* is inlined at build time by Next.js.
-  const envUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
-  return (envUrl && envUrl.length > 0 ? envUrl : DEFAULT_BASE_URL).replace(/\/+$/, "");
+  return DEFAULT_BASE_URL;
+}
+
+function mutationHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  return { "X-CSRF-Token": "same-origin", ...extra };
+}
+
+async function mutateJson<T>(
+  path: string,
+  method: "POST" | "PUT" | "PATCH" | "DELETE",
+  body: unknown,
+  extraHeaders: Record<string, string> = {},
+): Promise<T> {
+  const response = await fetch(`${baseUrl()}${path}`, {
+    method,
+    headers: mutationHeaders({ "Content-Type": "application/json", ...extraHeaders }),
+    credentials: "same-origin",
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  return handle<T>(response);
 }
 
 export class ApiClientError extends Error {
@@ -111,6 +129,7 @@ async function handle<T>(res: Response): Promise<T> {
   throw new ApiClientError(res.status, code, message, body.error);
 }
 
+// fallow-ignore-next-line unused-export -- Preserved public API client contract.
 export async function getHealth(): Promise<HealthOut> {
   const res = await fetch(`${baseUrl()}/health`, { cache: "no-store" });
   return handle<HealthOut>(res);
@@ -150,16 +169,8 @@ export async function getItems(opts?: {
   if (opts?.limit !== undefined) params.set("limit", String(opts.limit));
   if (opts?.offset !== undefined) params.set("offset", String(opts.offset));
   if (opts?.contextId !== undefined) params.set("context", String(opts.contextId));
-  // The backend's ``resolve_user_key`` prefers the JWT bearer token when
-  // present and only falls back to the legacy ``anon:<uuid>`` query param
-  // for fully anonymous callers. For anonymous users we deliberately omit
-  // ``user_key`` so the catalog endpoint skips the per-row live-user-state
-  // SELECT — anon users have no personalised likes / saves / ratings to
-  // surface, and the extra query was a measurable hot-path cost on the
-  // home → /items search flow.
-  if (opts?.userKey && getCurrentUser() != null) {
-    params.set("user_key", opts.userKey);
-  }
+  // Session cookies personalize member state server-side; user_key is never
+  // forwarded to any Python origin — the Application Backend owns personalization.
   const url = `${baseUrl()}/items${params.toString() ? `?${params.toString()}` : ""}`;
   const res = await fetch(url, {
     headers: { ...getAuthHeaders(), ...(opts?.extraHeaders ?? {}) },
@@ -172,15 +183,7 @@ export async function getItem(
   itemId: number,
   opts?: { userKey?: string; extraHeaders?: Record<string, string> },
 ): Promise<ItemOut> {
-  const params = new URLSearchParams();
-  // Only forward user_key for authenticated members — anonymous callers
-  // would 401 on the backend auth check and gain nothing from the per-row
-  // user_state lookup anyway.
-  if (opts?.userKey && getCurrentUser() != null) {
-    params.set("user_key", opts.userKey);
-  }
-  const url = `${baseUrl()}/items/${itemId}${params.toString() ? `?${params.toString()}` : ""}`;
-  const res = await fetch(url, {
+  const res = await fetch(`${baseUrl()}/items/${itemId}`, {
     headers: { ...getAuthHeaders(), ...(opts?.extraHeaders ?? {}) },
     cache: "no-store",
   });
@@ -193,7 +196,6 @@ export async function getItemsBatch(
 ): Promise<ItemListOut> {
   if (itemIds.length === 0) return { items: [], total: 0 };
   const params = new URLSearchParams({ ids: itemIds.join(",") });
-  if (opts?.userKey && getCurrentUser() != null) params.set("user_key", opts.userKey);
   const res = await fetch(`${baseUrl()}/items/batch?${params.toString()}`, {
     headers: { ...getAuthHeaders(), ...(opts?.extraHeaders ?? {}) },
     cache: "no-store",
@@ -206,7 +208,6 @@ export async function getSimilarItems(
   opts?: { limit?: number; userKey?: string; extraHeaders?: Record<string, string> },
 ): Promise<ItemListOut> {
   const params = new URLSearchParams({ limit: String(opts?.limit ?? 4) });
-  if (opts?.userKey && getCurrentUser() != null) params.set("user_key", opts.userKey);
   const res = await fetch(`${baseUrl()}/items/${itemId}/similar?${params.toString()}`, {
     headers: { ...getAuthHeaders(), ...(opts?.extraHeaders ?? {}) },
     cache: "no-store",
@@ -293,6 +294,7 @@ export async function getMetrics(): Promise<MetricsOut> {
  * Monthly request/shown trend for the dashboard chart. Falls back to
  * an empty trend with ``source='disabled'`` when the DB layer is off.
  */
+// fallow-ignore-next-line unused-export -- Preserved public API client contract.
 export async function getRequestTrend(months: number = 12): Promise<RequestTrendOut> {
   const safeMonths = Math.min(36, Math.max(1, Math.floor(months)));
   const url = `${baseUrl()}/metrics/requests?months=${safeMonths}`;
@@ -305,6 +307,7 @@ export async function getRequestTrend(months: number = 12): Promise<RequestTrend
  * ``best_model_config.json`` + RECSYS_* env vars). Used by the dashboard
  * model-control sliders to render real values.
  */
+// fallow-ignore-next-line unused-export -- Preserved public API client contract.
 export async function getModelConfig(): Promise<ModelConfigOut> {
   const res = await fetch(`${baseUrl()}/metrics/config`, { cache: "no-store" });
   return handle<ModelConfigOut>(res);
@@ -362,7 +365,8 @@ export async function postRecommendations(
 ): Promise<RecommendationResponseOut> {
   const res = await fetch(`${baseUrl()}/recommendations`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...extraHeaders },
+    headers: mutationHeaders({ "Content-Type": "application/json", ...extraHeaders }),
+    credentials: "same-origin",
     body: JSON.stringify(body),
     cache: "no-store",
   });
@@ -398,65 +402,35 @@ export async function postLike(
   body: ActionRequestIn,
   extraHeaders: Record<string, string> = {},
 ): Promise<ItemActionOut> {
-  const res = await fetch(`${baseUrl()}/actions/like`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...extraHeaders },
-    body: JSON.stringify(actionBody(body)),
-    cache: "no-store",
-  });
-  return handle<ItemActionOut>(res);
+  return mutateJson("/actions/like", "POST", actionBody(body), extraHeaders);
 }
 
 export async function deleteLike(
   body: ActionRequestIn,
   extraHeaders: Record<string, string> = {},
 ): Promise<ItemActionOut> {
-  const res = await fetch(`${baseUrl()}/actions/like`, {
-    method: "DELETE",
-    headers: { "Content-Type": "application/json", ...extraHeaders },
-    body: JSON.stringify(actionBody(body)),
-    cache: "no-store",
-  });
-  return handle<ItemActionOut>(res);
+  return mutateJson("/actions/like", "DELETE", actionBody(body), extraHeaders);
 }
 
 export async function postSave(
   body: ActionRequestIn,
   extraHeaders: Record<string, string> = {},
 ): Promise<ItemActionOut> {
-  const res = await fetch(`${baseUrl()}/actions/save`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...extraHeaders },
-    body: JSON.stringify(actionBody(body)),
-    cache: "no-store",
-  });
-  return handle<ItemActionOut>(res);
+  return mutateJson("/actions/save", "POST", actionBody(body), extraHeaders);
 }
 
 export async function deleteSave(
   body: ActionRequestIn,
   extraHeaders: Record<string, string> = {},
 ): Promise<ItemActionOut> {
-  const res = await fetch(`${baseUrl()}/actions/save`, {
-    method: "DELETE",
-    headers: { "Content-Type": "application/json", ...extraHeaders },
-    body: JSON.stringify(actionBody(body)),
-    cache: "no-store",
-  });
-  return handle<ItemActionOut>(res);
+  return mutateJson("/actions/save", "DELETE", actionBody(body), extraHeaders);
 }
 
 export async function putRating(
   body: ActionRequestIn,
   extraHeaders: Record<string, string> = {},
 ): Promise<ItemActionOut> {
-  const res = await fetch(`${baseUrl()}/actions/rating`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json", ...extraHeaders },
-    body: JSON.stringify(actionBody(body)),
-    cache: "no-store",
-  });
-  return handle<ItemActionOut>(res);
+  return mutateJson("/actions/rating", "PUT", actionBody(body), extraHeaders);
 }
 
 /**
@@ -476,7 +450,8 @@ export async function postView(
   try {
     const res = await fetch(`${baseUrl()}/actions/view`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...extraHeaders },
+      headers: mutationHeaders({ "Content-Type": "application/json", ...extraHeaders }),
+      credentials: "same-origin",
       body: JSON.stringify({
         user_key: body.user_key,
         item_id: body.item_id,
@@ -585,13 +560,7 @@ export async function getMemberProfile(): Promise<MemberProfileOut> {
 export async function patchMemberProfile(
   body: MemberProfileUpdate,
 ): Promise<MemberProfileOut> {
-  const res = await fetch(`${baseUrl()}/me/profile`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
-  return handle<MemberProfileOut>(res);
+  return mutateJson("/me/profile", "PATCH", body, getAuthHeaders());
 }
 
 export async function uploadMemberAvatar(file: File): Promise<MemberProfileOut> {
@@ -599,7 +568,8 @@ export async function uploadMemberAvatar(file: File): Promise<MemberProfileOut> 
   form.set("file", file);
   const res = await fetch(`${baseUrl()}/me/profile/avatar`, {
     method: "POST",
-    headers: { ...getAuthHeaders() },
+    headers: mutationHeaders({ ...getAuthHeaders() }),
+    credentials: "same-origin",
     body: form,
     cache: "no-store",
   });
@@ -609,7 +579,8 @@ export async function uploadMemberAvatar(file: File): Promise<MemberProfileOut> 
 export async function deleteMemberAvatar(): Promise<MemberProfileOut> {
   const res = await fetch(`${baseUrl()}/me/profile/avatar`, {
     method: "DELETE",
-    headers: { ...getAuthHeaders() },
+    headers: mutationHeaders({ ...getAuthHeaders() }),
+    credentials: "same-origin",
     cache: "no-store",
   });
   return handle<MemberProfileOut>(res);
@@ -624,47 +595,25 @@ export async function getMemberDashboard(): Promise<MemberDashboardOut> {
 }
 
 export async function postSignup(body: UserSignup): Promise<TokenOut> {
-  const res = await fetch(`${baseUrl()}/auth/signup`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
-  return handle<TokenOut>(res);
+  return mutateJson("/auth/signup", "POST", body);
 }
 
 export async function postLogin(body: UserLogin): Promise<TokenOut> {
-  const res = await fetch(`${baseUrl()}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
-  return handle<TokenOut>(res);
+  return mutateJson("/auth/login", "POST", body);
 }
 
 export function googleLoginStartUrl(nextPath = "/recommend"): string {
-  const target = new URL(baseUrl());
-  // The Google client redirects to localhost. Keep the start request on the
-  // same hostname so the HttpOnly OAuth state cookie reaches the callback.
-  if (target.hostname === "127.0.0.1") target.hostname = "localhost";
-  target.pathname = "/auth/google/login/start";
-  target.search = new URLSearchParams({ next: nextPath }).toString();
-  return target.toString();
+  const search = new URLSearchParams({ next: nextPath }).toString();
+  return `${baseUrl()}/auth/google/login/start?${search}`;
 }
 
 export async function postGoogleLoginExchange(
   body: GoogleLoginExchange,
 ): Promise<TokenOut> {
-  const res = await fetch(`${baseUrl()}/auth/google/login/exchange`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
-  return handle<TokenOut>(res);
+  return mutateJson("/auth/google/login/exchange", "POST", body);
 }
 
+// fallow-ignore-next-line unused-export -- Preserved public API client contract.
 export async function getMe(): Promise<UserOut> {
   const res = await fetch(`${baseUrl()}/auth/me`, {
     method: "GET",
@@ -675,37 +624,19 @@ export async function getMe(): Promise<UserOut> {
 }
 
 export async function patchMe(body: UserProfileUpdate): Promise<UserOut> {
-  const res = await fetch(`${baseUrl()}/auth/me`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
-  return handle<UserOut>(res);
+  return mutateJson("/auth/me", "PATCH", body, getAuthHeaders());
 }
 
 export async function postPasswordResetRequest(
   body: PasswordResetRequest,
 ): Promise<PasswordResetRequestOut> {
-  const res = await fetch(`${baseUrl()}/auth/password-reset/request`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
-  return handle<PasswordResetRequestOut>(res);
+  return mutateJson("/auth/password-reset/request", "POST", body);
 }
 
 export async function postPasswordResetConfirm(
   body: PasswordResetConfirm,
 ): Promise<PasswordResetConfirmOut> {
-  const res = await fetch(`${baseUrl()}/auth/password-reset/confirm`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
-  return handle<PasswordResetConfirmOut>(res);
+  return mutateJson("/auth/password-reset/confirm", "POST", body);
 }
 
 export async function getGmailOAuthStatus(): Promise<GmailOAuthStatusOut> {
@@ -719,7 +650,8 @@ export async function getGmailOAuthStatus(): Promise<GmailOAuthStatusOut> {
 export async function startGmailOAuth(): Promise<GmailOAuthStartOut> {
   const res = await fetch(`${baseUrl()}/admin/gmail-oauth/start`, {
     method: "POST",
-    headers: { ...getAuthHeaders() },
+    headers: mutationHeaders({ ...getAuthHeaders() }),
+    credentials: "same-origin",
     cache: "no-store",
   });
   return handle<GmailOAuthStartOut>(res);
@@ -780,19 +712,6 @@ export async function postItemCommit(body: ItemCommit): Promise<ItemCommitOut> {
     cache: "no-store",
   });
   return handle<ItemCommitOut>(res);
-}
-
-export async function putItemKeywords(
-  artifactId: number,
-  body: ItemKeywordReassign,
-): Promise<ItemReassignOut> {
-  const res = await fetch(`${baseUrl()}/admin/items/${artifactId}/keywords`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
-  return handle<ItemReassignOut>(res);
 }
 
 export async function putAdminItem(
@@ -865,16 +784,48 @@ export async function uploadItemVideo(
   return handle<ItemVideoUploadOut>(res);
 }
 
+/**
+ * Current Artifact Publication state (issue #8): the latest recorded
+ * build, pending catalogue rows, and the Private Model Service's own
+ * artifact report. Admin-only.
+ */
+export async function getPublicationStatus(): Promise<PublicationStatusOut> {
+  const res = await fetch(`${baseUrl()}/admin/publication`, {
+    headers: { ...getAuthHeaders() },
+    cache: "no-store",
+  });
+  return handle<PublicationStatusOut>(res);
+}
+
+/**
+ * Execute an explicit Artifact Publication (issue #8). Requires admin;
+ * fails with 503 when the Private Model Service is unreachable. On
+ * success every pending catalogue row becomes covered by the recorded
+ * build and re-enters personalized scoring.
+ */
+export async function executePublication(
+  note?: string,
+): Promise<PublicationExecuteOut> {
+  const res = await fetch(`${baseUrl()}/admin/publication`, {
+    method: "POST",
+    headers: mutationHeaders({
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+    }),
+    credentials: "same-origin",
+    body: JSON.stringify({ note: note ?? "" }),
+    cache: "no-store",
+  });
+  return handle<PublicationExecuteOut>(res);
+}
+
 export function getBaseUrl(): string {
   return baseUrl();
 }
 
 /**
- * Turn a backend-relative media path into an absolute URL the browser can
- * fetch. The backend serves uploads from the same host as the API root, but
- * the frontend runs on a different port (``localhost:3000`` vs
- * ``127.0.0.1:8001``). Without this prefix, ``<img src="/uploads/...">`` or
- * CSS ``url("/uploads/...")`` would hit the wrong origin and 404.
+ * Turn an internal-service-relative media path into a same-origin
+ * Application Backend URL the browser can fetch.
  *
  * Already-absolute URLs (``http://...``, ``https://...``, ``data:...``) are
  * returned unchanged so legacy test fixtures keep working.
@@ -884,7 +835,7 @@ export function resolveImageUrl(path: string | null | undefined): string | null 
   const trimmed = path.trim();
   if (trimmed.length === 0) return null;
   if (/^(https?:|data:|blob:)/i.test(trimmed)) return trimmed;
-  if (trimmed.startsWith("//")) return `${new URL(baseUrl()).protocol}${trimmed}`;
+  if (trimmed.startsWith("//")) return trimmed;
   if (trimmed.startsWith("/")) return `${baseUrl()}${trimmed}`;
   return `${baseUrl()}/${trimmed}`;
 }

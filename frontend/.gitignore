@@ -1,6 +1,7 @@
 # Next.js generated
 .next/
 .next-dev/
+.db-dist/
 out/
 node_modules/
 npm-debug.log*

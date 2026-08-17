@@ -6,6 +6,7 @@ import React, { useEffect, useState } from "react";
 
 import {
   AUTH_CHANGED_EVENT,
+  STORAGE_KEY,
   getCurrentUser,
   getReadableUserName,
   isAdmin,
@@ -51,7 +52,7 @@ export function SiteHeader() {
     }
     refresh();
     function onStorage(e: StorageEvent) {
-      if (e.key === "thai_arts_jwt") refresh();
+      if (e.key === STORAGE_KEY) refresh();
     }
     window.addEventListener(AUTH_CHANGED_EVENT, refresh);
     window.addEventListener("storage", onStorage);

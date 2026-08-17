@@ -14,7 +14,7 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
-RUN npm run build
+RUN npm run build && npm run build:db
 
 FROM node:20-alpine AS runner
 WORKDIR /app
@@ -30,6 +30,8 @@ RUN adduser --system --uid 1001 nextjs
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/.db-dist ./.db-dist
+RUN mkdir -p /app/data/uploads && chown -R nextjs:nodejs /app/data
 
 USER nextjs
 

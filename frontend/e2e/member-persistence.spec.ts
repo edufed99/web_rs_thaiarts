@@ -2,15 +2,14 @@ import { expect, test } from "@playwright/test";
 
 const username = process.env.E2E_USERNAME;
 const password = process.env.E2E_PASSWORD;
-const apiBase = process.env.E2E_API_BASE_URL || "http://127.0.0.1:8001";
 
 test.beforeEach(async ({ page }) => {
   test.skip(!username || !password, "Set E2E_USERNAME and E2E_PASSWORD for a dedicated test member.");
   await page.goto("/login?next=/items");
   await page.getByLabel("ชื่อผู้ใช้").fill(username!);
-  await page.getByLabel("รหัสผ่าน").fill(password!);
+  await page.getByLabel("รหัสผ่าน", { exact: true }).fill(password!);
   await page.getByRole("button", { name: "เข้าสู่ระบบ" }).click();
-  await expect(page).toHaveURL(/\/items/);
+  await expect(page).toHaveURL((url) => url.pathname === "/items");
 });
 
 test("like is persisted in Postgres and restored after the test", async ({ page }) => {
@@ -37,16 +36,16 @@ test("like is persisted in Postgres and restored after the test", async ({ page 
   await expect(persisted).toHaveAttribute("aria-pressed", initial ?? "false");
 });
 
-test("member cannot escalate own role through profile API", async ({ page }) => {
-  const result = await page.evaluate(async (backendUrl) => {
-    const stored = JSON.parse(localStorage.getItem("thai_arts_jwt") || "{}");
-    const token = stored.token;
-    const response = await fetch(`${backendUrl}/me/profile`, {
+test("session is not browser-readable and member cannot escalate own role", async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    const legacyCredential = localStorage.getItem("thai_arts_jwt");
+    const response = await fetch("/api/me/profile", {
       method: "PATCH",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": "same-origin" },
       body: JSON.stringify({ role: "super_admin" }),
     });
-    return response.status;
-  }, apiBase);
-  expect(result).toBe(422);
+    return { status: response.status, legacyCredential };
+  });
+  expect(result.legacyCredential).toBeNull();
+  expect(result.status).toBe(422);
 });

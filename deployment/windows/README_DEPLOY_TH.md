@@ -3,9 +3,14 @@
 แพ็กเกจนี้เป็น source deployment สำหรับเว็บแอป Next.js 14 + FastAPI โดยตั้งใจให้
 IIS หรือ reverse proxy รับ HTTPS จากผู้ใช้ แล้วส่งต่อไปยังบริการภายในเครื่อง:
 
-- Frontend: `127.0.0.1:3000`
-- Backend: `127.0.0.1:8001`
+- Frontend / Application Backend (public API ทั้งหมด): `127.0.0.1:3000`
+- Private Model Service (FastAPI — ไม่เปิดสู่สาธารณะ): `127.0.0.1:8001`
 - PostgreSQL: `127.0.0.1:5432`
+
+ตั้งแต่ issue #10 เป็นต้นมา FastAPI เหลือเพียง Private Model Service ที่ให้บริการ
+`/internal/v1/*` โดยใช้ Internal Service Credential เท่านั้น — public API
+(auth, catalogue, media, member, admin, actions, metrics, analytics) ย้ายไปอยู่
+ใน Next.js Application Backend หมดแล้ว และฐานข้อมูลจัดการโดย TypeORM ของ Next.js
 
 ## สิ่งที่ไม่อยู่ในแพ็กเกจ
 
@@ -46,17 +51,18 @@ Set-ExecutionPolicy -Scope Process Bypass
 ```
 
 สคริปต์จะสร้าง `backend\.venv`, ติดตั้ง Python packages, รัน `npm ci`, สร้างไฟล์
-ตั้งค่าจาก template และ Build frontend โดยจะไม่ติดตั้ง PostgreSQL/IIS ให้อัตโนมัติ
+ตั้งค่าจาก template (รวมถึง Internal Service Credential สุ่มให้ตรงกันทั้งสองไฟล์)
+และ Build frontend โดยจะไม่ติดตั้ง PostgreSQL/IIS ให้อัตโนมัติ
 
 4. แก้ไข `backend\.env` และ `frontend\.env.production` ก่อนใช้งานจริง
-5. ถ้าเปิดฐานข้อมูล ให้สร้างฐานข้อมูล/ผู้ใช้ด้วยรหัสผ่านที่สุ่มใหม่ จากนั้นตั้งค่า
-   `RECSYS_DATABASE_URL` และรัน migration:
+5. ถ้าเปิดฐานข้อมูล ให้สร้างฐานข้อมูล/ผู้ใช้ด้วยรหัสผ่านที่สุ่มใหม่ จากนั้นรัน
+   TypeORM migrations + seed ของ Application Backend:
 
 ```powershell
-$env:RECSYS_DB_ENABLED = "1"
-$env:RECSYS_DATABASE_URL = "postgresql+psycopg://APP_USER:URL_ENCODED_PASSWORD@127.0.0.1:5432/web_rs_thaiarts"
-Push-Location .\backend
-.\.venv\Scripts\python.exe -m alembic -c alembic.ini upgrade head
+Push-Location .\frontend
+$env:DATABASE_URL = "postgresql://APP_USER:URL_ENCODED_PASSWORD@127.0.0.1:5432/web_rs_thaiarts"
+npm run migration:run
+npm run seed
 Pop-Location
 ```
 
@@ -86,27 +92,26 @@ Pop-Location
 
 ## ค่าที่ต้องแก้ก่อน Production
 
-ใน `backend\.env`:
+ใน `backend\.env` (Private Model Service):
 
-- `RECSYS_DB_ENABLED=1`
-- `RECSYS_DATABASE_URL=...` โดยใช้ผู้ใช้เฉพาะแอป ไม่ใช้ superuser
-- `RECSYS_ADMIN_USERNAMES=...`
-- `RECSYS_FRONTEND_BASE_URL=https://ชื่อโดเมน`
-- `RECSYS_CORS_ORIGINS=https://ชื่อโดเมน`
-- OAuth/SMTP/Gemini เฉพาะฟังก์ชันที่ต้องใช้
+- `RECSYS_INTERNAL_SERVICE_SECRET=...` ต้องตรงกับ
+  `MODEL_SERVICE_SHARED_SECRET` ใน `frontend\.env.production` เสมอ
+- `RECSYS_ARTIFACT_DIR=../artifacts`
+- `RECSYS_E5_ENABLED` / `RECSYS_PRELOAD_E5` เฉพาะเมื่อต้องใช้โมเดล E5 จริง
 
 ใน `frontend\.env.production`:
 
-- เมื่อใช้ IIS reverse proxy แนะนำ `NEXT_PUBLIC_API_BASE_URL=https://ชื่อโดเมน/api`
-- สำหรับทดสอบเฉพาะภายใน Remote Desktop ใช้ `http://127.0.0.1:8001`
-
-อย่าใช้ `127.0.0.1:8001` ใน frontend หากผู้ใช้จะเปิดเว็บจากเครื่องอื่น เพราะมันจะชี้
-กลับไปยังเครื่องของผู้ใช้เอง ไม่ใช่เซิร์ฟเวอร์
+- `DATABASE_URL=...` โดยใช้ผู้ใช้เฉพาะแอป ไม่ใช้ superuser
+- `PRIVATE_MODEL_SERVICE_URL=http://127.0.0.1:8001`
+- `MODEL_SERVICE_SHARED_SECRET=...` ให้ตรงกับ backend
+- browser เรียก API แบบ same-origin `/api` เสมอ — ไม่มี `NEXT_PUBLIC_API_BASE_URL`
+  อีกต่อไป
 
 ## IIS reverse proxy ที่แนะนำ
 
 - `https://ชื่อโดเมน/` -> `http://127.0.0.1:3000/`
-- `https://ชื่อโดเมน/api/*` -> `http://127.0.0.1:8001/*` (ตัด prefix `/api`)
+- `https://ชื่อโดเมน/api/*` -> `http://127.0.0.1:3000/api/*`
+- **ห้าม**ส่ง `api/*` ไปที่ 8001 — FastAPI เป็น private service เท่านั้น
 
 ให้เปิด Firewall เฉพาะ 80/443 ตามนโยบายหน่วยงาน ไม่ควรเปิด 3000, 8001 หรือ 5432
 ออกสู่เครือข่ายโดยตรง การตั้ง IIS, ใบรับรอง TLS และ Windows Services ควรทำโดยผู้ดูแล
@@ -128,8 +133,9 @@ log rotation ห้ามใช้บัญชี Administrator เป็นต�
 
 ## ตรวจสอบหลังติดตั้ง
 
-- `http://127.0.0.1:8001/health` ต้องตอบสถานะปกติและโหลด artifacts ได้
+- `http://127.0.0.1:8001/internal/v1/health` ต้องตอบสถานะปกติพร้อม Bearer
+  credential และโหลด artifacts ได้
+- `http://127.0.0.1:3000/api/health` ต้องตอบสถานะปกติ
 - `http://127.0.0.1:3000` ต้องเปิดหน้าเว็บได้
 - ทดสอบ login, รูป/วิดีโอ, recommendation และสิทธิ์ admin
 - ตรวจว่าไม่มีพอร์ต 3000, 8001, 5432 เปิดจากภายนอก
-

@@ -4,10 +4,8 @@ import { PHASE_DEVELOPMENT_SERVER } from "next/constants.js";
 const baseConfig = {
   reactStrictMode: true,
   output: "standalone",
-  // Backend is a separate process; frontend never imports Python or reads CSV.
-  env: {
-    NEXT_PUBLIC_API_BASE_URL:
-      process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8001",
+  experimental: {
+    serverComponentsExternalPackages: ["pg", "typeorm"],
   },
 };
 

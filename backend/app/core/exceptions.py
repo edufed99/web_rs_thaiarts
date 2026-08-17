@@ -91,6 +91,26 @@ class AuthError(DomainError):
     code = "unauthorized"
 
 
+class InvalidInternalServiceCredentialError(AuthError):
+    """The caller did not present the configured internal shared secret."""
+
+    code = "invalid_internal_service_credential"
+
+
+class InternalServiceNotConfiguredError(DomainError):
+    """The model contract is disabled until an internal secret is configured."""
+
+    status_code = 503
+    code = "internal_service_not_configured"
+
+
+class InvalidInferenceRequestError(DomainError):
+    """An inference input references data absent from the artifact release."""
+
+    status_code = 400
+    code = "invalid_inference_request"
+
+
 class ForbiddenError(DomainError):
     """Raised when an authenticated user lacks the required role.
 

@@ -6,7 +6,7 @@ from contextlib import contextmanager
 import numpy as np
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.core.config import reset_settings_cache
@@ -30,17 +30,10 @@ def test_login_taxonomy_e5_top10(monkeypatch):
     )
     Base.metadata.create_all(engine)
 
-    @contextmanager
-    def scope():
-        session = Session(engine, future=True, expire_on_commit=False)
-        try:
-            yield session
-            session.commit()
-        except Exception:
-            session.rollback()
-            raise
-        finally:
-            session.close()
+    import app.db as db_module
+    db_module._engine = engine
+    db_module._SessionLocal = sessionmaker(bind=engine, expire_on_commit=False, future=True)
+    monkeypatch.setattr(db_module, "get_engine", lambda: engine)
 
     from app.routers import auth as auth_router
     from app.services import cbf_service, user_query
@@ -48,22 +41,18 @@ def test_login_taxonomy_e5_top10(monkeypatch):
 
     monkeypatch.setattr(auth_router, "is_db_enabled", lambda: True)
     monkeypatch.setattr(user_query, "is_db_enabled", lambda: True)
-    monkeypatch.setattr(user_query, "session_scope", scope)
     monkeypatch.setattr(
         cbf_service,
         "encode_query",
         lambda _text: np.ones(1024, dtype=np.float32) / np.sqrt(1024),
     )
-    from app.services.telemetry import NullTelemetryAdapter
+    from app.services.telemetry import NullTelemetryAdapter, get_telemetry_adapter
     monkeypatch.setattr(recommendation_service, "live_user_negative_ratings", lambda *_a, **_k: {})
     monkeypatch.setattr(recommendation_service, "live_user_state_for_items", lambda *_a, **_k: {})
-    monkeypatch.setattr(
-        recommendation_service,
-        "get_telemetry_adapter",
-        lambda: NullTelemetryAdapter(),
-    )
 
-    with TestClient(create_app()) as client:
+    app_instance = create_app()
+    app_instance.dependency_overrides[get_telemetry_adapter] = lambda: NullTelemetryAdapter()
+    with TestClient(app_instance) as client:
         assert client.post(
             "/auth/signup", json={"username": "research-user", "password": "hunter22"}
         ).status_code == 200
@@ -98,5 +87,6 @@ def test_login_taxonomy_e5_top10(monkeypatch):
         assert [row["rank"] for row in body["results"]] == list(range(1, 11))
 
     engine.dispose()
+    db_module.reset_engine()
     reset_singleton()
     reset_settings_cache()

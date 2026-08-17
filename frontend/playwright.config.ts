@@ -3,6 +3,10 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false,
+  // The specs log in as the same dedicated member; rotateSession keeps a
+  // single session per user, so concurrent workers would invalidate each
+  // other's cookies. Serialize the browser tests.
+  workers: 1,
   retries: process.env.CI ? 2 : 0,
   reporter: "list",
   use: {
@@ -12,6 +16,7 @@ export default defineConfig({
   },
   webServer: process.env.E2E_SKIP_WEBSERVER ? undefined : {
     command: "npm run dev",
+    env: { SESSION_COOKIE_SECURE: "0" },
     url: "http://127.0.0.1:3000",
     reuseExistingServer: true,
     timeout: 120_000,

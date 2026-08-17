@@ -443,14 +443,17 @@ export interface UserLogin {
 }
 
 export interface TokenOut {
-  access_token: string;
-  token_type: "bearer" | string;
+  /** JWT fields are absent for password sessions; issue #6 migrates Google SSO. */
+  access_token?: string;
+  token_type?: "bearer" | string;
   expires_in_seconds: number;
   user: UserOut;
 }
 
 export interface GoogleLoginExchange {
   code: string;
+  /** OAuth state from the callback URL; must match the signed state cookie. */
+  state?: string;
 }
 
 export interface KeywordProposal {
@@ -500,10 +503,6 @@ export interface ItemCommit {
 export interface ItemCommitOut {
   item: ItemOut;
   warnings: string[];
-}
-
-export interface ItemKeywordReassign {
-  keyword_ids: number[];
 }
 
 export interface ItemReassignOut {
@@ -562,6 +561,42 @@ export interface ItemVideoUploadOut {
   /** Sniffed MIME type (MP4, WebM, or QuickTime). */
   mime: string;
   item_id: number;
+}
+
+// --- Artifact Publication (issue #8) ----------------------------------------
+
+export interface ArtifactPublicationOut {
+  id: number;
+  build_id: string;
+  published_at: string;
+  item_count: number;
+  created_by: number;
+  note: string;
+}
+
+export interface PublicationModelHealth {
+  reachable: boolean;
+  artifact_version: string;
+  artifact_item_count: number;
+  error?: string;
+}
+
+export interface PublicationStatusOut {
+  /** Latest recorded publication, or null when none has succeeded yet. */
+  published: ArtifactPublicationOut | null;
+  /** Catalogue rows edited after the last publication (pending). */
+  pending: {
+    count: number;
+    items: { id: number; name: string }[];
+  };
+  /** What the Private Model Service reports it is serving. */
+  model: PublicationModelHealth;
+}
+
+export interface PublicationExecuteOut {
+  publication: ArtifactPublicationOut;
+  pending_after: number;
+  warnings: string[];
 }
 
 // --- Admin dashboard payload (Phase 3 /metrics/dashboard) ------------------
@@ -713,7 +748,12 @@ export interface KeywordRow {
   count: number;
 }
 
-export interface KeywordListOut {
+/**
+ * Top-keywords table inside the dashboard payload (``top_keywords``).
+ * Kept separate from ``KeywordListOut`` (the keyword picker contract) —
+ * the two mirror distinct backend schemas and must not merge.
+ */
+export interface TopKeywordListOut {
   items: KeywordRow[];
 }
 
@@ -764,7 +804,7 @@ export interface DashboardOut {
   model_quality: ModelQualityOut;
   quality_trend_30d: TrendOut;
   algorithm_kpis: AlgorithmKpiOut;
-  top_keywords: KeywordListOut;
+  top_keywords: TopKeywordListOut;
   page_quality: PageQualityOut;
   recent_activity: RecentActivityListOut;
 }

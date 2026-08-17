@@ -2,6 +2,12 @@
 
 > **ปรับปรุงล่าสุด:** 2026-07-29 (session 10) — ตัวเลขทั้งหมดวัดจาก working tree จริงที่ commit `8ff1621`
 > ตัวเลขฝั่ง "งานเดิม" ยกมาจากการวัดครั้งก่อน (โปรเจกต์นั้นเป็น read-only ไม่มีการเปลี่ยนแปลง)
+>
+> **หมายเหตุ (issue #10):** เอกสารนี้เป็น snapshot ประวัติศาสตร์ของ session 10 — โครงสร้าง
+> ปัจจุบันเปลี่ยนไปมาก: public API ทั้งหมดย้ายไปอยู่ที่ Next.js Application Backend,
+> FastAPI เหลือเพียง Private Model Service (3 endpoint ภายใน), auth เป็น server session
+> (HttpOnly cookie) ไม่ใช่ JWT, schema ทั้งหมดจัดการโดย TypeORM (Alembic ถูกลบ) —
+> ดู `docs/adr.md` (ADR-003) และ `docs/api.md` สำหรับภาพปัจจุบัน
 
 | หัวข้อ | งานใหม่ — `C:\Users\Pichaya\Downloads\web_appRS1\` | งานเดิม — `C:\Users\Pichaya\Downloads\web_appRS\thai_arts_webapp\` |
 |---|---|---|

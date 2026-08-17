@@ -1,152 +1,74 @@
-// lib/auth.ts — JWT-backed auth helpers.
-//
-// The backend issues HS256 JWTs at POST /auth/signup and POST /auth/login.
-// The token, plus a small parsed user payload, are persisted to
-// localStorage so a refresh keeps the session alive. All functions are
-// SSR-safe — they bail out to a null user when invoked outside a browser.
-
+// Browser authentication state contains display-only user data. The only
+// credential is the opaque HttpOnly session cookie, which JavaScript cannot read.
 import type { UserOut } from "./types";
 
-export const STORAGE_KEY = "thai_arts_jwt";
+export const STORAGE_KEY = "thai_arts_session_user";
 export const AUTH_CHANGED_EVENT = "thai_arts_auth_changed";
+const LEGACY_JWT_KEY = "thai_arts_jwt";
 
-export interface StoredAuth {
-  access_token: string;
-  expires_at: number; // unix seconds
-  user: UserOut;
-}
-
-/**
- * Read the stored auth payload from localStorage. Returns ``null`` when:
- * - the key is missing,
- * - the value cannot be parsed,
- * - the token has expired (we proactively clean it up).
- */
-export function getStoredAuth(): StoredAuth | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<StoredAuth>;
-    if (
-      !parsed ||
-      typeof parsed.access_token !== "string" ||
-      typeof parsed.expires_at !== "number" ||
-      !parsed.user
-    ) {
-      return null;
-    }
-    if (parsed.expires_at <= Math.floor(Date.now() / 1000)) {
-      // Expired — clear and return null.
-      try {
-        window.localStorage.removeItem(STORAGE_KEY);
-      } catch {
-        // ignore
-      }
-      return null;
-    }
-    return parsed as StoredAuth;
-  } catch {
-    return null;
-  }
-}
-
-export function setStoredAuth(payload: StoredAuth): void {
+function removeLegacyCredential(): void {
   if (typeof window === "undefined") return;
+  try { window.localStorage.removeItem(LEGACY_JWT_KEY); } catch {}
+}
+
+export function getCurrentUser(): UserOut | null {
+  if (typeof window === "undefined") return null;
+  removeLegacyCredential();
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    const value = window.localStorage.getItem(STORAGE_KEY);
+    return value ? JSON.parse(value) as UserOut : null;
+  } catch { return null; }
+}
+
+export function setSessionUser(user: UserOut): void {
+  if (typeof window === "undefined") return;
+  removeLegacyCredential();
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
     window.dispatchEvent(new Event(AUTH_CHANGED_EVENT));
-  } catch {
-    // localStorage may throw in private-mode browsers; degrade gracefully.
-  }
+  } catch {}
 }
 
-export function updateStoredUser(user: UserOut): void {
-  const auth = getStoredAuth();
-  if (!auth) return;
-  setStoredAuth({ ...auth, user });
-}
+export function updateStoredUser(user: UserOut): void { setSessionUser(user); }
 
-export function clearStoredAuth(): void {
+function clearStoredAuth(): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.removeItem(STORAGE_KEY);
+    window.localStorage.removeItem(LEGACY_JWT_KEY);
     window.dispatchEvent(new Event(AUTH_CHANGED_EVENT));
-  } catch {
-    // ignore
-  }
+  } catch {}
 }
+
+export function getReadableUserName(user: Pick<UserOut, "username" | "display_name">): string {
+  let name = (user.display_name || "").trim();
+  if (name.startsWith("must_reset|")) name = name.slice("must_reset|".length).trim();
+  if (name.startsWith("legacy:")) name = name.slice("legacy:".length).trim();
+  return name || user.username;
+}
+
+export function userNeedsPasswordReset(user: Pick<UserOut, "username" | "display_name">): boolean {
+  return (user.display_name || "").trim().startsWith("must_reset|");
+}
+
+/** Kept temporarily for call-site compatibility; bearer credentials no longer exist. */
+export function getAuthHeaders(): Record<string, string> { return {}; }
+export function isAdmin(): boolean { return Boolean(getCurrentUser()?.is_admin); }
 
 /**
- * Return the current authenticated user, or ``null`` if no valid session.
- * Decoded client-side from the stored JWT — no network round-trip needed.
+ * Compatibility shim for call sites that once received a bearer JWT from the
+ * FastAPI Google flow. Issue #6 removed bearer credentials entirely: Google
+ * Login now issues the HttpOnly server session directly, so only the display
+ * user snapshot is stored here.
  */
-export function getCurrentUser(): UserOut | null {
-  const auth = getStoredAuth();
-  return auth ? auth.user : null;
-}
-
-type UserNameFields = Pick<UserOut, "username" | "display_name">;
-
-const PASSWORD_RESET_MARKER = "must_reset|";
-const LEGACY_NAME_MARKER = "legacy:";
-
-/**
- * Convert migration-era display names such as
- * ``must_reset|legacy:บุคคล1`` into the name a member should actually see.
- * The helper intentionally accepts only the two shared name fields so it can
- * be used with both ``UserOut`` and ``MemberProfileOut`` payloads.
- */
-export function getReadableUserName(user: UserNameFields): string {
-  let displayName = (user.display_name || "").trim();
-  if (displayName.startsWith(PASSWORD_RESET_MARKER)) {
-    displayName = displayName.slice(PASSWORD_RESET_MARKER.length).trim();
-  }
-  if (displayName.startsWith(LEGACY_NAME_MARKER)) {
-    displayName = displayName.slice(LEGACY_NAME_MARKER.length).trim();
-  }
-  return displayName || user.username;
-}
-
-/** Whether this migrated account still carries the password-reset marker. */
-export function userNeedsPasswordReset(user: UserNameFields): boolean {
-  return (user.display_name || "").trim().startsWith(PASSWORD_RESET_MARKER);
-}
-
-export function getJwt(): string | null {
-  const auth = getStoredAuth();
-  return auth ? auth.access_token : null;
-}
-
-/**
- * Return ``{"Authorization": "Bearer <jwt>"}`` when authenticated, else
- * an empty object. The action / admin endpoints accept either JWT or
- * anon user_key in the body; we just prefer the JWT header when present.
- */
-export function getAuthHeaders(): Record<string, string> {
-  const token = getJwt();
-  if (!token) return {};
-  return { Authorization: `Bearer ${token}` };
-}
-
-export function isAdmin(): boolean {
-  const u = getCurrentUser();
-  return Boolean(u && u.is_admin);
-}
-
-/**
- * Persist a freshly issued token. ``expires_at`` is computed from
- * ``expires_in_seconds`` plus the current wall-clock time.
- */
-export function storeToken(
-  access_token: string,
-  expires_in_seconds: number,
-  user: UserOut,
-): void {
-  const expires_at = Math.floor(Date.now() / 1000) + expires_in_seconds;
-  setStoredAuth({ access_token, expires_at, user });
+export function storeToken(_token: string, _seconds: number, user: UserOut): void {
+  setSessionUser(user);
 }
 
 export function logout(): void {
-  clearStoredAuth();
+  void fetch("/api/auth/logout", {
+    method: "POST",
+    headers: { "X-CSRF-Token": "same-origin" },
+    credentials: "same-origin",
+  }).finally(clearStoredAuth);
 }

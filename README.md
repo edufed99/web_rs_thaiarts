@@ -5,14 +5,20 @@ read-only — never modified) into a clean **Next.js + FastAPI** split.
 
 ```
 Thai Arts Recommender
-├── Frontend  (Next.js 14 + TypeScript, App Router)   →  :3000
-├── Backend   (Python 3 + FastAPI)                    →  :8001
-├── Pipeline  (offline artifact generator)            →  artifacts/
+├── Application Backend (Next.js 14 + TypeScript, App Router) →  :3000  (the ONLY public API)
+├── Private Model Service (Python 3 + FastAPI)               →  :8001  (internal, authenticated)
+├── Pipeline  (offline artifact generator)                   →  artifacts/
 └── Artifacts (static .npz / .parquet / .json)
 ```
 
 The runtime web app **never calls Python scripts or reads CSV directly**:
-CSV → pipeline → artifacts → backend (in-memory) → frontend (HTTP).
+CSV → pipeline → artifacts → Private Model Service (in-memory) → Application Backend (HTTP, same origin).
+
+Since issue #10 the FastAPI application is **private only**: it exposes
+`/internal/v1/health`, `/internal/v1/inference`, and
+`/internal/v1/similarity`, all authenticated with the Internal Service
+Credential. Every public journey — auth, catalogue, media, member, admin,
+actions, metrics, analytics, recommendations — is served by Next.js.
 
 ---
 
@@ -25,14 +31,14 @@ python pipelines/train_or_generate_artifacts.py \
     --output-dir artifacts \
     --synthetic-embeddings
 
-# 2. Run backend (port 8001)
-cd backend
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8001
+# 2. Run the database (PostgreSQL 18) and the Private Model Service
+docker compose up -d postgres backend
 
-# 3. Run frontend (port 3000, in a second terminal)
+# 3. Run the frontend (port 3000) — owns migrations + seed + the public API
 cd frontend
 npm install
+npm run migration:run
+npm run seed
 npm run dev
 
 # 4. Run tests (≥90% coverage enforced)
@@ -41,51 +47,52 @@ pytest --cov=app --cov-report=term-missing --cov-fail-under=90
 ```
 
 Open:
-- **App:**       http://localhost:3000
-- **Swagger:**   http://127.0.0.1:8001/docs
-- **ReDoc:**     http://127.0.0.1:8001/redoc
-- **OpenAPI:**   http://127.0.0.1:8001/openapi.json
+- **App / public API:** http://localhost:3000 (Swagger-style docs are not
+  served — the FastAPI docs endpoints were removed with the public app)
 
 ---
 
 ## Architecture
 
 ```
-┌──────────────────┐    HTTP/JSON     ┌──────────────────┐
-│   Next.js app    │  ──────────────► │   FastAPI app    │
-│   (port 3000)    │                  │   (port 8001)    │
-│   TypeScript     │  ◄────────────── │   Python 3       │
-└──────────────────┘                  └────────┬─────────┘
-                                                │
-                                                ▼
-                                      ┌──────────────────┐
-                                      │  ArtifactLoader  │
-                                      │  (in-memory)     │
-                                      └────────┬─────────┘
-                                               │
-                                               ▼
-                                      ┌──────────────────┐
-                                      │   artifacts/     │
-                                      │   models/        │
-                                      │   outputs/       │
-                                      └──────────────────┘
-                                               ▲
-                                               │ writes
-                                      ┌────────┴─────────┐
-                                      │   pipeline/      │
-                                      │   train_or_      │
-                                      │   generate_      │
-                                      │   artifacts.py   │
-                                      └──────────────────┘
-                                               ▲
-                                               │ reads
-                                      ┌────────┴─────────┐
-                                      │  source CSVs     │
-                                      │  (read-only)     │
-                                      └──────────────────┘
+┌──────────────────┐   server-side, Bearer secret    ┌──────────────────────┐
+│  Next.js app     │  ─────────────────────────────► │  Private Model Svc   │
+│  (port 3000)     │                                 │  FastAPI (port 8001) │
+│  public API + DB │  ◄───────────────────────────── │  internal only       │
+└──────────────────┘                                 └─────────┬────────────┘
+                                                               │
+                                                               ▼
+                                                     ┌──────────────────┐
+                                                     │  ArtifactLoader  │
+                                                     │  (in-memory)     │
+                                                     └─────────┬────────┘
+                                                               │
+                                                               ▼
+                                                     ┌──────────────────┐
+                                                     │   artifacts/     │
+                                                     │   models/        │
+                                                     │   outputs/       │
+                                                     └─────────┬────────┘
+                                                               ▲
+                                                               │ writes
+                                                     ┌─────────┴────────┐
+                                                     │   pipeline/      │
+                                                     │   train_or_      │
+                                                     │   generate_      │
+                                                     │   artifacts.py   │
+                                                     └─────────┬────────┘
+                                                               ▲
+                                                               │ reads
+                                                     ┌─────────┴────────┐
+                                                     │  source CSVs     │
+                                                     │  (read-only)     │
+                                                     └──────────────────┘
 ```
 
-See `docs/adr.md` for the full Architecture Decision Record.
+The browser talks **only** to Next.js (same-origin `/api/*`). FastAPI is
+reachable only by server-side route handlers, always with the Internal
+Service Credential. See `docs/adr.md` for the Architecture Decision Record
+(including ADR-003, the expand–contract completion).
 
 ---
 
@@ -97,7 +104,8 @@ See `docs/adr.md` for the full Architecture Decision Record.
 ├── CLAUDE.md                  ← notes for future Claude sessions
 ├── docs/
 │   ├── adr.md                 ← architecture decision record
-│   └── api.md                 ← human walkthrough + curl examples
+│   ├── api.md                 ← public (Next.js) API walkthrough
+│   └── private-model-service.md ← the FastAPI contract
 ├── pipelines/
 │   └── train_or_generate_artifacts.py
 ├── artifacts/                 ← generated by pipeline (gitignored)
@@ -107,15 +115,17 @@ See `docs/adr.md` for the full Architecture Decision Record.
 │   ├── README.md
 │   ├── requirements.txt
 │   ├── pytest.ini
-│   ├── app/                   ← FastAPI service
-│   └── tests/                 ← 102 pytest tests, 96.85% coverage
-└── frontend/
-    ├── README.md
-    ├── package.json
-    ├── tsconfig.json
-    ├── app/                   ← App Router pages
-    ├── components/
-    └── lib/
+│   ├── app/                   ← Private Model Service (private_main)
+│   └── tests/                 ← 108 pytest tests, 95% coverage
+├── frontend/
+│   ├── README.md
+│   ├── package.json
+│   ├── tsconfig.json
+│   ├── app/                   ← App Router pages + /api/* route handlers
+│   ├── components/
+│   ├── db/                    ← TypeORM migrations + seed (schema authority)
+│   └── lib/
+└── deployment/                ← compose, IIS web.config, env templates
 ```
 
 ---
@@ -123,17 +133,27 @@ See `docs/adr.md` for the full Architecture Decision Record.
 ## Google sign-in for members
 
 Member sign-in uses its own Google Cloud Web OAuth client, separate from the
-admin Gmail sender. Keep the downloaded client outside Git at
-`backend/data/secrets/google_login_client.json` and configure:
+admin Gmail sender. The flow lives entirely in Next.js
+(`frontend/app/api/auth/google/login/*`); keep the downloaded client outside
+Git at `frontend/data/secrets/google_login_client.json` (or inject
+`GOOGLE_LOGIN_CLIENT_ID` / `GOOGLE_LOGIN_CLIENT_SECRET`) and configure:
 
 ```env
-RECSYS_GOOGLE_LOGIN_CLIENT_FILE=data/secrets/google_login_client.json
-RECSYS_GOOGLE_LOGIN_REDIRECT_URI=http://localhost:8001/auth/google/login/callback
+# frontend/.env.local
+GOOGLE_LOGIN_CLIENT_FILE=data/secrets/google_login_client.json
+GOOGLE_LOGIN_REDIRECT_URI=http://localhost:3000/api/auth/google/login/callback
+GMAIL_OAUTH_CLIENT_FILE=data/secrets/google_oauth_client.json
+GMAIL_OAUTH_REDIRECT_URI=http://localhost:3000/api/admin/gmail-oauth/callback
+FRONTEND_BASE_URL=http://localhost:3000
+OAUTH_STATE_SECRET=some-long-random-secret
 ```
 
 The Google client must allow `http://localhost:3000` as a JavaScript origin
-and the exact redirect URI above. Apply migrations with
-`python -m alembic -c alembic.ini upgrade head` from `backend/`.
+and the exact redirect URI above. The member callback terminates in Next.js
+at `/api/auth/google/login/callback`; the admin Gmail sender callback is a
+separate route at `/api/admin/gmail-oauth/callback` using a different OAuth
+client. See `frontend/.env.example` for all options and `docs/api.md` for the
+flow walkthrough.
 
 ## Run the pipeline (artifact generation)
 
@@ -168,62 +188,57 @@ offline demos.
 
 ---
 
-## Run the backend
+## Run the Private Model Service
 
 ```bash
 cd backend
 pip install -r requirements.txt
 
-# Optional: copy the env template and edit it. The dev defaults
-# (DB off, no admin allow-list, default JWT secret) are fine for
-# reading the legacy catalog + recommendations, but the admin slice
-# (/admin/items/*, /actions/*) needs RECSYS_DB_ENABLED=1 plus a real
-# Postgres. See backend/.env.example for the full list.
-cp .env.example .env
-
-uvicorn app.main:app --reload --port 8001
+RECSYS_INTERNAL_SERVICE_SECRET=<long-random-secret> \
+  uvicorn app.private_main:app --reload --port 8001
 ```
 
-The `.env` file is gitignored. `.env.example` is tracked so devs
-know which keys to set; fill in your own secrets locally. Pytest
-runs against pure defaults regardless of `.env` (see
-`backend/app/core/config.py:_ENV_FILE`).
+The Internal Service Credential is required — an unset secret makes the
+private contract unavailable (503) instead of weakening auth. The public
+FastAPI application (`app.main`) no longer exists.
 
 Config (env vars, all prefixed `RECSYS_`):
 
 | Var | Default | Purpose |
 |---|---|---|
 | `RECSYS_ARTIFACT_DIR` | `<repo>/artifacts` | Where to load artifacts from |
+| `RECSYS_INTERNAL_SERVICE_SECRET` | — | Internal Service Credential (no default) |
 | `RECSYS_HYBRID_ALPHA` | 0.7 | CBF weight in hybrid |
 | `RECSYS_CBF_KEYWORD_BOOST` | 0.05 | Additive boost on keyword hit |
 | `RECSYS_ITEMKNN_K` | 10 | ItemKNN top-K neighbours |
 | `RECSYS_ITEMKNN_SHRINK` | 50.0 | Cosine shrinkage |
 | `RECSYS_POSITIVE_THRESHOLD` | 4 | Min rating for "liked" |
-| `RECSYS_RATING_FLOOR` | 0.01 | Normalized rating floor |
-| `RECSYS_NEGATIVE_PENALTY_ALPHA` | 1.0 | Additive negative-rating penalty strength (legacy env name) |
+| `RECSYS_NEGATIVE_PENALTY_ALPHA` | 1.0 | Additive negative-rating penalty strength |
 | `RECSYS_MIN_CANDS` | 10 | Min candidate pool size |
 | `RECSYS_MAX_CANDS` | (none) | Max candidate pool size |
-| `RECSYS_DEFAULT_TOP_K` | 10 | Default top-K |
-| `RECSYS_CORS_ORIGINS` | `["http://localhost:3000"]` | Allowed CORS origins |
+| `RECSYS_E5_ENABLED` / `RECSYS_PRELOAD_E5` | 1 / 0 | E5 encoder runtime flags |
 
 ---
 
-## Endpoints
+## Public endpoints (Next.js Application Backend)
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET`  | `/health` | Liveness + artifact build metadata |
-| `POST` | `/recommendations` | Generate top-K with explanations |
-| `GET`  | `/items` | List active items (paginated, searchable) |
-| `GET`  | `/items/{item_id}` | One item with keywords + contexts |
-| `GET`  | `/contexts` | All filterable contexts |
-| `GET`  | `/keywords` | All keywords (optional `?search=`) |
-| `GET`  | `/metrics` | Corpus + CF index stats |
-| `GET`  | `/docs` | Swagger UI |
-| `GET`  | `/redoc` | ReDoc UI |
-| `GET`  | `/openapi.json` | OpenAPI 3.1 schema |
+| GET  | `/api/health` | Liveness + database status |
+| POST | `/api/recommendations` | Model-backed top-K with fallback |
+| GET  | `/api/recommendations/profile` | Session-gated profile recommendations |
+| GET  | `/api/items`, `/api/items/{id}`, `/api/items/batch`, `/api/items/{id}/similar` | Catalogue browse + detail + similar |
+| GET  | `/api/items/{id}/legacy-stats`, `/api/legacy-stats`, `/api/items/engagement` | Legacy stats + live engagement |
+| GET  | `/api/contexts`, `/api/keywords` | Filter facets |
+| POST/DELETE | `/api/actions/like`, `/api/actions/save`, `/api/actions/rating`, `/api/actions/view` | Live user actions |
+| GET/PATCH | `/api/me/*` | Member journeys (session-gated) |
+| POST | `/api/auth/*` | Signup, login, logout, Google login, password reset |
+| GET/POST | `/api/admin/*` | Admin users, catalogue, media, publication |
+| GET  | `/api/metrics*` | Metrics, requests trend, config, dashboard, analytics, export |
+| GET  | `/api/uploads/*` | User-uploaded media |
 
-Every endpoint carries a `summary` and `description` for the Swagger docs.
+Every route handler carries a `summary`/`description` equivalent in
+`frontend/app/api/*`; see `docs/api.md` for the full walkthrough.
 
 ---
 
@@ -232,24 +247,24 @@ Every endpoint carries a `summary` and `description` for the Swagger docs.
 ```bash
 cd frontend
 npm install
-cp .env.example .env.local       # defaults to http://127.0.0.1:8001
+cp .env.example .env.local       # same-origin API; no backend URL needed
+npm run migration:run
+npm run seed
 npm run dev
 ```
 
 Open http://localhost:3000.
 
-Pages:
-
-- `/` — Health check + metrics summary + CTA to `/recommend`
-- `/recommend` — Form: pick context → pick keywords (optional) → submit
-- `/results` — Top-K recommendations with scores and Thai explanations
+Pages: `/` (home + popularity), `/recommend` (context/keyword picker),
+`/results` (recommendations), `/items` and `/items/{id}` (catalogue),
+member dashboard and admin screens.
 
 The frontend **never**:
 - imports a Python file
 - reads CSV or `artifacts/`
-- hardcodes the backend URL
-
-It uses `NEXT_PUBLIC_API_BASE_URL` (env var) for backend host.
+- embeds a public FastAPI base URL in the browser bundle
+- forwards credentials to Python (server-only `PRIVATE_MODEL_SERVICE_URL`
+  + shared secret are used by route handlers only)
 
 ---
 
@@ -259,28 +274,22 @@ It uses `NEXT_PUBLIC_API_BASE_URL` (env var) for backend host.
 cd backend
 pytest                                  # default uses --cov-fail-under=90
 pytest --cov=app --cov-report=html      # writes htmlcov/
-pytest tests/test_model_loader.py -v    # one module at a time
+
+cd frontend
+npm run type-check
+npm test                                # node --test suites (public boundary)
+npm run test:e2e                        # Playwright (needs a running stack)
 ```
 
-Coverage threshold is enforced by `pytest.ini`:
-
-```
---cov-fail-under=90
-```
-
-Current coverage: **92.79%** (135 tests).
+Backend coverage threshold is enforced by `pytest.ini` (`--cov-fail-under=90`).
+Current: **95.01%** (108 tests).
 
 ---
 
 ## Out of scope
 
-- Login / authentication (opaque `anon:<uuid>` only)
-- Production deployment / Docker / cloud
-- CI/CD pipeline
-- Cloud database / cloud storage
-- Algorithm changes (logic preserved from thesis)
-
-See `docs/adr.md` §11 for the full out-of-scope list.
+- Algorithm changes (logic preserved from thesis); see `docs/adr.md` §11
+- Multi-encoder / multi-CF / multi-hybrid serving (single-model thesis config only)
 
 ---
 
@@ -292,3 +301,4 @@ See `docs/adr.md` §11 for the full out-of-scope list.
 - ✅ All new code lives under `C:\Users\Pichaya\Downloads\web_appRS1\`
 - ✅ Backend never reads CSV at serving time; only loads prebuilt artifacts
 - ✅ Frontend never imports Python or reads CSV/artifacts directly
+- ✅ FastAPI serves no public application routes (issue #10) — only the authenticated private model contract

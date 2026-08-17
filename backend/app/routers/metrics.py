@@ -25,7 +25,6 @@ from ..models_db import (
     Keyword,
     RecommendationRequest,
     RecommendationResult,
-    TaxonomyNode,
     User,
 )
 from ..schemas.context import ContextListOut, ContextOut
@@ -48,6 +47,7 @@ from ..schemas.popularity import (
 )
 from ..services._ids import stable_id
 from ..services.identity import get_current_admin
+from ..services.catalogue import _taxonomy_paths_by_id
 from ..services.analytics_service import build_analytics_payload
 from ..services.dashboard_query import build_dashboard_payload
 from ..services.dashboard_export import build_dashboard_report
@@ -310,30 +310,6 @@ def _db_keywords(
         if len(out) >= limit:
             break
     return out
-
-
-def _taxonomy_paths_by_id(session) -> dict[int, str]:
-    nodes = {
-        int(node_id): {"name": str(name or ""), "parent_id": int(parent_id) if parent_id else None}
-        for node_id, name, parent_id in session.execute(
-            select(TaxonomyNode.id, TaxonomyNode.name, TaxonomyNode.parent_id)
-        ).all()
-    }
-    cache: dict[int, str] = {}
-
-    def path_for(node_id: int) -> str:
-        if node_id in cache:
-            return cache[node_id]
-        node = nodes.get(int(node_id))
-        if not node:
-            return ""
-        parent_id = node["parent_id"]
-        parent_path = path_for(parent_id) if parent_id else ""
-        path = f"{parent_path} > {node['name']}" if parent_path else node["name"]
-        cache[node_id] = path
-        return path
-
-    return {node_id: path_for(node_id) for node_id in nodes}
 
 
 def _db_metric_counts() -> Optional[dict[str, int]]:

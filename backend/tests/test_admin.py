@@ -22,7 +22,7 @@ from app.db import reset_engine
 from app.main import create_app
 from app.models_db import Base, Context, Keyword, User
 from app.model_loader import ArtifactLoader, set_singleton, reset_singleton
-from app.services import user_query, ingestion
+from app.services import identity, ingestion
 from app.services.embedding import reset_model_cache
 
 
@@ -68,12 +68,12 @@ def client(monkeypatch):
         finally:
             s.close()
 
-    for mod_name in ("app.db", "app.services.user_query", "app.services.ingestion",
+    for mod_name in ("app.db", "app.services.identity", "app.services.ingestion",
                      "app.services.grounding", "app.services.actions",
                      "app.services.db_query"):
         monkeypatch.setattr(f"{mod_name}.session_scope", _scope, raising=False)
     monkeypatch.setattr("app.db.is_db_enabled", lambda: True)
-    monkeypatch.setattr(user_query, "is_db_enabled", lambda: True)
+    monkeypatch.setattr(identity, "is_db_enabled", lambda: True)
     monkeypatch.setattr(ingestion, "is_db_enabled", lambda: True)
     monkeypatch.setattr(ingestion.emb, "encode_item_text", _fake_embed)
     monkeypatch.setattr(ingestion.emb, "encode_text", _fake_embed)

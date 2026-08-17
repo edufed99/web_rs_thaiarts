@@ -104,19 +104,11 @@ def _strip_internal_display_markers(value: str, fallback: str = "") -> str:
 
 def is_db_enabled() -> bool:
     """Check if the database layer is enabled (respects test monkeypatches)."""
-    from . import user_query
-    uq_fn = getattr(user_query, "is_db_enabled", None)
-    if uq_fn is not None and uq_fn is not is_db_enabled:
-        return bool(uq_fn())
     return db.is_db_enabled()
 
 
 def session_scope():
     """Context manager for DB sessions (respects test monkeypatches)."""
-    from . import user_query
-    uq_scope = getattr(user_query, "session_scope", None)
-    if uq_scope is not None and uq_scope is not session_scope:
-        return uq_scope()
     return db.session_scope()
 
 

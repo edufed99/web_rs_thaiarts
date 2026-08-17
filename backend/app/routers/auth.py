@@ -29,7 +29,7 @@ from ..schemas.user import (
     UserProfileUpdate,
     UserSignup,
 )
-from ..services import gmail_oauth, google_login_oauth, identity, mailer, storage, user_query
+from ..services import gmail_oauth, google_login_oauth, identity, mailer, storage
 from ..services.identity import (
     create_token,
     get_current_user,

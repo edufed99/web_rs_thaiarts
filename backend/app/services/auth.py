@@ -3,7 +3,7 @@ services/auth.py — Backward-compatibility aliases for services.identity.
 
 Authentication primitives, token issuance, and FastAPI dependency helpers
 have been consolidated into ``app.services.identity``. This module re-exports
-all symbols so existing imports remain unbroken.
+core auth symbols so legacy callers remain unbroken.
 """
 from __future__ import annotations
 
@@ -17,7 +17,6 @@ from .identity import (
     hash_password,
     verify_password,
 )
-from . import user_query
 
 
 __all__ = [
@@ -27,7 +26,6 @@ __all__ = [
     "get_current_user",
     "hash_password",
     "identity",
-    "user_query",
     "verify_password",
     "_bearer",
 ]

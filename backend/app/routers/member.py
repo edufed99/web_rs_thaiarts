@@ -37,7 +37,7 @@ from ..services.member_query import (
     live_user_saved_ids,
     live_user_summary,
 )
-from ..services import storage, user_query
+from ..services import identity, storage
 from ._user_key import get_current_user_dep
 
 
@@ -51,7 +51,7 @@ def _require_user(user: Optional[User]) -> User:
 
 
 def _profile_out(user: User) -> MemberProfileOut:
-    payload = user_query.get_member_profile(int(user.id))
+    payload = identity.get_member_profile(int(user.id))
     if payload is None:
         raise DbDisabledError("Member profile is unavailable")
     return MemberProfileOut.model_validate(payload)
@@ -70,7 +70,7 @@ def patch_member_profile(
     user: Optional[User] = Depends(get_current_user_dep),
 ) -> MemberProfileOut:
     current = _require_user(user)
-    updated = user_query.update_member_profile(
+    updated = identity.update_member_profile(
         int(current.id),
         display_name=payload.display_name,
         avatar_url=payload.avatar_url,
@@ -97,7 +97,7 @@ def upload_member_avatar(
         allowed_mime=settings.allowed_upload_mime,
         public_subdir="profiles",
     )
-    updated = user_query.update_member_profile(int(current.id), avatar_url=public_url)
+    updated = identity.update_member_profile(int(current.id), avatar_url=public_url)
     if updated is None:
         storage.delete_upload(public_url, settings.upload_dir)
         raise DbDisabledError("Member profile is unavailable")
@@ -112,7 +112,7 @@ def delete_member_avatar(
 ) -> MemberProfileOut:
     current = _require_user(user)
     previous = _profile_out(current).avatar_url
-    updated = user_query.update_member_profile(int(current.id), avatar_url="")
+    updated = identity.update_member_profile(int(current.id), avatar_url="")
     if updated is None:
         raise DbDisabledError("Member profile is unavailable")
     if previous:

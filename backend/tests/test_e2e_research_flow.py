@@ -36,11 +36,11 @@ def test_login_taxonomy_e5_top10(monkeypatch):
     monkeypatch.setattr(db_module, "get_engine", lambda: engine)
 
     from app.routers import auth as auth_router
-    from app.services import cbf_service, user_query
+    from app.services import cbf_service, identity
     from app.services import recommendation_service
 
     monkeypatch.setattr(auth_router, "is_db_enabled", lambda: True)
-    monkeypatch.setattr(user_query, "is_db_enabled", lambda: True)
+    monkeypatch.setattr(identity, "is_db_enabled", lambda: True)
     monkeypatch.setattr(
         cbf_service,
         "encode_query",

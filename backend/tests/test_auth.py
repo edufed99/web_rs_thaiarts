@@ -33,7 +33,7 @@ from app.services.auth import (
 
 @pytest.fixture
 def db_enabled(monkeypatch) -> Iterator[Session]:
-    """In-memory SQLite + monkeypatched session_scope so user_query can write."""
+    """In-memory SQLite + monkeypatched session_scope so identity can write."""
     reset_settings_cache()
     monkeypatch.setenv("RECSYS_DB_ENABLED", "1")
     reset_engine()
@@ -60,9 +60,9 @@ def db_enabled(monkeypatch) -> Iterator[Session]:
         finally:
             s.close()
 
-    from app.services import member_query, user_query
-    monkeypatch.setattr(user_query, "session_scope", _scope)
-    monkeypatch.setattr(user_query, "is_db_enabled", lambda: True)
+    from app.services import identity, member_query
+    monkeypatch.setattr(identity, "session_scope", _scope)
+    monkeypatch.setattr(identity, "is_db_enabled", lambda: True)
     monkeypatch.setattr(member_query, "session_scope", _scope)
     monkeypatch.setattr(member_query, "is_db_enabled", lambda: True)
     yield Session(engine)
@@ -120,11 +120,11 @@ def test_google_login_callback_issues_one_time_code(client, monkeypatch):
         lambda *_: (identity, "/profile"),
     )
     monkeypatch.setattr(
-        auth_router.user_query,
+        auth_router.identity,
         "resolve_google_identity",
         lambda **_: (SimpleNamespace(id=17), "created"),
     )
-    monkeypatch.setattr(auth_router.user_query, "set_last_login", lambda *_: None)
+    monkeypatch.setattr(auth_router.identity, "set_last_login", lambda *_: None)
     monkeypatch.setattr(
         auth_router.google_login_oauth, "issue_login_code", lambda *_: "exchange-code"
     )
@@ -155,7 +155,7 @@ def test_google_avatar_cache_does_not_overwrite_member_upload(monkeypatch):
     from app.routers import auth as auth_router
 
     monkeypatch.setattr(
-        auth_router.user_query,
+        auth_router.identity,
         "get_member_profile",
         lambda *_: {"avatar_url": "/uploads/profiles/member-choice.jpg"},
     )

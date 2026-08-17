@@ -505,7 +505,7 @@ def test_engagement_score_kept_for_backcompat(pop_db):
 def _wire_endpoint_test(monkeypatch, pop_db):
     """Patch every consumer of ``session_scope`` to the in-memory engine.
 
-    The popularity endpoint, the admin auth dep (``user_query``) and
+    The popularity endpoint, the admin auth dep (``identity``) and
     any other service that imported ``session_scope`` locally must all
     be patched, otherwise the request handler ends up talking to the
     production Postgres URL.
@@ -519,7 +519,7 @@ def _wire_endpoint_test(monkeypatch, pop_db):
     from app.core import config as config_module
     from app.services import actions as actions_module
     from app.services import db_query as dbq_module
-    from app.services import user_query as user_query_module
+    from app.services import identity as identity_module
 
     SessionLocal, _seed, _wid, _aid = pop_db
 
@@ -543,8 +543,8 @@ def _wire_endpoint_test(monkeypatch, pop_db):
     monkeypatch.setattr(dbq_module, "session_scope", fake_scope)
     monkeypatch.setattr(actions_module, "is_db_enabled", lambda: True)
     monkeypatch.setattr(actions_module, "session_scope", fake_scope)
-    monkeypatch.setattr(user_query_module, "is_db_enabled", lambda: True)
-    monkeypatch.setattr(user_query_module, "session_scope", fake_scope)
+    monkeypatch.setattr(identity_module, "is_db_enabled", lambda: True)
+    monkeypatch.setattr(identity_module, "session_scope", fake_scope)
     pop_module.reset_popularity_cache()
     return SessionLocal, _seed, _aid
 

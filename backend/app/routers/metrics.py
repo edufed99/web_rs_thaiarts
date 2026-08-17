@@ -47,7 +47,7 @@ from ..schemas.popularity import (
     PopularityWeightsUpdateIn,
 )
 from ..services._ids import stable_id
-from ..services.auth import get_current_admin
+from ..services.identity import get_current_admin
 from ..services.analytics_service import build_analytics_payload
 from ..services.dashboard_query import build_dashboard_payload
 from ..services.dashboard_export import build_dashboard_report

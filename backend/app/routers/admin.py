@@ -3,7 +3,7 @@ routers/admin.py — HTTP authorization and validation dispatcher for /admin/* e
 
 Delegates core domain operations to:
 * ``services.ingestion``: Item drafting, committing, keyword reassignment, editing, deleting, and media attachments.
-* ``services.user_query``: Admin user CRUD management.
+* ``services.identity``: Admin user CRUD management.
 * ``services.catalogue``: Item facets aggregation.
 * ``services.gmail_oauth``: Admin Gmail OAuth flow.
 """
@@ -38,7 +38,7 @@ from ..schemas.user import (
     GmailOAuthStatusOut,
     UserOut,
 )
-from ..services import catalogue, gmail_oauth, identity, ingestion, mailer, user_query
+from ..services import catalogue, gmail_oauth, identity, ingestion, mailer
 from ..services.identity import get_current_admin, hash_password, user_to_out
 
 

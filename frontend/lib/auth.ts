@@ -1,6 +1,19 @@
 // Browser authentication state contains display-only user data. The only
 // credential is the opaque HttpOnly session cookie, which JavaScript cannot read.
-import type { UserOut } from "./types";
+import type {
+  GoogleLoginExchange,
+  PasswordResetConfirm,
+  PasswordResetConfirmOut,
+  PasswordResetRequest,
+  PasswordResetRequestOut,
+  TokenOut,
+  UserLogin,
+  UserProfileUpdate,
+  UserOut,
+  UserSignup,
+} from "./types";
+
+import { baseUrl, handle, mutateJson } from "./http";
 
 export const STORAGE_KEY = "thai_arts_session_user";
 export const AUTH_CHANGED_EVENT = "thai_arts_auth_changed";
@@ -71,4 +84,51 @@ export function logout(): void {
     headers: { "X-CSRF-Token": "same-origin" },
     credentials: "same-origin",
   }).finally(clearStoredAuth);
+}
+
+// --- REST auth endpoints (migrated from lib/api.ts) -------------------------
+
+export async function postSignup(body: UserSignup): Promise<TokenOut> {
+  return mutateJson("/auth/signup", "POST", body);
+}
+
+export async function postLogin(body: UserLogin): Promise<TokenOut> {
+  return mutateJson("/auth/login", "POST", body);
+}
+
+export function googleLoginStartUrl(nextPath = "/recommend"): string {
+  const search = new URLSearchParams({ next: nextPath }).toString();
+  return `${baseUrl()}/auth/google/login/start?${search}`;
+}
+
+export async function postGoogleLoginExchange(
+  body: GoogleLoginExchange,
+): Promise<TokenOut> {
+  return mutateJson("/auth/google/login/exchange", "POST", body);
+}
+
+// fallow-ignore-next-line unused-export -- Preserved public API client contract.
+export async function getMe(): Promise<UserOut> {
+  const res = await fetch(`${baseUrl()}/auth/me`, {
+    method: "GET",
+    headers: { ...getAuthHeaders() },
+    cache: "no-store",
+  });
+  return handle<UserOut>(res);
+}
+
+export async function patchMe(body: UserProfileUpdate): Promise<UserOut> {
+  return mutateJson("/auth/me", "PATCH", body, getAuthHeaders());
+}
+
+export async function postPasswordResetRequest(
+  body: PasswordResetRequest,
+): Promise<PasswordResetRequestOut> {
+  return mutateJson("/auth/password-reset/request", "POST", body);
+}
+
+export async function postPasswordResetConfirm(
+  body: PasswordResetConfirm,
+): Promise<PasswordResetConfirmOut> {
+  return mutateJson("/auth/password-reset/confirm", "POST", body);
 }

@@ -28,16 +28,16 @@ from ..schemas.user import (
     UserOut,
     UserProfileUpdate,
     UserSignup,
+    user_to_out as _user_to_out,
 )
 from ..services import gmail_oauth, google_login_oauth, identity, mailer, storage
+from ..services.auth import get_current_user
 from ..services.identity import (
     create_token,
-    get_current_user,
     hash_password,
-    mirror_google_avatar as _mirror_google_avatar,
-    user_to_out as _user_to_out,
     verify_password,
 )
+from ..services.storage import mirror_google_avatar as _mirror_google_avatar
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])

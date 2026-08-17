@@ -23,8 +23,10 @@ from urllib.request import Request, urlopen
 
 from fastapi import UploadFile
 
-from ..core.config import IMGHDR_TO_MIME
+from ..core.config import IMGHDR_TO_MIME, get_settings
 from ..core.exceptions import InvalidRequestError
+from ..models_db import User
+from . import identity
 
 logger = logging.getLogger("recsys.storage")
 
@@ -41,6 +43,9 @@ _IMGHDR_TO_EXT = {
     "png": ".png",
     "webp": ".webp",
 }
+
+# Trusted hosts for Google profile photos, mirrored into local uploads.
+_GOOGLE_AVATAR_HOSTS = {"lh3.googleusercontent.com"}
 
 
 def is_allowed_remote_image_url(url: str, allowed_hosts: set[str]) -> bool:
@@ -113,6 +118,41 @@ def save_remote_image(
         allowed_mime=allowed_mime,
         public_subdir=public_subdir,
     )
+
+
+def mirror_google_avatar(user: User, source_url: str) -> None:
+    """Cache Google's profile photo unless the member chose a custom image."""
+    if not source_url:
+        return
+    profile = identity.get_member_profile(int(user.id))
+    if profile is None:
+        return
+    previous = str(profile.get("avatar_url") or "")
+    if previous and not is_allowed_remote_image_url(
+        previous, _GOOGLE_AVATAR_HOSTS
+    ):
+        return
+    settings = get_settings()
+    try:
+        _filename, public_url, _size, _mime = save_remote_image(
+            source_url,
+            settings.upload_dir / "profiles",
+            prefix=f"user-{int(user.id)}-google",
+            max_bytes=settings.max_upload_bytes,
+            allowed_mime=settings.allowed_upload_mime,
+            allowed_hosts=_GOOGLE_AVATAR_HOSTS,
+            public_subdir="profiles",
+        )
+        updated = identity.update_member_profile(
+            int(user.id), avatar_url=public_url
+        )
+        if updated is None:
+            delete_upload(public_url, settings.upload_dir)
+            return
+        if previous and previous != public_url:
+            delete_upload(previous, settings.upload_dir)
+    except InvalidRequestError as exc:
+        logger.warning("Google avatar cache failed for user %s: %s", user.id, exc)
 
 
 def sniff_mime(file: UploadFile) -> Tuple[Optional[str], Optional[str]]:

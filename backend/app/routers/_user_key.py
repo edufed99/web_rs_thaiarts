@@ -19,7 +19,7 @@ from fastapi import Depends, Header
 
 from ..core.exceptions import AuthError
 from ..models_db import User
-from ..services.identity import get_current_user
+from ..services.auth import get_current_user
 
 
 def get_current_user_dep(

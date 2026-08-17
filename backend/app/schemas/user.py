@@ -15,6 +15,9 @@ import re
 
 from pydantic import BaseModel, Field, field_validator
 
+from ..models_db import User
+from ..services.identity import parse_account_state
+
 
 def _strip(value: str) -> str:
     return value.strip() if isinstance(value, str) else value
@@ -143,6 +146,25 @@ class UserOut(BaseModel):
     legacy_account: bool = False
     created_at: Optional[datetime] = None
     last_login_at: Optional[datetime] = None
+
+
+def user_to_out(user: User) -> UserOut:
+    """Convert a database User row to a clean UserOut schema."""
+    state = parse_account_state(user.display_name or "", fallback=str(user.username))
+    return UserOut(
+        id=int(user.id),
+        username=str(user.username),
+        email=str(user.email or ""),
+        display_name=state.display_name,
+        is_admin=bool(user.is_admin),
+        role="super_admin" if bool(user.is_admin) else "user",
+        auth_provider=str(getattr(user, "auth_provider", "password") or "password"),
+        email_verified=bool(getattr(user, "email_verified", False)),
+        requires_password_reset=state.requires_password_reset,
+        legacy_account=state.legacy_account,
+        created_at=user.created_at,
+        last_login_at=user.last_login_at,
+    )
 
 
 class AdminUserCreate(UserSignup):

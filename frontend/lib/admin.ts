@@ -6,6 +6,8 @@ import type {
   AdminUserDeleteOut,
   AdminUserListOut,
   AdminUserUpdate,
+  ContextCreateIn,
+  ContextOut,
   GmailOAuthStartOut,
   GmailOAuthStatusOut,
   ItemCommit,
@@ -123,6 +125,16 @@ export async function getItemFacets(): Promise<ItemFacetsOut> {
     cache: "no-store",
   });
   return handle<ItemFacetsOut>(res);
+}
+
+export async function createAdminContext(body: ContextCreateIn): Promise<ContextOut> {
+  const res = await fetch(`${baseUrl()}/admin/contexts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  return handle<ContextOut>(res);
 }
 
 export async function deleteAdminItem(artifactId: number): Promise<ItemDeleteOut> {

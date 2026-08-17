@@ -12,6 +12,9 @@ from typing import List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from ..models_db import User, UserProfile
+from ..services.identity import parse_account_state
+
 
 class InterestBucket(BaseModel):
     """One category context bucket shown as a horizontal bar in the sidebar.
@@ -160,3 +163,23 @@ class MemberDashboardOut(BaseModel):
 
 
 RatedItemsOut.model_rebuild()
+
+
+def _profile_payload(user: User, profile: UserProfile) -> dict:
+    """Return the canonical member profile representation with clean names."""
+    role = "super_admin" if bool(user.is_admin) else "user"
+    state = parse_account_state(user.display_name or "", fallback=str(user.username))
+    return {
+        "user_id": int(user.id),
+        "username": str(user.username),
+        "email": str(user.email or ""),
+        "display_name": state.display_name,
+        "avatar_url": str(profile.avatar_url or ""),
+        "bio": str(profile.bio or ""),
+        "role": role,
+        "requires_password_reset": state.requires_password_reset,
+        "legacy_account": state.legacy_account,
+        "created_at": user.created_at,
+        "last_login_at": user.last_login_at,
+        "updated_at": profile.updated_at,
+    }

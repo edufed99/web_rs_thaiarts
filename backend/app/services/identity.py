@@ -14,29 +14,24 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import hashlib
-import logging
 import re
 import secrets
 from typing import List, Optional, Tuple
 
 import bcrypt
 import jwt
-from fastapi import Depends, Header
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from .. import db
 from ..core.config import get_settings
-from ..core.exceptions import AuthError, DbDisabledError, ForbiddenError, InvalidRequestError
+from ..core.exceptions import AuthError, DbDisabledError, InvalidRequestError
 from ..models_db import PasswordResetToken, User, UserProfile
-from ..schemas.user import UserOut
-from . import mailer, storage
+from . import mailer
 
 
 PASSWORD_RESET_MARKER = "must_reset|"
 LEGACY_NAME_MARKER = "legacy:"
-_GOOGLE_AVATAR_HOSTS = {"lh3.googleusercontent.com"}
-logger = logging.getLogger("recsys.identity")
 
 
 class AmbiguousGoogleEmailError(RuntimeError):
@@ -173,75 +168,7 @@ def _bearer(authorization: Optional[str]) -> Optional[str]:
     return parts[1].strip() or None
 
 
-def get_current_user(
-    authorization: Optional[str] = Header(default=None),
-) -> Optional[User]:
-    """Resolve the current user from ``Authorization: Bearer <jwt>``."""
-    token = _bearer(authorization)
-    if not token:
-        return None
-    payload = decode_token(token)
-    try:
-        user_id = int(payload["sub"])
-    except (KeyError, ValueError, TypeError) as exc:
-        raise AuthError("Invalid token payload", extra={"code": "invalid_token"}) from exc
-    user = find_user_by_id(user_id)
-    if user is None:
-        raise AuthError("User not found", extra={"code": "user_not_found"})
-    return user
-
-
-def get_current_admin(
-    user: Optional[User] = Depends(get_current_user),
-) -> User:
-    """Gate ``/admin/*`` endpoints. Raises 403 if the user is not admin."""
-    if user is None:
-        raise AuthError("Authentication required", extra={"code": "unauthorized"})
-    if not user.is_admin:
-        raise ForbiddenError("Admin role required", extra={"code": "not_admin"})
-    return user
-
-
 # --- Mapping Helpers --------------------------------------------------------
-
-
-def user_to_out(user: User) -> UserOut:
-    """Convert a database User row to a clean UserOut schema."""
-    state = parse_account_state(user.display_name or "", fallback=str(user.username))
-    return UserOut(
-        id=int(user.id),
-        username=str(user.username),
-        email=str(user.email or ""),
-        display_name=state.display_name,
-        is_admin=bool(user.is_admin),
-        role="super_admin" if bool(user.is_admin) else "user",
-        auth_provider=str(getattr(user, "auth_provider", "password") or "password"),
-        email_verified=bool(getattr(user, "email_verified", False)),
-        requires_password_reset=state.requires_password_reset,
-        legacy_account=state.legacy_account,
-        created_at=user.created_at,
-        last_login_at=user.last_login_at,
-    )
-
-
-def _profile_payload(user: User, profile: UserProfile) -> dict:
-    """Return the canonical member profile representation with clean names."""
-    role = "super_admin" if bool(user.is_admin) else "user"
-    state = parse_account_state(user.display_name or "", fallback=str(user.username))
-    return {
-        "user_id": int(user.id),
-        "username": str(user.username),
-        "email": str(user.email or ""),
-        "display_name": state.display_name,
-        "avatar_url": str(profile.avatar_url or ""),
-        "bio": str(profile.bio or ""),
-        "role": role,
-        "requires_password_reset": state.requires_password_reset,
-        "legacy_account": state.legacy_account,
-        "created_at": user.created_at,
-        "last_login_at": user.last_login_at,
-        "updated_at": profile.updated_at,
-    }
 
 
 def _get_or_create_profile(session: Session, user: User) -> UserProfile:
@@ -536,6 +463,8 @@ def update_user_credentials(
 
 def get_member_profile(user_id: int) -> Optional[dict]:
     """Retrieve the member profile payload with clean display_name."""
+    from ..schemas.member import _profile_payload
+
     if not is_db_enabled():
         return None
     with session_scope() as session:
@@ -556,6 +485,8 @@ def update_member_profile(
     bio: Optional[str] = None,
 ) -> Optional[dict]:
     """Update member profile details with clean parsing at the boundary."""
+    from ..schemas.member import _profile_payload
+
     if not is_db_enabled():
         return None
     with session_scope() as session:
@@ -671,41 +602,6 @@ def resolve_google_identity(
         session.flush()
         session.refresh(user)
         return user, "created"
-
-
-def mirror_google_avatar(user: User, source_url: str) -> None:
-    """Cache Google's profile photo unless the member chose a custom image."""
-    if not source_url:
-        return
-    profile = get_member_profile(int(user.id))
-    if profile is None:
-        return
-    previous = str(profile.get("avatar_url") or "")
-    if previous and not storage.is_allowed_remote_image_url(
-        previous, _GOOGLE_AVATAR_HOSTS
-    ):
-        return
-    settings = get_settings()
-    try:
-        _filename, public_url, _size, _mime = storage.save_remote_image(
-            source_url,
-            settings.upload_dir / "profiles",
-            prefix=f"user-{int(user.id)}-google",
-            max_bytes=settings.max_upload_bytes,
-            allowed_mime=settings.allowed_upload_mime,
-            allowed_hosts=_GOOGLE_AVATAR_HOSTS,
-            public_subdir="profiles",
-        )
-        updated = update_member_profile(
-            int(user.id), avatar_url=public_url
-        )
-        if updated is None:
-            storage.delete_upload(public_url, settings.upload_dir)
-            return
-        if previous and previous != public_url:
-            storage.delete_upload(previous, settings.upload_dir)
-    except InvalidRequestError as exc:
-        logger.warning("Google avatar cache failed for user %s: %s", user.id, exc)
 
 
 def exchange_google_login(code: str) -> tuple[User, str, int]:
@@ -1068,16 +964,12 @@ class MemberIdentityModule:
     verify_password = staticmethod(verify_password)
     create_token = staticmethod(create_token)
     decode_token = staticmethod(decode_token)
-    get_current_user = staticmethod(get_current_user)
-    get_current_admin = staticmethod(get_current_admin)
-    user_to_out = staticmethod(user_to_out)
     signup_user = staticmethod(signup_user)
     authenticate_user = staticmethod(authenticate_user)
     update_user_credentials = staticmethod(update_user_credentials)
     get_member_profile = staticmethod(get_member_profile)
     update_member_profile = staticmethod(update_member_profile)
     resolve_google_identity = staticmethod(resolve_google_identity)
-    mirror_google_avatar = staticmethod(mirror_google_avatar)
     exchange_google_login = staticmethod(exchange_google_login)
     request_password_reset = staticmethod(request_password_reset)
     confirm_password_reset = staticmethod(confirm_password_reset)

@@ -37,9 +37,11 @@ from ..schemas.user import (
     GmailOAuthStartOut,
     GmailOAuthStatusOut,
     UserOut,
+    user_to_out,
 )
 from ..services import catalogue, gmail_oauth, identity, ingestion, mailer
-from ..services.identity import get_current_admin, hash_password, user_to_out
+from ..services.auth import get_current_admin
+from ..services.identity import hash_password
 
 
 logger = logging.getLogger("recsys.admin")

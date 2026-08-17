@@ -25,7 +25,9 @@ from app.core.exceptions import AuthError, DbDisabledError, ForbiddenError, Inva
 from app import db
 from app.db import reset_engine
 from app.models_db import Base, User
+from app.schemas.user import user_to_out
 from app.services import identity
+from app.services.auth import get_current_admin, get_current_user
 
 
 @pytest.fixture
@@ -133,7 +135,7 @@ def test_signup_user_happy_path(db_session):
     assert token
     assert expires_in > 0
 
-    out = identity.user_to_out(user)
+    out = user_to_out(user)
     assert out.username == "alice"
     assert out.role == "super_admin"
 
@@ -176,7 +178,7 @@ def test_update_user_credentials_display_name_only(db_session):
         display_name="New Charlie",
     )
     assert updated.display_name == "must_reset|legacy:New Charlie"
-    out = identity.user_to_out(updated)
+    out = user_to_out(updated)
     assert out.display_name == "New Charlie"
     assert out.requires_password_reset is True
 
@@ -194,7 +196,7 @@ def test_update_user_credentials_with_password_change(db_session):
         display_name="David Clean",
     )
     assert updated.display_name == "David Clean"
-    out = identity.user_to_out(updated)
+    out = user_to_out(updated)
     assert out.display_name == "David Clean"
     assert out.requires_password_reset is False
 
@@ -402,15 +404,15 @@ def test_bearer_token_parsing():
 
 def test_get_current_user_and_admin_dependencies(db_session):
     user, token, _ = identity.signup_user(username="admin_dep", password="password123")
-    assert identity.get_current_user(f"Bearer {token}").id == user.id
-    assert identity.get_current_user(None) is None
+    assert get_current_user(f"Bearer {token}").id == user.id
+    assert get_current_user(None) is None
 
     # Invalid token raises AuthError
     with pytest.raises(AuthError):
-        identity.get_current_user("Bearer invalid-token")
+        get_current_user("Bearer invalid-token")
 
     # Admin check
-    admin_checked = identity.get_current_admin(user)
+    admin_checked = get_current_admin(user)
     assert admin_checked.id == user.id
 
     # Non-admin raises ForbiddenError
@@ -420,10 +422,10 @@ def test_get_current_user_and_admin_dependencies(db_session):
         is_admin=False,
     )
     with pytest.raises(ForbiddenError):
-        identity.get_current_admin(member)
+        get_current_admin(member)
 
     with pytest.raises(AuthError):
-        identity.get_current_admin(None)
+        get_current_admin(None)
 
 
 def test_update_member_profile_avatar_and_bio(db_session):

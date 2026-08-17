@@ -130,6 +130,12 @@ export interface ItemDeleteOut {
   warnings: string[];
 }
 
+export interface ContextCreateIn {
+  name: string;
+  group_name?: string;
+  description?: string;
+}
+
 export interface ItemFacetsOut {
   category_groups: string[];
   performance_types: string[];

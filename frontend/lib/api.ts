@@ -74,6 +74,7 @@ export {
   postItemCommit,
   putAdminItem,
   getItemFacets,
+  createAdminContext,
   deleteAdminItem,
   uploadItemImage,
   uploadItemVideo,

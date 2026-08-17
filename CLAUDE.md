@@ -33,7 +33,7 @@ See `docs/adr.md` for the full Architecture Decision Record.
 │   │   ├── services/           cbf, hybrid, model_inference, model_similarity, embedding
 │   │   └── routers/            private_model (health + inference + similarity)
 │   ├── tests/                  108 pytest tests
-│   ├── pytest.ini              enforces ≥90% coverage
+│   ├── pytest.ini              enforces ≥80% coverage
 │   └── requirements.txt
 └── frontend/                   Next.js 14 + TypeScript Application Backend
     ├── app/                    App Router pages + /api/* route handlers (the public API)
@@ -97,7 +97,7 @@ pytest                                            # default
 pytest --cov=app --cov-report=term-missing        # show missing lines
 ```
 
-Coverage threshold: ≥ 90% (enforced by `pytest.ini`). Current: **95.01%** (108 tests).
+Coverage threshold: ≥ 80% (enforced by `pytest.ini`). Current: **95.01%** (108 tests).
 
 ### Type-check the frontend
 

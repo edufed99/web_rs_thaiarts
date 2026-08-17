@@ -53,6 +53,7 @@ import type {
   RequestTrendOut,
   SavedItemsOut,
   TokenOut,
+  TopKeywordListOut,
   UserLogin,
   UserOut,
   UserProfileUpdate,

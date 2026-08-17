@@ -35,8 +35,11 @@ from typing import Dict, List
 import numpy as np
 import pandas as pd
 import pytest
+from fastapi.testclient import TestClient
 
-from app.model_loader import ArtifactLoader
+from app.core.config import reset_settings_cache
+from app.main import create_app
+from app.model_loader import ArtifactLoader, reset_singleton, set_singleton
 
 
 # --- Synthetic corpus --------------------------------------------------------
@@ -207,6 +210,24 @@ def loader(artifacts_dir: Path) -> ArtifactLoader:
     ldr = ArtifactLoader()
     ldr.load(artifacts_dir)
     return ldr
+
+
+@pytest.fixture
+def client(artifacts_dir: Path, monkeypatch):
+    """A FastAPI TestClient wired to the synthetic artifacts via env var."""
+    monkeypatch.setenv("RECSYS_ARTIFACT_DIR", str(artifacts_dir))
+    reset_settings_cache()
+    reset_singleton()
+    # Clear the in-process catalog-row cache so each test sees a fresh
+    # corpus; ``_db_item_rows`` is module-global on purpose for the
+    # production hot path, but tests must not share that state.
+    from app.routers import catalog as catalog_module
+    catalog_module._db_rows_cache["data"] = None
+    catalog_module._db_rows_cache["expires_at"] = 0.0
+    app = create_app()
+    with TestClient(app) as c:
+        yield c
+    reset_singleton()
 
 
 # --- Test helpers ------------------------------------------------------------

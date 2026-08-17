@@ -1,6 +1,6 @@
 // Local-member resolution for Google identities (issue #6).
 //
-// Ports ``user_query.resolve_google_identity``: find by Google subject id,
+// Ports ``identity.resolve_google_identity``: find by Google subject id,
 // safely link an existing unique email (so recommendation history stays
 // attached), or create a fresh ordinary member. Google-created accounts are
 // never bootstrap admins.

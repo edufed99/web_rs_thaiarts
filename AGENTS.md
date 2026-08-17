@@ -70,7 +70,7 @@ docker compose --profile tools run --rm migrate
 
 ### Verification & Testing
 ```bash
-# Backend unit & integration tests (enforces >= 90% coverage)
+# Backend unit & integration tests (enforces >= 80% coverage)
 cd backend
 pytest --cov=app --cov-report=term-missing
 

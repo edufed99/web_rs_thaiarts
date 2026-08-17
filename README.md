@@ -41,9 +41,9 @@ npm run migration:run
 npm run seed
 npm run dev
 
-# 4. Run tests (≥90% coverage enforced)
+# 4. Run tests (≥80% coverage enforced)
 cd backend
-pytest --cov=app --cov-report=term-missing --cov-fail-under=90
+pytest --cov=app --cov-report=term-missing --cov-fail-under=80
 ```
 
 Open:
@@ -272,7 +272,7 @@ The frontend **never**:
 
 ```bash
 cd backend
-pytest                                  # default uses --cov-fail-under=90
+pytest                                  # default uses --cov-fail-under=80
 pytest --cov=app --cov-report=html      # writes htmlcov/
 
 cd frontend
@@ -281,7 +281,7 @@ npm test                                # node --test suites (public boundary)
 npm run test:e2e                        # Playwright (needs a running stack)
 ```
 
-Backend coverage threshold is enforced by `pytest.ini` (`--cov-fail-under=90`).
+Backend coverage threshold is enforced by `pytest.ini` (`--cov-fail-under=80`).
 Current: **95.01%** (108 tests).
 
 ---

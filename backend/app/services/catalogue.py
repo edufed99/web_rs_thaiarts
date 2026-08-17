@@ -583,6 +583,144 @@ def _parse_engagement_range_days(raw: str) -> Optional[int]:
 
 
 # =========================================================================
+# Metrics / picker DB helpers (relocated from the /metrics router)
+# =========================================================================
+#
+# Thin read-side queries that the read-only /metrics router uses to overlay
+# live Postgres data on top of the artifact counts. Each returns ``None``
+# (or ``{}``) when the DB layer is disabled or unreachable so the router can
+# fall back to the artifact-derived values. Keeping them here (next to the
+# other catalogue DB reads) leaves the router free of inline SQL.
+
+
+def db_context_counts_by_name() -> Optional[dict[str, int]]:
+    """Active-item counts per live context name, keyed by display name.
+
+    Returns ``None`` when the DB layer is disabled or unreachable so the
+    caller can fall back to artifact-based counts.
+    """
+    try:
+        with session_scope() as session:
+            if session is None:
+                return None
+            rows = session.execute(
+                select(Context.name, func.count(ItemContext.item_id))
+                .join(ItemContext, ItemContext.context_id == Context.id)
+                .join(Item, Item.id == ItemContext.item_id)
+                .where(Item.is_active.is_(True))
+                .group_by(Context.name)
+            ).all()
+    except Exception:  # noqa: BLE001 - fall back to artifact counts
+        return None
+    return {str(name): int(count) for name, count in rows}
+
+
+def db_context_metadata_by_name() -> dict[str, dict[str, str]]:
+    """Live ``contexts`` group/description keyed by display name.
+
+    Artifact context ids are stable hash ids used by the recommendation API,
+    while the live ``contexts`` table stores the legacy DB ids plus
+    ``group_name``. The two spaces are joined by context display name.
+    Returns ``{}`` when the DB is disabled or unreachable.
+    """
+    try:
+        with session_scope() as session:
+            if session is None:
+                return {}
+            rows = session.query(Context.name, Context.group_name, Context.description).all()
+    except Exception:  # noqa: BLE001 - /contexts should still work without DB
+        return {}
+
+    return {
+        str(name): {
+            "group": str(group_name or ""),
+            "description": str(description or ""),
+        }
+        for name, group_name, description in rows
+    }
+
+
+def db_keyword_options(
+    search: Optional[str],
+    limit: int,
+    artifact_paths_by_name: dict[str, str],
+) -> Optional[list[KeywordOut]]:
+    """Keyword picker rows from Postgres, ordered by name.
+
+    ``search`` is a case-insensitive substring match on the name. Returns
+    ``None`` when the DB layer is disabled or unreachable so the caller can
+    fall back to artifact keywords. Taxonomy paths come from the live
+    taxonomy nodes when available, otherwise from the supplied artifact
+    paths.
+    """
+    try:
+        with session_scope() as session:
+            if session is None:
+                return None
+            taxonomy_paths = _taxonomy_paths_by_id(session)
+            stmt = select(Keyword.id, Keyword.name, Keyword.taxonomy_node_id).order_by(Keyword.name)
+            rows = session.execute(stmt).all()
+    except Exception:  # noqa: BLE001 - fall back to artifact keywords
+        return None
+
+    out: list[KeywordOut] = []
+    needle = search.lower() if search else ""
+    for keyword_id, name, taxonomy_node_id in rows:
+        name_text = str(name or "")
+        if needle and needle not in name_text.lower():
+            continue
+        out.append(
+            KeywordOut(
+                id=int(keyword_id),
+                name=name_text,
+                taxonomy_path=(
+                    taxonomy_paths.get(int(taxonomy_node_id), "")
+                    if taxonomy_node_id
+                    else artifact_paths_by_name.get(name_text.strip(), "")
+                )
+                or artifact_paths_by_name.get(name_text.strip(), ""),
+            )
+        )
+        if len(out) >= limit:
+            break
+    return out
+
+
+def db_metric_counts() -> Optional[dict[str, int]]:
+    """Live corpus counts (active items / contexts / keywords).
+
+    Returns ``None`` when the DB layer is disabled or unreachable so the
+    caller can fall back to artifact metadata.
+    """
+    try:
+        with session_scope() as session:
+            if session is None:
+                return None
+            return {
+                "item_count": int(session.execute(select(func.count()).select_from(Item).where(Item.is_active.is_(True))).scalar_one()),
+                "context_count": int(session.execute(select(func.count()).select_from(Context)).scalar_one()),
+                "keyword_count": int(session.execute(select(func.count()).select_from(Keyword)).scalar_one()),
+            }
+    except Exception:  # noqa: BLE001 - metrics should still work without DB
+        return None
+
+
+def db_keyword_count() -> Optional[int]:
+    """Live keyword count, or ``None`` when the DB is disabled/unreachable.
+
+    Used by the reproducibility endpoint to report the keyword-count source
+    as ``postgres`` when a live count is available.
+    """
+    try:
+        with session_scope() as session:
+            if session is None:
+                return None
+            return int(session.execute(select(func.count(Keyword.id))).scalar_one())
+    except Exception:  # noqa: BLE001 - artifact audit remains available without Postgres
+        return None
+
+
+# =========================================================================
 # Public Service API
 # =========================================================================
 

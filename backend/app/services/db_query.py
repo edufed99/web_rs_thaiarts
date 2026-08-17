@@ -31,7 +31,7 @@ Use ``artifact_id_to_db_id`` / ``db_id_to_artifact_id`` to cross between them.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Iterable, List, Optional, Set
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -736,3 +736,73 @@ def artifact_ids_to_db_ids(artifact_ids: Iterable[int]) -> Dict[int, int]:
             )
         ).all()
         return {int(aid): int(did) for aid, did in rows if aid is not None}
+
+
+# --- Recommendation-request trend (monthly buckets) ------------------------
+
+
+def db_request_trend_counts(
+    start_year: int, start_month: int
+) -> Optional[Dict[Tuple[int, int], Tuple[int, int]]]:
+    """Per-``(year, month)`` request + shown-item counts from a start month.
+
+    Returns a dict mapping each ``(year, month)`` bucket to
+    ``(request_count, shown_count)`` for buckets at or after
+    ``(start_year, start_month)``, or ``None`` when the DB layer is disabled
+    or unreachable so the caller can fall back to zeroed buckets with
+    ``source='disabled'``.
+
+    ``request_count`` is the number of ``recommendation_requests`` rows in
+    the bucket; ``shown_count`` is the number of ``recommendation_results``
+    rows joined to those requests (result rows, not unique items).
+    """
+    from datetime import datetime, timezone
+
+    from ..models_db import RecommendationRequest, RecommendationResult
+
+    if not is_db_enabled():
+        return None
+    start = datetime(start_year, start_month, 1, tzinfo=timezone.utc)
+    try:
+        with session_scope() as session:
+            if session is None:
+                return None
+            # Recommendation requests per (year, month).
+            req_rows = session.execute(
+                select(
+                    func.extract("year", RecommendationRequest.created_at).label("y"),
+                    func.extract("month", RecommendationRequest.created_at).label("m"),
+                    func.count().label("c"),
+                )
+                .where(RecommendationRequest.created_at >= start)
+                .group_by("y", "m")
+            ).all()
+            # Items actually shown per (year, month) via JOIN to the
+            # request's created_at — counts result rows, not unique items.
+            shown_rows = session.execute(
+                select(
+                    func.extract("year", RecommendationRequest.created_at).label("y"),
+                    func.extract("month", RecommendationRequest.created_at).label("m"),
+                    func.count(RecommendationResult.id).label("c"),
+                )
+                .select_from(RecommendationResult)
+                .join(
+                    RecommendationRequest,
+                    RecommendationRequest.id == RecommendationResult.request_id,
+                )
+                .where(RecommendationRequest.created_at >= start)
+                .group_by("y", "m")
+            ).all()
+    except Exception:  # noqa: BLE001 - dashboard should still render with zeros
+        return None
+
+    out: Dict[Tuple[int, int], Tuple[int, int]] = {}
+    for y, m, c in req_rows:
+        key = (int(y), int(m))
+        req_c, shown_c = out.get(key, (0, 0))
+        out[key] = (req_c + int(c), shown_c)
+    for y, m, c in shown_rows:
+        key = (int(y), int(m))
+        req_c, shown_c = out.get(key, (0, 0))
+        out[key] = (req_c, shown_c + int(c))
+    return out

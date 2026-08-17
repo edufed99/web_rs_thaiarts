@@ -356,12 +356,12 @@ def test_postgres_telemetry_handles_db_exception(telemetry_db, monkeypatch, capl
 
 def test_postgres_telemetry_recompute_online_eval_exception_ignored(telemetry_db, monkeypatch):
     """If recompute_online_eval fails, the persisted request id is still returned safely."""
-    from app.services import dashboard_query
+    from app.services import evaluation
 
     def exploding_recompute(*args, **kwargs):
         raise ValueError("Recompute error")
 
-    monkeypatch.setattr(dashboard_query, "recompute_online_eval", exploding_recompute)
+    monkeypatch.setattr(evaluation, "recompute_online_eval", exploding_recompute)
     adapter = PostgresTelemetryAdapter()
     req = _make_dummy_request()
     res = adapter.record_recommendation(

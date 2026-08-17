@@ -1,9 +1,17 @@
 """
 routers/metrics.py — GET /contexts, GET /keywords, GET /metrics,
-GET /metrics/requests, GET /metrics/config, GET /metrics/dashboard.
+GET /metrics/requests, GET /metrics/config, GET /metrics/dashboard,
+GET /metrics/reproducibility, GET /metrics/popularity,
+GET /metrics/popularity/weights.
 
 Auxiliary read-only endpoints that drive the frontend picker UIs, the
 researcher dashboard, and the new admin dashboard (Phase 3).
+
+All live-DB reads are delegated to the services layer (``catalogue`` for
+catalogue-shaped queries, ``db_query`` for the recommendation-request trend)
+so this router contains no inline SQL. The single write endpoint —
+``PUT /metrics/popularity/weights`` — lives in the admin router (see
+``routers/admin.py``), which keeps this router read-only.
 """
 from __future__ import annotations
 
@@ -13,20 +21,11 @@ from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query, Response
-from sqlalchemy import func, select
 
 from ..core.config import get_settings, settings_with_artifact_config
 from ..db import session_scope
 from ..model_loader import ArtifactLoader, get_singleton
-from ..models_db import (
-    Context,
-    Item,
-    ItemContext,
-    Keyword,
-    RecommendationRequest,
-    RecommendationResult,
-    User,
-)
+from ..models_db import User
 from ..schemas.context import ContextListOut, ContextOut
 from ..schemas.analytics import AnalyticsOut
 from ..schemas.dashboard import DashboardOut
@@ -43,20 +42,23 @@ from ..schemas.popularity import (
     PopularityOut,
     PopularityRowOut,
     PopularityWeightsOut,
-    PopularityWeightsUpdateIn,
 )
 from ..services._ids import stable_id
 from ..services.auth import get_current_admin
-from ..services.catalogue import _taxonomy_paths_by_id
+from ..services.catalogue import (
+    db_context_counts_by_name,
+    db_context_metadata_by_name,
+    db_keyword_count,
+    db_keyword_options,
+    db_metric_counts,
+)
+from ..services.db_query import db_request_trend_counts
 from ..services.analytics_service import build_analytics_payload
 from ..services.dashboard_query import build_dashboard_payload
 from ..services.dashboard_export import build_dashboard_report
 from ..services.popularity import (
-    WeightsValidationError,
     active_weights,
     compute_popularity_scores,
-    list_weights,
-    set_weights,
 )
 from ..services.eligibility import build_context_id_map, context_name_for_id
 
@@ -77,8 +79,8 @@ def list_contexts(
     loader: ArtifactLoader = Depends(get_singleton),
 ) -> ContextListOut:
     id_to_name = build_context_id_map(loader)
-    context_meta = _context_metadata_by_name()
-    db_counts = _db_context_counts_by_name()
+    context_meta = db_context_metadata_by_name()
+    db_counts = db_context_counts_by_name()
     # Count active items per context
     counts: dict = {}
     if db_counts is not None:
@@ -102,47 +104,6 @@ def list_contexts(
             )
         )
     return ContextListOut(contexts=out)
-
-
-def _context_metadata_by_name() -> dict[str, dict[str, str]]:
-    """Read main-context groups from Postgres when available.
-
-    Artifact context ids are stable hash ids used by the recommendation API,
-    while the live ``contexts`` table stores the legacy DB ids plus
-    ``group_name``. We join the two spaces by context display name.
-    """
-    try:
-        with session_scope() as session:
-            if session is None:
-                return {}
-            rows = session.query(Context.name, Context.group_name, Context.description).all()
-    except Exception:  # noqa: BLE001 - /contexts should still work without DB
-        return {}
-
-    return {
-        str(name): {
-            "group": str(group_name or ""),
-            "description": str(description or ""),
-        }
-        for name, group_name, description in rows
-    }
-
-
-def _db_context_counts_by_name() -> Optional[dict[str, int]]:
-    try:
-        with session_scope() as session:
-            if session is None:
-                return None
-            rows = session.execute(
-                select(Context.name, func.count(ItemContext.item_id))
-                .join(ItemContext, ItemContext.context_id == Context.id)
-                .join(Item, Item.id == ItemContext.item_id)
-                .where(Item.is_active.is_(True))
-                .group_by(Context.name)
-            ).all()
-    except Exception:  # noqa: BLE001 - fall back to artifact counts
-        return None
-    return {str(name): int(count) for name, count in rows}
 
 
 @router.get(
@@ -175,7 +136,7 @@ def list_keywords(
             )
         )
 
-    db_keywords = _db_keywords(
+    db_keywords = db_keyword_options(
         search=search,
         limit=limit,
         artifact_paths_by_name=artifact_paths_by_name,
@@ -243,7 +204,7 @@ def metrics(
     loader: ArtifactLoader = Depends(get_singleton),
 ) -> MetricsOut:
     md = loader.metadata or {}
-    db_counts = _db_metric_counts()
+    db_counts = db_metric_counts()
     return MetricsOut(
         item_count=int(db_counts.get("item_count") if db_counts else md.get("item_count", len(loader.item_ids))),
         context_count=int(db_counts.get("context_count") if db_counts else md.get("context_count", 0)),
@@ -272,58 +233,6 @@ def _artifact_keyword_paths_by_name(loader: ArtifactLoader) -> dict[str, str]:
             if taxonomy_path and name_text not in paths_by_name:
                 paths_by_name[name_text] = taxonomy_path
     return paths_by_name
-
-
-def _db_keywords(
-    search: Optional[str],
-    limit: int,
-    artifact_paths_by_name: dict[str, str],
-) -> Optional[list[KeywordOut]]:
-    try:
-        with session_scope() as session:
-            if session is None:
-                return None
-            taxonomy_paths = _taxonomy_paths_by_id(session)
-            stmt = select(Keyword.id, Keyword.name, Keyword.taxonomy_node_id).order_by(Keyword.name)
-            rows = session.execute(stmt).all()
-    except Exception:  # noqa: BLE001 - fall back to artifact keywords
-        return None
-
-    out: list[KeywordOut] = []
-    needle = search.lower() if search else ""
-    for keyword_id, name, taxonomy_node_id in rows:
-        name_text = str(name or "")
-        if needle and needle not in name_text.lower():
-            continue
-        out.append(
-            KeywordOut(
-                id=int(keyword_id),
-                name=name_text,
-                taxonomy_path=(
-                    taxonomy_paths.get(int(taxonomy_node_id), "")
-                    if taxonomy_node_id
-                    else artifact_paths_by_name.get(name_text.strip(), "")
-                )
-                or artifact_paths_by_name.get(name_text.strip(), ""),
-            )
-        )
-        if len(out) >= limit:
-            break
-    return out
-
-
-def _db_metric_counts() -> Optional[dict[str, int]]:
-    try:
-        with session_scope() as session:
-            if session is None:
-                return None
-            return {
-                "item_count": int(session.execute(select(func.count()).select_from(Item).where(Item.is_active.is_(True))).scalar_one()),
-                "context_count": int(session.execute(select(func.count()).select_from(Context)).scalar_one()),
-                "keyword_count": int(session.execute(select(func.count()).select_from(Keyword)).scalar_one()),
-            }
-    except Exception:  # noqa: BLE001 - metrics should still work without DB
-        return None
 
 
 def _count_unique_keywords(loader: ArtifactLoader) -> int:
@@ -403,61 +312,16 @@ def request_trend(
     source = "disabled"
     total_requests = 0
     total_shown = 0
-    try:
-        with session_scope() as session:
-            if session is not None:
-                # Recommendation requests per (year, month).
-                req_rows = session.execute(
-                    select(
-                        func.extract("year", RecommendationRequest.created_at).label("y"),
-                        func.extract("month", RecommendationRequest.created_at).label("m"),
-                        func.count().label("c"),
-                    )
-                    .where(
-                        RecommendationRequest.created_at
-                        >= datetime(start_year, start_month, 1, tzinfo=timezone.utc)
-                    )
-                    .group_by("y", "m")
-                ).all()
-                # Items actually shown per (year, month) via JOIN to request's
-                # created_at — counts result rows, not unique items.
-                shown_rows = session.execute(
-                    select(
-                        func.extract("year", RecommendationRequest.created_at).label("y"),
-                        func.extract("month", RecommendationRequest.created_at).label("m"),
-                        func.count(RecommendationResult.id).label("c"),
-                    )
-                    .select_from(RecommendationResult)
-                    .join(
-                        RecommendationRequest,
-                        RecommendationRequest.id == RecommendationResult.request_id,
-                    )
-                    .where(
-                        RecommendationRequest.created_at
-                        >= datetime(start_year, start_month, 1, tzinfo=timezone.utc)
-                    )
-                    .group_by("y", "m")
-                ).all()
-                source = "postgres"
-                for y, m, c in req_rows:
-                    key = (int(y), int(m))
-                    if key in buckets_index:
-                        buckets_index[key]["request_count"] = int(c)
-                        total_requests += int(c)
-                for y, m, c in shown_rows:
-                    key = (int(y), int(m))
-                    if key in buckets_index:
-                        buckets_index[key]["shown_count"] = int(c)
-                        total_shown += int(c)
-    except Exception:  # noqa: BLE001 - dashboard should still render with zeros
-        # Reset to disabled state if DB query failed mid-flight.
-        source = "disabled"
-        buckets_index = {
-            (y, m): {"request_count": 0, "shown_count": 0}
-            for y, m, _ in _iterate_month_buckets(start_year, start_month, months)
-        }
-        total_requests = 0
-        total_shown = 0
+    db_counts = db_request_trend_counts(start_year, start_month)
+    if db_counts is not None:
+        source = "postgres"
+        for (y, m), (req_count, shown_count) in db_counts.items():
+            key = (int(y), int(m))
+            if key in buckets_index:
+                buckets_index[key]["request_count"] = int(req_count)
+                buckets_index[key]["shown_count"] = int(shown_count)
+                total_requests += int(req_count)
+                total_shown += int(shown_count)
 
     buckets: list[RequestTrendBucket] = []
     for y, m, label in _iterate_month_buckets(start_year, start_month, months):
@@ -570,15 +434,7 @@ def reproducibility(loader: ArtifactLoader = Depends(get_singleton)) -> Reproduc
             matches=actual == expected,
         )
 
-    live_keyword_count: Optional[int] = None
-    try:
-        with session_scope() as session:
-            if session is not None:
-                live_keyword_count = int(
-                    session.execute(select(func.count(Keyword.id))).scalar_one()
-                )
-    except Exception:  # noqa: BLE001 - artifact audit remains available without Postgres
-        live_keyword_count = None
+    live_keyword_count: Optional[int] = db_keyword_count()
 
     item_count = count("item_count", len(loader.item_ids))
     keyword_count = count(
@@ -689,6 +545,10 @@ def export_dashboard(
 
 # ---------------------------------------------------------------------------
 # Phase B popularity (ADR-002)
+#
+# Note: the write endpoint ``PUT /metrics/popularity/weights`` lives in
+# ``routers/admin.py`` (it is the only mutation here); this router only
+# exposes the read-only popularity endpoints.
 # ---------------------------------------------------------------------------
 
 
@@ -797,56 +657,6 @@ def popularity_weights_active(
             bayes_m=int(w.bayes_m),
             updated_at=(w.updated_at or datetime.now(timezone.utc)).isoformat(),
             updated_by=str(w.updated_by or ""),
-        )
-
-
-@router.put(
-    "/metrics/popularity/weights",
-    response_model=PopularityWeightsOut,
-    summary="Replace the active popularity weights",
-    description=(
-        "Validates the body (weights in [0, 1], sum 1.0 ± 1e-3, every "
-        "factor in the known set; half_life_days and bayes_m ≥ 0), "
-        "deactivates the previous active row in the same transaction, "
-        "and inserts the new one. Admin-only. ``updated_by`` is "
-        "populated by the operator for audit."
-    ),
-)
-def popularity_weights_update(
-    payload: PopularityWeightsUpdateIn,
-    admin: User = Depends(get_current_admin),
-) -> PopularityWeightsOut:
-    try:
-        with session_scope() as session:
-            if session is None:
-                from fastapi import HTTPException, status
-
-                raise HTTPException(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail="Database is not enabled.",
-                )
-            w = set_weights(
-                session,
-                weights_dict={k: float(v) for k, v in payload.weights.items()},
-                half_life_days=int(payload.half_life_days),
-                bayes_m=int(payload.bayes_m),
-                updated_by=str(payload.updated_by or admin.username or "admin"),
-            )
-            session.commit()
-            return PopularityWeightsOut(
-                id=int(w.id),
-                weights=w.weights(),
-                half_life_days=int(w.half_life_days),
-                bayes_m=int(w.bayes_m),
-                updated_at=(w.updated_at or datetime.now(timezone.utc)).isoformat(),
-                updated_by=str(w.updated_by or ""),
-            )
-    except WeightsValidationError as e:
-        from fastapi import HTTPException, status
-
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"code": "invalid_weights", "message": str(e)},
         )
 
 

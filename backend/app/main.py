@@ -117,6 +117,10 @@ def create_app() -> FastAPI:
     app.include_router(actions.router)
     app.include_router(auth.router)
     app.include_router(admin.router)
+    # The popularity-weights write endpoint is defined in the admin module
+    # but lives on an un-prefixed sub-router so its external path stays
+    # ``/metrics/popularity/weights`` (the main admin router is /admin).
+    app.include_router(admin.metrics_router)
     app.include_router(member.router)
 
     # Static mount for user-uploaded media (cover images for catalog

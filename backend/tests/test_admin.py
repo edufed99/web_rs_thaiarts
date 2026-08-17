@@ -68,12 +68,11 @@ def client(monkeypatch):
         finally:
             s.close()
 
-    for mod_name in ("app.db", "app.services.identity", "app.services.ingestion",
+    for mod_name in ("app.db", "app.services.ingestion",
                      "app.services.grounding", "app.services.actions",
                      "app.services.db_query"):
         monkeypatch.setattr(f"{mod_name}.session_scope", _scope, raising=False)
     monkeypatch.setattr("app.db.is_db_enabled", lambda: True)
-    monkeypatch.setattr(identity, "is_db_enabled", lambda: True)
     monkeypatch.setattr(ingestion, "is_db_enabled", lambda: True)
     monkeypatch.setattr(ingestion.emb, "encode_item_text", _fake_embed)
     monkeypatch.setattr(ingestion.emb, "encode_text", _fake_embed)

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from app.core.config import reset_settings_cache, get_settings
+from app import db
 from app.db import is_db_enabled, reset_engine
 from app.models_db import Base, User
 from app.services import identity
@@ -49,8 +50,8 @@ def db_session(monkeypatch) -> Iterator[Session]:
         finally:
             s.close()
 
-    monkeypatch.setattr(identity, "session_scope", _scope)
-    monkeypatch.setattr(identity, "is_db_enabled", lambda: True)
+    monkeypatch.setattr(db, "session_scope", _scope)
+    monkeypatch.setattr(db, "is_db_enabled", lambda: True)
     yield Session(engine)
     engine.dispose()
 
@@ -160,7 +161,7 @@ def test_google_identity_refuses_ambiguous_shared_email(db_session):
 
 
 def test_disabled_db_short_circuits(monkeypatch):
-    monkeypatch.setattr(identity, "is_db_enabled", lambda: False)
+    monkeypatch.setattr(db, "is_db_enabled", lambda: False)
     assert identity.find_user_by_username("any") is None
     assert identity.find_user_by_id(1) is None
     assert identity.create_user("any", "x") is None

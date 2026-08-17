@@ -22,6 +22,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.core.config import get_settings, reset_settings_cache
 from app.core.exceptions import AuthError, DbDisabledError, ForbiddenError, InvalidRequestError
+from app import db
 from app.db import reset_engine
 from app.models_db import Base, User
 from app.services import identity
@@ -54,8 +55,8 @@ def db_session(monkeypatch) -> Iterator[Session]:
         finally:
             s.close()
 
-    monkeypatch.setattr(identity, "session_scope", _scope)
-    monkeypatch.setattr(identity, "is_db_enabled", lambda: True)
+    monkeypatch.setattr(db, "session_scope", _scope)
+    monkeypatch.setattr(db, "is_db_enabled", lambda: True)
     yield Session(engine)
     engine.dispose()
 
@@ -358,7 +359,7 @@ def test_google_login_exchange(db_session, monkeypatch):
 
 
 def test_db_disabled_short_circuits(monkeypatch):
-    monkeypatch.setattr(identity, "is_db_enabled", lambda: False)
+    monkeypatch.setattr(db, "is_db_enabled", lambda: False)
 
     assert identity.find_user_by_username("any") is None
     assert identity.find_user_by_id(1) is None

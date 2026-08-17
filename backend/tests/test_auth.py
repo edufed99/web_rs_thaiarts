@@ -60,9 +60,10 @@ def db_enabled(monkeypatch) -> Iterator[Session]:
         finally:
             s.close()
 
-    from app.services import identity, member_query
-    monkeypatch.setattr(identity, "session_scope", _scope)
-    monkeypatch.setattr(identity, "is_db_enabled", lambda: True)
+    import app.db as db_module
+    from app.services import member_query
+    monkeypatch.setattr(db_module, "session_scope", _scope)
+    monkeypatch.setattr(db_module, "is_db_enabled", lambda: True)
     monkeypatch.setattr(member_query, "session_scope", _scope)
     monkeypatch.setattr(member_query, "is_db_enabled", lambda: True)
     yield Session(engine)

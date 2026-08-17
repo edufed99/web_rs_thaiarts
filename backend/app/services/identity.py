@@ -103,12 +103,12 @@ def _strip_internal_display_markers(value: str, fallback: str = "") -> str:
 
 
 def is_db_enabled() -> bool:
-    """Check if the database layer is enabled (respects test monkeypatches)."""
+    """Check if the database layer is enabled."""
     return db.is_db_enabled()
 
 
 def session_scope():
-    """Context manager for DB sessions (respects test monkeypatches)."""
+    """Context manager for DB sessions."""
     return db.session_scope()
 
 

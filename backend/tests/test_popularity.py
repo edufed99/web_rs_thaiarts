@@ -519,7 +519,6 @@ def _wire_endpoint_test(monkeypatch, pop_db):
     from app.core import config as config_module
     from app.services import actions as actions_module
     from app.services import db_query as dbq_module
-    from app.services import identity as identity_module
 
     SessionLocal, _seed, _wid, _aid = pop_db
 
@@ -543,8 +542,6 @@ def _wire_endpoint_test(monkeypatch, pop_db):
     monkeypatch.setattr(dbq_module, "session_scope", fake_scope)
     monkeypatch.setattr(actions_module, "is_db_enabled", lambda: True)
     monkeypatch.setattr(actions_module, "session_scope", fake_scope)
-    monkeypatch.setattr(identity_module, "is_db_enabled", lambda: True)
-    monkeypatch.setattr(identity_module, "session_scope", fake_scope)
     pop_module.reset_popularity_cache()
     return SessionLocal, _seed, _aid
 

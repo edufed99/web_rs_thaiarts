@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import React, { useEffect, useState } from "react";
 
 import { getItemLegacyStats } from "@/lib/api";
@@ -100,7 +101,9 @@ export default function PopularPerformanceCard({
       />
       <div className="popular-card-body">
         <span className="popular-badge">{badge}</span>
-        <h3 className="popular-card-title">{item.name}</h3>
+        <h3 className="popular-card-title">
+          <Link href={`/items/${item.id}`} className="popular-title-link">{item.name}</Link>
+        </h3>
         {renderRating()}
         {description ? <p className="popular-card-desc">{description}</p> : null}
         <div className="popular-card-meta">

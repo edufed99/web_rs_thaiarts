@@ -184,17 +184,109 @@ export async function getSimilarItems(
         numberOf(candidate.artifactItemId) !== artifactItemId,
     );
   const candidateIds = candidates.map((candidate) => numberOf(candidate.artifactItemId));
-  if (candidateIds.length === 0) return { items: [], total: 0 };
-  const rankedIds = await rankSimilarArtifactIds({
-    referenceArtifactItemId: artifactItemId,
-    candidateArtifactItemIds: candidateIds,
-    limit,
-  });
+  if (candidateIds.length === 0) {
+    return { items: [], total: 0 };
+  }
+
+  let rankedIds: number[] = [];
+  try {
+    rankedIds = await rankSimilarArtifactIds({
+      referenceArtifactItemId: artifactItemId,
+      candidateArtifactItemIds: candidateIds,
+      limit,
+    });
+  } catch {
+    // Private Model Service unavailable or the reference is not in the loaded
+    // release — fall back to a local content-overlap ranking so the UI still
+    // surfaces related performances.
+    const fallback = catalogueSimilarityFallback(snapshot, reference, candidates, limit);
+    return { items: fallback, total: fallback.length };
+  }
+
+  if (rankedIds.length === 0) {
+    const fallback = catalogueSimilarityFallback(snapshot, reference, candidates, limit);
+    return { items: fallback, total: fallback.length };
+  }
+
   const byArtifactId = new Map(
     candidates.map((candidate) => [numberOf(candidate.artifactItemId), candidate]),
   );
   const items = rankedIds.map((rankedId) => catalogueItemOut(snapshot, byArtifactId.get(rankedId)!));
   return { items, total: items.length };
+}
+
+/**
+ * Local content-only fallback for item-to-item similarity.
+ *
+ * Used when the Private Model Service cannot score the candidate set. It ranks
+ * active catalogue neighbours by keyword/context/category/performance-type
+ * overlap. This is display-only and never influences the model-backed scorer.
+ */
+function catalogueSimilarityFallback(
+  snapshot: CatalogueSnapshot,
+  reference: CatalogueItem,
+  candidates: CatalogueItem[],
+  limit: number,
+): ItemOut[] {
+  const refKeywords = keywordNamesForItem(snapshot, numberOf(reference.id));
+  const refContexts = contextNamesForItem(snapshot, numberOf(reference.id));
+  const refCategory = reference.categoryGroup.trim();
+  const refType = reference.performanceType.trim();
+
+  const scored = candidates.map((candidate) => {
+    const candKeywords = keywordNamesForItem(snapshot, numberOf(candidate.id));
+    const candContexts = contextNamesForItem(snapshot, numberOf(candidate.id));
+    const keywordScore = refKeywords.size > 0 || candKeywords.size > 0
+      ? setOverlap(refKeywords, candKeywords)
+      : 0;
+    const contextScore = refContexts.size > 0 || candContexts.size > 0
+      ? setOverlap(refContexts, candContexts)
+      : 0;
+    const categoryScore = refCategory.length > 0 && refCategory === candidate.categoryGroup.trim() ? 1 : 0;
+    const typeScore = refType.length > 0 && refType === candidate.performanceType.trim() ? 1 : 0;
+    const score = 0.5 * keywordScore + 0.3 * contextScore + 0.15 * categoryScore + 0.05 * typeScore;
+    return { candidate, score };
+  });
+
+  return scored
+    .filter((row) => row.score > 0)
+    .sort((left, right) =>
+      right.score - left.score || left.candidate.name.localeCompare(right.candidate.name, "th"),
+    )
+    .slice(0, limit)
+    .map((row) => catalogueItemOut(snapshot, row.candidate));
+}
+
+function keywordNamesForItem(snapshot: CatalogueSnapshot, itemId: number): Set<string> {
+  const keywordIds = new Set(
+    snapshot.itemKeywords
+      .filter((link) => numberOf(link.itemId) === itemId)
+      .map((link) => numberOf(link.keywordId)),
+  );
+  return new Set(
+    snapshot.keywords
+      .filter((keyword) => keywordIds.has(numberOf(keyword.id)))
+      .map((keyword) => keyword.name),
+  );
+}
+
+function contextNamesForItem(snapshot: CatalogueSnapshot, itemId: number): Set<string> {
+  const contextIds = new Set(
+    snapshot.itemContexts
+      .filter((link) => numberOf(link.itemId) === itemId)
+      .map((link) => numberOf(link.contextId)),
+  );
+  return new Set(
+    snapshot.contexts
+      .filter((context) => contextIds.has(numberOf(context.id)))
+      .map((context) => context.name),
+  );
+}
+
+function setOverlap(left: Set<string>, right: Set<string>): number {
+  if (left.size === 0 && right.size === 0) return 0;
+  const intersection = new Set([...left].filter((value) => right.has(value)));
+  return intersection.size / Math.max(left.size, right.size);
 }
 
 export async function listContexts(): Promise<ContextOut[]> {

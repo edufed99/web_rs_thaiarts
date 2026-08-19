@@ -134,13 +134,33 @@ def test_similarity_ranks_multiple_candidates_by_artifact_similarity(similarity_
     assert all(set(row) == {"artifact_item_id", "score"} for row in body["ranked_candidates"])
 
 
-def test_similarity_rejects_unknown_artifact_identifiers(private_client):
+def test_similarity_ignores_unknown_candidate_identifiers(private_client):
+    """Candidates absent from the loaded artifact release are silently dropped
+    so that a lagging release does not break the whole similar-items response."""
     response = private_client.post(
         "/internal/v1/similarity",
         headers=_auth(),
         json={
             "reference_artifact_item_id": item_id("โขน"),
-            "candidate_artifact_item_ids": [999_999_999],
+            "candidate_artifact_item_ids": [999_999_999, item_id("หุ่นกระบอก")],
+            "limit": 2,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [row["artifact_item_id"] for row in body["ranked_candidates"]] == [
+        item_id("หุ่นกระบอก")
+    ]
+
+
+def test_similarity_rejects_unknown_reference_identifier(private_client):
+    response = private_client.post(
+        "/internal/v1/similarity",
+        headers=_auth(),
+        json={
+            "reference_artifact_item_id": 999_999_999,
+            "candidate_artifact_item_ids": [item_id("หุ่นกระบอก")],
             "limit": 1,
         },
     )

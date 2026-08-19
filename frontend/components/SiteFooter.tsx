@@ -31,7 +31,7 @@ export function SiteFooter() {
           <ul>
             <li><Link href="/">หน้าแรก</Link></li>
             <li><Link href="/items">ค้นหาชุดการแสดง</Link></li>
-            <li><Link href="/recommend">ค้นหาตามการแสดง</Link></li>
+            <li><Link href="/recommend">รับคำแนะนำเฉพาะบุคคล</Link></li>
             <li><Link href="/profile">ข้อมูลผู้ใช้</Link></li>
             <li><Link href="/login">เข้าสู่ระบบ</Link></li>
           </ul>

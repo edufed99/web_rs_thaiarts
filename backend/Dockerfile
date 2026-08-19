@@ -20,8 +20,6 @@ RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/wh
     && pip install --no-cache-dir -r /app/requirements.txt
 
 COPY backend/app /app/app
-COPY backend/migrations /app/migrations
-COPY backend/alembic.ini /app/alembic.ini
 COPY backend/docker-entrypoint.sh /app/docker-entrypoint.sh
 COPY artifacts /app/artifacts
 COPY docs/research_baseline.json /app/docs/research_baseline.json
@@ -31,4 +29,4 @@ RUN mkdir -p /app/data/uploads /app/data/secrets \
 
 EXPOSE 8001
 
-ENTRYPOINT ["/app/docker-entrypoint.sh"]
+CMD ["uvicorn", "app.private_main:app", "--host", "0.0.0.0", "--port", "8001"]

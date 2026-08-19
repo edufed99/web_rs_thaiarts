@@ -175,8 +175,10 @@ export async function rankInferenceCandidates(options: {
       continue; // transient service failure — retry once
     }
     if (!response.ok) {
+      const errorText = await response.text().catch(() => "");
+      console.error("[model-service] inference HTTP", response.status, errorText.slice(0, 500));
       throw new ModelServiceUnavailableError(
-        `Private Model Service returned HTTP ${response.status}.`,
+        `Private Model Service returned HTTP ${response.status}: ${errorText.slice(0, 200)}.`,
       );
     }
     let body: Partial<InferenceResponse>;

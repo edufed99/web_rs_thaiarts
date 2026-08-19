@@ -78,12 +78,18 @@ backend/.pytest_cache/
 
 # User-uploaded media lives outside ``artifacts/`` so the offline
 # recommender pipeline re-runs don't wipe it. Never commit it.
+data/
 backend/data/
+frontend/data/
+backups/
 
 # Ephemeral debug dumps left in the repo root during smoke tests.
 cascade_dump.txt
 facets.json
 test.png
+similar-items-after-fix.png
+context_candidates.json
+cookies.txt
 tmp/
 output/
 public key/
@@ -92,6 +98,7 @@ public key/
 *_preview.png
 
 # Playwright artifacts
+.playwright-mcp/
 frontend/test-results/
 frontend/playwright-report/
 .claude/worktrees/

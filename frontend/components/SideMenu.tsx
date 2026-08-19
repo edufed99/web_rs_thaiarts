@@ -11,7 +11,6 @@ const ADMIN_NAV = [
   { href: "/admin/analytics", icon: "AI", label: "วิเคราะห์ข้อมูล" },
   { href: "/admin/items", icon: "DB", label: "บริหารฐานข้อมูล" },
   { href: "/admin/email-settings", icon: "✉", label: "ตั้งค่าอีเมล OAuth" },
-  { href: "/admin/docs", icon: "API", label: "Swagger docs" },
 ] as const;
 
 /** Navigation reserved for administrators and research operations only. */

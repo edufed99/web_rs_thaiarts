@@ -17,22 +17,31 @@ def rank_similar_items(
     loader: ArtifactLoader,
     request: SimilarityRequest,
 ) -> SimilarityResponse:
-    """Rank only supplied candidates using the established artifact scorer."""
-    referenced_ids = {
-        request.reference_artifact_item_id,
-        *request.candidate_artifact_item_ids,
-    }
-    unknown_ids = sorted(referenced_ids - set(loader.item_ids))
-    if unknown_ids:
+    """Rank only supplied candidates using the established artifact scorer.
+
+    The artifact release is a point-in-time snapshot. Items added to the live
+    catalogue after the release was built are ignored rather than causing the
+    whole request to fail, so item-to-item similarity degrades gracefully when
+    artifacts lag behind the catalogue.
+    """
+    if request.reference_artifact_item_id not in set(loader.item_ids):
         raise InvalidInferenceRequestError(
-            "Similarity input references artifact item identifiers absent from the loaded release.",
-            extra={"unknown_artifact_item_ids": unknown_ids},
+            "Similarity reference item is absent from the loaded artifact release.",
+            extra={"reference_artifact_item_id": request.reference_artifact_item_id},
         )
     if request.reference_artifact_item_id in request.candidate_artifact_item_ids:
         raise InvalidInferenceRequestError(
             "The similarity reference must not also be a candidate.",
             extra={"reference_artifact_item_id": request.reference_artifact_item_id},
         )
+
+    known_candidates = [
+        candidate_id
+        for candidate_id in request.candidate_artifact_item_ids
+        if candidate_id in set(loader.item_ids)
+    ]
+    if not known_candidates:
+        return SimilarityResponse(ranked_candidates=[])
 
     reference = dict(loader.item_row(request.reference_artifact_item_id))
     scored = [
@@ -45,7 +54,7 @@ def rank_similar_items(
             str(loader.item_row(candidate_id).get("name") or ""),
             candidate_id,
         )
-        for candidate_id in request.candidate_artifact_item_ids
+        for candidate_id in known_candidates
     ]
     scored.sort(key=lambda row: (-row[0], row[1], row[2]))
     return SimilarityResponse(

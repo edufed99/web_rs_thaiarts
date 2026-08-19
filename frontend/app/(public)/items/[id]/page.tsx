@@ -279,7 +279,7 @@ function ItemDetailContent() {
             {similar.length > 0 ? (
               <section className="member-section">
                 <div className="member-section-head">
-                  <h2><span className="glyph" aria-hidden="true">↪</span> เพราะคุณสนใจแบบนี้</h2>
+                  <h2><span className="glyph" aria-hidden="true">↪</span> ชุดการแสดงที่คล้ายกัน</h2>
                   <Link href="/recommend" className="head-action">ปรับแต่งคำแนะนำ ✚</Link>
                 </div>
                 <div className="similar-strip">

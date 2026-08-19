@@ -178,7 +178,9 @@ function PopularRankRow({
         />
       </div>
       <div className="popular-rank-info">
-        <strong>{item.name}</strong>
+        <strong className="popular-rank-name">
+          <Link href={`/items/${item.id}`}>{item.name}</Link>
+        </strong>
         <span>{compactItemMeta(item)}</span>
         <RatingLine stats={stats} />
         <small>{engagementSummary(engagement)}</small>

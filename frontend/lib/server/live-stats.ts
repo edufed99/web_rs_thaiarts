@@ -47,14 +47,29 @@ interface LegacyAggregate {
 
 /**
  * ``{count, avg_rating}`` per DB item id across all legacy interactions.
- * Returns an empty map when the legacy table does not exist.
+ * Falls back to the live ``ratings`` table when the legacy table does not
+ * exist (TypeORM schema authority no longer creates ``legacy_interactions``,
+ * but users still submit ratings via ``/actions/rating``).
  */
 async function liveLegacyStats(): Promise<Map<number, LegacyAggregate>> {
-  if (!(await tableExists("legacy_interactions"))) return new Map();
   const dataSource = await getDataSource();
+  if (await tableExists("legacy_interactions")) {
+    const rows = await dataSource.query<Array<{ item_id: string; c: string; avg: string | null }>>(
+      `SELECT item_id, COUNT(*) AS c, AVG(rating) AS avg
+       FROM legacy_interactions
+       GROUP BY item_id`,
+    );
+    return new Map(
+      rows.map((row) => [
+        Number(row.item_id),
+        { count: Number(row.c), avgRating: Number(row.avg ?? 0) },
+      ]),
+    );
+  }
+  // Fallback: live ratings are the modern source of review data.
   const rows = await dataSource.query<Array<{ item_id: string; c: string; avg: string | null }>>(
     `SELECT item_id, COUNT(*) AS c, AVG(rating) AS avg
-     FROM legacy_interactions
+     FROM ratings
      GROUP BY item_id`,
   );
   return new Map(
@@ -75,9 +90,15 @@ function legacyPayload(artifactItemId: number, stats: LegacyAggregate | undefine
   };
 }
 
-/** ``GET /items/{id}/legacy-stats`` — single artifact id. */
+/**
+ * ``GET /items/{id}/legacy-stats`` — single artifact id.
+ * Source is ``postgres`` when either the legacy table or the live ``ratings``
+ * table can supply data; only ``disabled`` when neither exists.
+ */
 export async function legacyStatsForItem(artifactItemId: number): Promise<LegacyStatsOut> {
-  const source: LegacyStatsOut["source"] = (await tableExists("legacy_interactions")) ? "postgres" : "disabled";
+  const hasLegacy = await tableExists("legacy_interactions");
+  const hasRatings = await tableExists("ratings");
+  const source: LegacyStatsOut["source"] = hasLegacy || hasRatings ? "postgres" : "disabled";
   const dbId = (await artifactToDbIds([artifactItemId])).get(artifactItemId);
   const aggregate = dbId === undefined ? undefined : (await liveLegacyStats()).get(dbId);
   return legacyPayload(artifactItemId, aggregate, source);
@@ -95,10 +116,11 @@ export async function legacyStatsBatch(rawIds: number[]): Promise<{ stats: Legac
     }
   }
   const capped = uniqueIds.slice(0, 200);
-  const hasTable = await tableExists("legacy_interactions");
-  const source: LegacyStatsOut["source"] = hasTable ? "postgres" : "disabled";
+  const hasLegacy = await tableExists("legacy_interactions");
+  const hasRatings = await tableExists("ratings");
+  const source: LegacyStatsOut["source"] = hasLegacy || hasRatings ? "postgres" : "disabled";
   const dbIds = await artifactToDbIds(capped);
-  const aggregate = hasTable ? await liveLegacyStats() : new Map<number, LegacyAggregate>();
+  const aggregate = hasLegacy || hasRatings ? await liveLegacyStats() : new Map<number, LegacyAggregate>();
   return {
     source,
     stats: capped.map((artifactItemId) => {

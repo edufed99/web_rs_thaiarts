@@ -105,6 +105,23 @@ npm run dev          # http://localhost:3000
 The browser talks only to the same origin (`/api/*`); there is no
 `NEXT_PUBLIC_API_BASE_URL` pointing at FastAPI.
 
+### Local development on Windows (WSL2)
+
+The local stack runs Docker natively inside WSL2 Ubuntu (`docker compose up -d`
+from `run.ps1` / `run.sh`). Two WSL2 quirks on this machine are handled by
+`~/.wslconfig` and `scripts/wsl-port-bridge.js`:
+
+- **WSL2 idle-poweroff loop** (microsoft/WSL#40363): the VM powers off every
+  ~15-60s under the native Docker workload, restarting `docker.service` and the
+  app containers. `~/.wslconfig` sets `[wsl2] vmIdleTimeout=-1`,
+  `[general] instanceIdleTimeout=-1`, and `autoMemoryReclaim=disabled`, and
+  `run.ps1`/`run.sh` start a `sleep infinity` keepalive process. Without these,
+  the app goes offline every minute.
+- **Flaky localhost forwarding**: WSL's built-in `wslrelay` intermittently
+  refuses connections on `127.0.0.1:3000`. `~/.wslconfig` disables
+  `localhostForwarding`, and `scripts/wsl-port-bridge.js` (started by
+  `run.ps1`) routes Windows `localhost:3000` → WSL IP `:3000` deterministically.
+
 ### Run tests
 
 ```bash

@@ -35,7 +35,7 @@ services:
     restart: unless-stopped
     environment:
       RECSYS_ARTIFACT_DIR: /app/artifacts
-      RECSYS_INTERNAL_SERVICE_SECRET: ${MODEL_SERVICE_SHARED_SECRET:-}
+      RECSYS_INTERNAL_SERVICE_SECRET: ${MODEL_SERVICE_SHARED_SECRET:-dev-secret-12345}
     expose:
       - "8001"
     healthcheck:
@@ -56,34 +56,21 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+    env_file:
+      - ./frontend/.env.local
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-web_rs_thaiarts}
       MEDIA_STORE_ROOT: /app/data/uploads
       PRIVATE_MODEL_SERVICE_URL: http://backend:8001
-      MODEL_SERVICE_SHARED_SECRET: ${MODEL_SERVICE_SHARED_SECRET:-}
+      MODEL_SERVICE_SHARED_SECRET: ${MODEL_SERVICE_SHARED_SECRET:-dev-secret-12345}
       SESSION_COOKIE_SECURE: "0"
-      # Member Google Login + admin Gmail sender + password reset (issue #6).
-      GOOGLE_LOGIN_CLIENT_FILE: ${GOOGLE_LOGIN_CLIENT_FILE:-}
-      GOOGLE_LOGIN_CLIENT_ID: ${GOOGLE_LOGIN_CLIENT_ID:-}
-      GOOGLE_LOGIN_CLIENT_SECRET: ${GOOGLE_LOGIN_CLIENT_SECRET:-}
-      GOOGLE_LOGIN_REDIRECT_URI: ${GOOGLE_LOGIN_REDIRECT_URI:-}
-      GOOGLE_LOGIN_STATE_TTL_SECONDS: ${GOOGLE_LOGIN_STATE_TTL_SECONDS:-600}
-      GMAIL_OAUTH_CLIENT_FILE: ${GMAIL_OAUTH_CLIENT_FILE:-}
-      GMAIL_OAUTH_CLIENT_ID: ${GMAIL_OAUTH_CLIENT_ID:-}
-      GMAIL_OAUTH_CLIENT_SECRET: ${GMAIL_OAUTH_CLIENT_SECRET:-}
-      GMAIL_OAUTH_REFRESH_TOKEN: ${GMAIL_OAUTH_REFRESH_TOKEN:-}
-      GMAIL_OAUTH_REDIRECT_URI: ${GMAIL_OAUTH_REDIRECT_URI:-}
-      GMAIL_OAUTH_TOKEN_FILE: ${GMAIL_OAUTH_TOKEN_FILE:-}
-      GMAIL_SENDER_EMAIL: ${GMAIL_SENDER_EMAIL:-}
+      # SMTP fallback is optional; uncomment in frontend/.env.local to enable.
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-}
       SMTP_USERNAME: ${SMTP_USERNAME:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
       SMTP_USE_TLS: ${SMTP_USE_TLS:-}
-      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-}
-      PASSWORD_RESET_TOKEN_MINUTES: ${PASSWORD_RESET_TOKEN_MINUTES:-30}
-      OAUTH_STATE_SECRET: ${OAUTH_STATE_SECRET:-}
     volumes:
       - uploads_data:/app/data/uploads
     ports:

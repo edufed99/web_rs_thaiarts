@@ -130,6 +130,7 @@ export function ItemActionBar({
   const likeColor = liked ? COLOR_LIKE : COLOR_MUTED;
   const saveColor = saved ? COLOR_PRIMARY : COLOR_MUTED;
   const disabled = pending !== null || !userKey;
+  const needsAuth = !userKey;
 
   return (
     <div
@@ -141,6 +142,23 @@ export function ItemActionBar({
         marginTop: "0.5rem",
       }}
     >
+      {needsAuth ? (
+        <div
+          className="item-action-auth-hint"
+          style={{
+            color: "#5a4632",
+            backgroundColor: "#fff8e6",
+            border: "1px solid #f0d878",
+            borderRadius: "6px",
+            padding: "0.5rem 0.75rem",
+            fontSize: "0.85rem",
+          }}
+        >
+          กรุณา<a href="/login" style={{ color: "#1e6fd9", textDecoration: "underline" }}>เข้าสู่ระบบ</a>
+          หรือ<a href="/signup" style={{ color: "#1e6fd9", textDecoration: "underline" }}>สมัครสมาชิก</a>
+          เพื่อกดถูกใจ บันทึก หรือให้คะแนน
+        </div>
+      ) : null}
       <div className="item-action-buttons">
         <button
           type="button"

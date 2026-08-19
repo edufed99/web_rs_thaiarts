@@ -13,7 +13,7 @@ export function csrfFailure(request: NextRequest): Response | undefined {
 
 export async function requireUser(request: NextRequest): Promise<ApplicationUser | Response> {
   const user = await authenticatedUser(request);
-  return user ?? apiError(401, "unauthorized", "Authentication required.");
+  return user ?? apiError(401, "unauthorized", "กรุณาเข้าสู่ระบบก่อนเพื่อใช้งานฟีเจอร์นี้");
 }
 
 export async function requireAdmin(request: NextRequest): Promise<ApplicationUser | Response> {

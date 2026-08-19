@@ -2,6 +2,8 @@
 
 import React, { useEffect, useState } from "react";
 
+import { useRouter } from "next/navigation";
+
 import {
   ApiClientError,
   deleteLike,
@@ -10,6 +12,7 @@ import {
   postSave,
   putRating,
 } from "@/lib/api";
+import { getCurrentUser } from "@/lib/auth";
 import { notifyMemberActivityChanged } from "@/lib/memberEvents";
 import type { ItemActionOut, UserState } from "@/lib/types";
 
@@ -41,6 +44,7 @@ export function ItemActionBar({
   contextId,
   requestId,
 }: ItemActionBarProps) {
+  const router = useRouter();
   const [liked, setLiked] = useState<boolean>(userState.liked);
   const [saved, setSaved] = useState<boolean>(userState.saved);
   const [rating, setRating] = useState<number>(userState.rating || 0);
@@ -61,6 +65,17 @@ export function ItemActionBar({
     setRating(s.rating || 0);
     onChange(s);
     notifyMemberActivityChanged();
+  }
+
+  function handleAuthError(e: unknown) {
+    if (e instanceof ApiClientError && e.status === 401) {
+      // Session was lost (expired / revoked / cookie issue). Send the user back
+      // to login instead of leaving the action stuck in a broken state.
+      setError("เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่");
+      router.push(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+      return;
+    }
+    setError(e instanceof ApiClientError ? e.message : String(e));
   }
 
   function baseBody() {
@@ -85,7 +100,7 @@ export function ItemActionBar({
       applyChange(out);
     } catch (e) {
       setLiked(prev); // revert
-      setError(e instanceof ApiClientError ? e.message : String(e));
+      handleAuthError(e);
     } finally {
       setPending(null);
     }
@@ -104,7 +119,7 @@ export function ItemActionBar({
       applyChange(out);
     } catch (e) {
       setSaved(prev);
-      setError(e instanceof ApiClientError ? e.message : String(e));
+      handleAuthError(e);
     } finally {
       setPending(null);
     }
@@ -121,7 +136,7 @@ export function ItemActionBar({
       applyChange(out);
     } catch (e) {
       setRating(prev);
-      setError(e instanceof ApiClientError ? e.message : String(e));
+      handleAuthError(e);
     } finally {
       setPending(null);
     }

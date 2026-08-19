@@ -19,6 +19,7 @@ import {
 } from "@/lib/api";
 import { buildOccasionSummaries, occasionImageFor } from "@/lib/occasionCatalog";
 import { getUserKey } from "@/lib/user";
+import { rankPopularItems, rankTopRatedItems } from "@/lib/popularityRanking";
 import type { ContextOut, EngagementOut, ItemOut, LegacyStatsOut, UserOut } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
@@ -84,6 +85,7 @@ interface LiveData {
   metrics: { item_count: number; context_count: number } | null;
   legacy: Map<number, LegacyStatsOut>;
   engagement: Map<number, EngagementOut>;
+  engagementMonth: Map<number, EngagementOut>;
   error: string | null;
 }
 
@@ -93,6 +95,7 @@ const EMPTY_LIVE: LiveData = {
   metrics: null,
   legacy: new Map(),
   engagement: new Map(),
+  engagementMonth: new Map(),
   error: null,
 };
 
@@ -175,28 +178,35 @@ export default function HomePage() {
           ? { item_count: metricsRes.value.item_count, context_count: metricsRes.value.context_count }
           : null;
 
-      // Stage 2 — fetch both engagement (primary ranking signal for
-      // popular) AND legacy stats (still shown on the card as the rating
-      // summary). Both are batch endpoints; we kick them off in parallel.
+      // Stage 2 — fetch all-time engagement (popular ranking), monthly
+      // engagement (top-rated ranking, so it matches /top-rated), and legacy
+      // stats (rating summary shown on cards). All three are batch endpoints
+      // and are kicked off in parallel.
       const ids = items.map((item) => item.id);
       const engagementP = getItemEngagementBatch(ids).catch((e: unknown) => {
         if (cancelled) return { engagements: [], source: "disabled" as const };
         return { engagements: [], source: "disabled" as const };
       });
+      const engagementMonthP = getItemEngagementBatch(ids, { range: "30d" }).catch((e: unknown) => {
+        if (cancelled) return { engagements: [], source: "disabled" as const };
+        return { engagements: [], source: "disabled" as const };
+      });
       const legacyP = getItemLegacyStatsBatch(ids).catch((e: unknown) => new Map());
 
-      Promise.all([engagementP, legacyP]).then(([engRes, legacyMap]) => {
+      Promise.all([engagementP, engagementMonthP, legacyP]).then(([engRes, engMonthRes, legacyMap]) => {
         if (cancelled) return;
-        const engagementMap = new Map<number, EngagementOut>();
-        for (const row of engRes.engagements) {
-          engagementMap.set(row.item_id, row);
-        }
+        const toMap = (rows: EngagementOut[]) => {
+          const m = new Map<number, EngagementOut>();
+          for (const row of rows) m.set(row.item_id, row);
+          return m;
+        };
         setLive({
           items,
           contexts,
           metrics,
           legacy: legacyMap,
-          engagement: engagementMap,
+          engagement: toMap(engRes.engagements),
+          engagementMonth: toMap(engMonthRes.engagements),
           error: err,
         });
         setLiveReady(true);
@@ -212,16 +222,19 @@ export default function HomePage() {
 
   // Popular cards: top 4 by live engagement_score desc.
   //
-  // "Engagement" = likes + saves + positive (rating ≥ 4) ratings — every
-  // action a real user can take in the system, weighted equally. This is
-  // the metric the product team asked for: items users actually
-  // engaged with, not legacy ratings or the catalog match-percent
-  // suitability heuristic. We tie-break by positive-rating count desc
-  // (visible "this got 5-star love"), then match_percent desc (catalog
-  // completeness heuristic), then id desc (stable order).
+  // "Engagement" = likes + saves + positive (rating ≥ 4) ratings. Only
+  // items with engagement > 0 qualify; tie-breakers are avg_rating desc,
+  // total review count desc, match_percent desc, then id desc.
   const popularTop4 = useMemo(() => {
-    return rankPopularItems(live.items, live.engagement, 4, { includeZeroScore: true });
-  }, [live.items, live.engagement]);
+    return rankPopularItems(live.items, live.engagement, live.legacy, 4);
+  }, [live.items, live.engagement, live.legacy]);
+
+  // Top Rated cards: top 4 by avg_rating desc among items that received a
+  // rating in the last 30 days, so the homepage preview matches the first 4
+  // rows of the monthly section on /top-rated.
+  const topRatedTop4 = useMemo(() => {
+    return rankTopRatedItems(live.items, live.legacy, 4, live.engagementMonth);
+  }, [live.items, live.legacy, live.engagementMonth]);
 
   // Category tiles: top 6 distinct `category_group` values by item count.
   // Item.category_group is the live field; the static homepage currently
@@ -316,6 +329,21 @@ export default function HomePage() {
                   className="popular-slot-thumb"
                 />
               </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="home-section">
+        <SectionHead title="ชุดการแสดงที่ได้รับคะแนนสูง" href="/top-rated" />
+        {!liveReady ? (
+          <SkeletonGrid count={4} />
+        ) : topRatedTop4.length === 0 ? (
+          <EmptyState text={live.error ? "ไม่สามารถโหลดข้อมูลจากเซิร์ฟเวอร์" : "ยังไม่มีชุดการแสดงที่ได้รับคะแนน"} />
+        ) : (
+          <div className="home-card-grid" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
+            {topRatedTop4.map((item) => (
+              <PopularPerformanceCard key={item.id} item={item} variant="top-rated" />
             ))}
           </div>
         )}
@@ -449,28 +477,6 @@ function formatCount(n: number): string {
 
 function categoryImageFor(name: string, idx: number): string {
   return CATEGORY_IMAGE_BY_NAME[name] ?? CATEGORY_IMAGES[idx % CATEGORY_IMAGES.length];
-}
-
-function rankPopularItems(
-  items: ItemOut[],
-  engagement: Map<number, EngagementOut>,
-  limit: number,
-  opts?: { includeZeroScore?: boolean },
-): ItemOut[] {
-  const scoreFor = (id: number): number => engagement.get(id)?.engagement_score ?? 0;
-  const ratingFor = (id: number): number => engagement.get(id)?.rating_count ?? 0;
-  return [...items]
-    .filter((item) => (opts?.includeZeroScore ? true : scoreFor(item.id) > 0))
-    .sort((a, b) => {
-      const ds = scoreFor(b.id) - scoreFor(a.id);
-      if (ds !== 0) return ds;
-      const dr = ratingFor(b.id) - ratingFor(a.id);
-      if (dr !== 0) return dr;
-      const dm = (b.match_percent ?? 0) - (a.match_percent ?? 0);
-      if (dm !== 0) return dm;
-      return b.id - a.id;
-    })
-    .slice(0, limit);
 }
 
 // Same icon mapping the original page used — keeps the visual rhythm of

@@ -9,8 +9,8 @@ import type { ItemOut, LegacyStatsOut } from "@/lib/types";
 
 interface Props {
   item: ItemOut;
-  /** Visual variant: "popular" shows popularity badge, "seasonal" shows context badge. */
-  variant: "popular" | "seasonal";
+  /** Visual variant: "popular" shows popularity badge, "top-rated" shows rating badge, "seasonal" shows context badge. */
+  variant: "popular" | "top-rated" | "seasonal";
   /** Top contexts of the item (used by the seasonal variant). */
   topContexts?: string[];
 }
@@ -51,7 +51,9 @@ export default function PopularPerformanceCard({
 
   const badge = variant === "seasonal"
     ? (topContexts[0] ?? "ช่วงเวลาแนะนำ")
-    : "ยอดนิยมในระบบ";
+    : variant === "top-rated"
+      ? "คะแนนสูง"
+      : "ยอดนิยมในระบบ";
   const priceText =
     item.price_text && /บาท/.test(item.price_text)
       ? item.price_text

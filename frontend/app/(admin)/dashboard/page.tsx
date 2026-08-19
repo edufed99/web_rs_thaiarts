@@ -25,6 +25,7 @@ import {
   downloadDashboardReport,
   getDashboard,
   getItemEngagementBatch,
+  getItemLegacyStatsBatch,
   getItems,
 } from "@/lib/api";
 import { getCurrentUser, isAdmin } from "@/lib/auth";
@@ -36,6 +37,7 @@ import type {
   EngagementOut,
   ItemOut,
   KeywordRow,
+  LegacyStatsOut,
   ModelQualityOut,
   PageQualityMetric,
   RatingDistributionBucket,
@@ -634,6 +636,7 @@ function SubContextsBar({ items, total }: { items: SubContextItem[]; total: numb
 function PopularPerformancesTable({ range }: { range: Range }) {
   const [items, setItems] = useState<ItemOut[]>([]);
   const [engagement, setEngagement] = useState<Map<number, EngagementOut>>(new Map());
+  const [legacy, setLegacy] = useState<Map<number, LegacyStatsOut>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -645,13 +648,15 @@ function PopularPerformancesTable({ range }: { range: Range }) {
     getItems({ limit: 200 })
       .then(async (itemsResponse) => {
         const catalog = itemsResponse.items;
-        const engagementResponse = await getItemEngagementBatch(
-          catalog.map((item) => item.id),
-          { range },
-        );
+        const ids = catalog.map((item) => item.id);
+        const [engagementResponse, legacyResponse] = await Promise.all([
+          getItemEngagementBatch(ids, { range }),
+          getItemLegacyStatsBatch(ids),
+        ]);
         if (cancelled) return;
         setItems(catalog);
         setEngagement(toEngagementMap(engagementResponse.engagements));
+        setLegacy(legacyResponse);
       })
       .catch((reason: unknown) => {
         if (!cancelled) {
@@ -667,7 +672,7 @@ function PopularPerformancesTable({ range }: { range: Range }) {
     };
   }, [range]);
 
-  const top = rankPopularItems(items, engagement, 10);
+  const top = rankPopularItems(items, engagement, legacy, 10);
 
   return (
     <div className="panel-body">

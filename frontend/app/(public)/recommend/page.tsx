@@ -18,7 +18,6 @@ import {
 } from "@/components/PerformanceCardMedia";
 import { ApiClientError, getProfileRecommendations } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
-import { MEMBER_ACTIVITY_CHANGED_EVENT } from "@/lib/memberEvents";
 import type {
   ProfileRecommendationResponseOut,
   RecommendationResultOut,
@@ -42,7 +41,6 @@ export default function RecommendPage() {
   const [keywordIds, setKeywordIds] = useState<number[]>([]);
   const [topK, setTopK] = useState(10);
   const [submitting, setSubmitting] = useState(false);
-  const [activityVersion, setActivityVersion] = useState(0);
   const authHeaders = useAuthHeaders();
 
   useEffect(() => {
@@ -54,12 +52,6 @@ export default function RecommendPage() {
     syncViewFromHash();
     window.addEventListener("hashchange", syncViewFromHash);
     return () => window.removeEventListener("hashchange", syncViewFromHash);
-  }, []);
-
-  useEffect(() => {
-    const refresh = () => setActivityVersion((value) => value + 1);
-    window.addEventListener(MEMBER_ACTIVITY_CHANGED_EVENT, refresh);
-    return () => window.removeEventListener(MEMBER_ACTIVITY_CHANGED_EVENT, refresh);
   }, []);
 
   useEffect(() => {
@@ -91,7 +83,7 @@ export default function RecommendPage() {
     return () => {
       cancelled = true;
     };
-  }, [ready, activeView, authHeaders, activityVersion]);
+  }, [ready, activeView, authHeaders]);
 
   function handleProfileStateChange(itemId: number, next: UserState) {
     setProfileData((prev) => {

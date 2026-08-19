@@ -11,9 +11,9 @@ import {
 } from "@/lib/api";
 import type { EngagementOut, ItemOut, LegacyStatsOut } from "@/lib/types";
 import { getUserKey } from "@/lib/user";
-import { rankPopularItems, toEngagementMap } from "@/lib/popularityRanking";
+import { rankTopRatedItems, toEngagementMap } from "@/lib/popularityRanking";
 
-interface PopularData {
+interface TopRatedData {
   items: ItemOut[];
   legacy: Map<number, LegacyStatsOut>;
   week: Map<number, EngagementOut>;
@@ -21,7 +21,7 @@ interface PopularData {
   error: string | null;
 }
 
-const EMPTY: PopularData = {
+const EMPTY: TopRatedData = {
   items: [],
   legacy: new Map(),
   week: new Map(),
@@ -29,8 +29,8 @@ const EMPTY: PopularData = {
   error: null,
 };
 
-export default function PopularPage() {
-  const [data, setData] = useState<PopularData>(EMPTY);
+export default function TopRatedPage() {
+  const [data, setData] = useState<TopRatedData>(EMPTY);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -62,7 +62,7 @@ export default function PopularPage() {
         if (cancelled) return;
         setData({
           ...EMPTY,
-          error: e instanceof Error ? e.message : "ไม่สามารถโหลดข้อมูลยอดนิยม",
+          error: e instanceof Error ? e.message : "ไม่สามารถโหลดข้อมูลคะแนนสูง",
         });
         setReady(true);
       });
@@ -73,40 +73,40 @@ export default function PopularPage() {
   }, []);
 
   const weeklyTop10 = useMemo(
-    () => rankPopularItems(data.items, data.week, data.legacy, 10),
-    [data.items, data.week, data.legacy],
+    () => rankTopRatedItems(data.items, data.legacy, 10, data.week),
+    [data.items, data.legacy, data.week],
   );
   const monthlyTop10 = useMemo(
-    () => rankPopularItems(data.items, data.month, data.legacy, 10),
-    [data.items, data.month, data.legacy],
+    () => rankTopRatedItems(data.items, data.legacy, 10, data.month),
+    [data.items, data.legacy, data.month],
   );
 
   return (
     <main className="popular-page">
       <header className="popular-page-head">
         <div>
-          <p>อันดับยอดนิยม</p>
-          <h1>ชุดการแสดงยอดนิยม</h1>
+          <p>อันดับคะแนนสูง</p>
+          <h1>ชุดการแสดงที่ได้รับคะแนนสูง</h1>
         </div>
         <Link href="/" className="popular-page-back">กลับหน้าแรก</Link>
       </header>
 
       {!ready ? (
-        <div className="popular-page-loading">กำลังโหลดอันดับยอดนิยม...</div>
+        <div className="popular-page-loading">กำลังโหลดอันดับคะแนนสูง...</div>
       ) : data.error ? (
         <div className="home-empty"><p>{data.error}</p></div>
       ) : (
         <div className="popular-page-grid">
-          <PopularTopTen
-            title="ชุดการแสดงยอดนิยมประจำสัปดาห์"
-            subtitle="จัดอันดับจากการตอบรับของผู้ใช้ใน 7 วันที่ผ่านมา"
+          <TopRatedTopTen
+            title="ชุดการแสดงที่ได้รับคะแนนสูง 10 อันดับแรกประจำสัปดาห์"
+            subtitle="จัดอันดับจากคะแนนเฉลี่ยของชุดการแสดงที่ได้รับรีวิวใน 7 วันที่ผ่านมา"
             items={weeklyTop10}
             engagement={data.week}
             legacy={data.legacy}
           />
-          <PopularTopTen
-            title="ชุดการแสดงยอดนิยมประจำเดือน"
-            subtitle="จัดอันดับจากการตอบรับของผู้ใช้ใน 30 วันที่ผ่านมา"
+          <TopRatedTopTen
+            title="ชุดการแสดงที่ได้รับคะแนนสูง 10 อันดับแรกประจำเดือน"
+            subtitle="จัดอันดับจากคะแนนเฉลี่ยของชุดการแสดงที่ได้รับรีวิวใน 30 วันที่ผ่านมา"
             items={monthlyTop10}
             engagement={data.month}
             legacy={data.legacy}
@@ -117,7 +117,7 @@ export default function PopularPage() {
   );
 }
 
-function PopularTopTen({
+function TopRatedTopTen({
   title,
   subtitle,
   items,
@@ -137,11 +137,11 @@ function PopularTopTen({
         <p>{subtitle}</p>
       </header>
       {items.length === 0 ? (
-        <div className="popular-topten-empty">ยังไม่มีข้อมูลความนิยมในช่วงนี้</div>
+        <div className="popular-topten-empty">ยังไม่มีข้อมูลรีวิวในช่วงนี้</div>
       ) : (
         <ol>
           {items.map((item, idx) => (
-            <PopularRankRow
+            <TopRatedRankRow
               key={item.id}
               rank={idx + 1}
               item={item}
@@ -155,7 +155,7 @@ function PopularTopTen({
   );
 }
 
-function PopularRankRow({
+function TopRatedRankRow({
   rank,
   item,
   engagement,

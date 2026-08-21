@@ -7,3 +7,13 @@ node_modules
 .git
 .coverage
 .pytest_cache
+
+# Never bake env files into the image. Next.js loads these at server startup,
+# so a baked dev frontend/.env silently leaks localhost defaults
+# (GOOGLE_LOGIN_REDIRECT_URI, FRONTEND_BASE_URL, OAUTH_STATE_SECRET, ...) into
+# production whenever the Docker env_file doesn't override them. Production env
+# must come from the compose env_file (see deployment/production.env.example);
+# omitting a var there now fails closed ("not configured") instead of falling
+# back to localhost. .env.example is excluded too — it is a template, not loaded.
+.env
+.env.*

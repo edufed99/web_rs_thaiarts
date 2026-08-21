@@ -56,7 +56,6 @@ export {
   postSignup,
   postLogin,
   googleLoginStartUrl,
-  postGoogleLoginExchange,
   getMe,
   patchMe,
   postPasswordResetRequest,

@@ -3,7 +3,6 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-import { ApiClientError, postGoogleLoginExchange } from "@/lib/api";
 import { setSessionUser } from "@/lib/auth";
 
 const GOOGLE_ERRORS: Record<string, string> = {
@@ -14,25 +13,6 @@ const GOOGLE_ERRORS: Record<string, string> = {
   google_login_failed: "Google ไม่สามารถยืนยันตัวตนได้ กรุณาลองใหม่",
   google_account_not_persisted: "ระบบไม่สามารถบันทึกบัญชีสมาชิกได้",
 };
-
-// React Strict Mode replays effects in development. Keep the exchange request
-// outside the component so a single-use login code is never posted twice.
-let latestExchange:
-  | {
-      code: string;
-      request: ReturnType<typeof postGoogleLoginExchange>;
-    }
-  | undefined;
-
-function exchangeGoogleLoginCode(code: string, state: string) {
-  if (latestExchange?.code !== code) {
-    latestExchange = {
-      code,
-      request: postGoogleLoginExchange({ code, state }),
-    };
-  }
-  return latestExchange.request;
-}
 
 function safeNextPath(value: string): string {
   return value.startsWith("/") && !value.startsWith("//") ? value : "/recommend";
@@ -49,32 +29,8 @@ function CallbackContent() {
       setMessage(GOOGLE_ERRORS[error] ?? "เข้าสู่ระบบด้วย Google ไม่สำเร็จ");
       return;
     }
-    const code = search.get("code") ?? "";
-    const state = search.get("state") ?? "";
     const nextPath = safeNextPath(search.get("next") ?? "/recommend");
     let active = true;
-
-    if (code) {
-      // Legacy direct-code path: the code was handed to this page, so exchange
-      // it through the JSON contract and store the returned member.
-      exchangeGoogleLoginCode(code, state)
-        .then((out) => {
-          if (!active) return;
-          setSessionUser(out.user);
-          router.replace(out.user.is_admin ? "/admin" : nextPath);
-        })
-        .catch((err) => {
-          if (!active) return;
-          setMessage(
-            err instanceof ApiClientError
-              ? err.message
-              : "เข้าสู่ระบบด้วย Google ไม่สำเร็จ กรุณาลองใหม่",
-          );
-        });
-      return () => {
-        active = false;
-      };
-    }
 
     // Server-side flow: the Next.js callback route already verified the
     // Google identity and set the HttpOnly session cookie; read the member

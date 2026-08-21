@@ -232,7 +232,6 @@ recommendations require the session (`401 unauthorized` otherwise).
 | GET/PATCH | /api/auth/me | Current member (session cookie) |
 | GET  | /api/auth/google/login/start | Member Google Login: bind PKCE state cookie, 303 to Google |
 | GET  | /api/auth/google/login/callback | Google Login redirect terminates here (Next.js): verify ID token, issue server session, 303 to /auth/google/callback |
-| POST | /api/auth/google/login/exchange | JSON Google Login exchange (`{code, state}`) → session cookie |
 | POST | /api/auth/password-reset/request | Email a one-time reset link (Gmail API or SMTP) |
 | POST | /api/auth/password-reset/confirm | Consume token once, change password, revoke all sessions |
 | GET  | /api/admin/gmail-oauth/status | Admin-only Gmail sender setup state |

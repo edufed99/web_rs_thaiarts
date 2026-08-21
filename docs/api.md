@@ -134,7 +134,7 @@ Password accounts. Responses carry the HttpOnly `thai_arts_session` cookie
 
 ### Google Login (member OpenID Connect)
 
-Three endpoints use the **separate** `google_login_client` OAuth client
+Two endpoints use the **separate** `google_login_client` OAuth client
 (identity scopes only, never persisted):
 
 1. `GET /api/auth/google/login/start?next=<path>` — 303 to Google with a
@@ -144,9 +144,6 @@ Three endpoints use the **separate** `google_login_client` OAuth client
    issuer + `email_verified`), resolves or creates the member, rotates a
    fresh server session, and 303s to `/auth/google/callback?next=<path>`
    (errors redirect with `?error=<code>`).
-3. `POST /api/auth/google/login/exchange` — JSON contract (`{ code, state }`)
-   for the callback page's legacy direct-code path; same verification, returns
-   `{ expires_in_seconds, user }` plus the session cookie.
 
 Callback page error codes: `google_access_denied`, `invalid_google_state`,
 `google_login_failed`, `ambiguous_google_email`, `google_account_not_persisted`.

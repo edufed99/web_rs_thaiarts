@@ -44,7 +44,8 @@ export function SiteFooter() {
             <li>คำถามที่พบบ่อย</li>
             <li><Link href="/about">ติดต่อผู้พัฒนาระบบ</Link></li>
             <li>รายงานปัญหาการใช้งาน</li>
-            <li>นโยบายความเป็นส่วนตัว</li>
+            <li><Link href="/privacy">นโยบายความเป็นส่วนตัว</Link></li>
+            <li><Link href="/terms">ข้อกำหนดการใช้งาน</Link></li>
           </ul>
         </div>
 

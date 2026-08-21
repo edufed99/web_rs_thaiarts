@@ -1,7 +1,6 @@
 // Browser authentication state contains display-only user data. The only
 // credential is the opaque HttpOnly session cookie, which JavaScript cannot read.
 import type {
-  GoogleLoginExchange,
   PasswordResetConfirm,
   PasswordResetConfirmOut,
   PasswordResetRequest,
@@ -99,12 +98,6 @@ export async function postLogin(body: UserLogin): Promise<TokenOut> {
 export function googleLoginStartUrl(nextPath = "/recommend"): string {
   const search = new URLSearchParams({ next: nextPath }).toString();
   return `${baseUrl()}/auth/google/login/start?${search}`;
-}
-
-export async function postGoogleLoginExchange(
-  body: GoogleLoginExchange,
-): Promise<TokenOut> {
-  return mutateJson("/auth/google/login/exchange", "POST", body);
 }
 
 // fallow-ignore-next-line unused-export -- Preserved public API client contract.

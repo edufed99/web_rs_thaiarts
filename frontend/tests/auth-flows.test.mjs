@@ -594,58 +594,6 @@ test("Google login callback rejects an unverified email claim", async () => {
   }
 });
 
-test("Google login exchange consumes the flow once and returns a session", async () => {
-  const started = await startGoogleLogin("/items");
-  const code = `code-${started.state}`;
-  const exchange = await fetch(`${baseUrl}/api/auth/google/login/exchange`, {
-    method: "POST",
-    headers: mutationHeaders(`thaiperform_google_login_state=${started.cookie}`),
-    body: JSON.stringify({ code, state: started.state }),
-  });
-  assert.equal(exchange.status, 200);
-  const body = await exchange.json();
-  assert.equal(body.user.username, "person");
-  assert.equal(body.expires_in_seconds, 604800);
-  assert.equal("access_token" in body, false);
-  assert.equal("token_type" in body, false);
-
-  const cookie = cookieValue(exchange.headers.get("set-cookie"));
-  assert.match(cookie, /^thai_arts_session=/);
-  const me = await fetch(`${baseUrl}/api/auth/me`, { headers: { Cookie: cookie } });
-  assert.equal(me.status, 200);
-  assert.equal((await me.json()).username, "person");
-
-  // Google authorization codes are single-use: replaying the same code fails.
-  const replay = await fetch(`${baseUrl}/api/auth/google/login/exchange`, {
-    method: "POST",
-    headers: mutationHeaders(`thaiperform_google_login_state=${started.cookie}`),
-    body: JSON.stringify({ code, state: started.state }),
-  });
-  assert.equal(replay.status, 401);
-  assert.equal((await replay.json()).error.code, "google_login_failed");
-});
-
-test("Google login exchange cannot forge a state cookie without the server secret", async () => {
-  const forged = encodeStateCookieWithSecret({
-    state: "forged-state",
-    verifier: "forged-verifier",
-    next: "/admin",
-    iat: Math.floor(Date.now() / 1000),
-  }, "attacker-secret");
-  const exchange = await fetch(`${baseUrl}/api/auth/google/login/exchange`, {
-    method: "POST",
-    headers: mutationHeaders(`thaiperform_google_login_state=${forged}`),
-    body: JSON.stringify({ code: "mock-google-code", state: "forged-state" }),
-  });
-  assert.equal(exchange.status, 401);
-});
-
-function encodeStateCookieWithSecret(payload, secret) {
-  const body = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
-  const signature = createHmac("sha256", secret).update(body, "utf8").digest("base64url");
-  return `${body}.${signature}`;
-}
-
 test("Google browser callback completes through Next.js without exposing credentials", async () => {
   const browser = await chromium.launch();
   try {

@@ -197,26 +197,6 @@ test("password signup issues only a secure opaque server session", async () => {
   assert.equal(setCookie.includes(sessions.rows[0].token_hash), false);
 });
 
-test("Google login exchange rejects a code without a browser-bound state", async () => {
-  // The OAuth state cookie is HttpOnly and scoped to the flow that started
-  // it, so a code replayed by another client cannot be exchanged.
-  const exchange = await fetch(`${baseUrl}/api/auth/google/login/exchange`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Origin: baseUrl,
-      "Sec-Fetch-Site": "same-origin",
-      "X-CSRF-Token": "same-origin",
-    },
-    body: JSON.stringify({ code: "single-use-google-code", state: "forged-state" }),
-  });
-  assert.equal(exchange.status, 401);
-  const body = await exchange.json();
-  assert.equal(body.error.code, "invalid_google_state");
-  assert.equal("access_token" in body, false);
-  assert.equal(exchange.headers.get("set-cookie"), null);
-});
-
 test("member profile and avatar changes persist and cannot change role", async () => {
   const login = await fetch(`${baseUrl}/api/auth/login`, {
     method: "POST",

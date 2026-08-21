@@ -51,7 +51,6 @@ test("IIS routes the entire public API surface to Next.js; nothing targets FastA
     "api/auth/me",
     "api/auth/google/login/start",
     "api/auth/google/login/callback",
-    "api/auth/google/login/exchange",
     "api/auth/password-reset/request",
     "api/auth/password-reset/confirm",
     "api/actions/like",

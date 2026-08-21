@@ -8,15 +8,18 @@ backed up, verified, smoke-tested, and rollback-able.
 ## Topology being released
 
 ```
-Browser ──HTTPS──> IIS (web.config) ──> http://127.0.0.1:3000  Next.js (public API + DB + media)
-                                          │  internal network + Bearer secret
-                                          ▼
-                                   backend:8001  Private Model Service (no host port)
-                                   postgres:5432 PostgreSQL (no host port)
+Browser ──HTTPS──> nginx + certbot (Docker, host 80/443) ──> frontend:3000  Next.js (public API + DB + media)
+   Let's Encrypt cert            │  internal network + Bearer secret
+                                 ▼
+                          backend:8001  Private Model Service (no host port)
+                          postgres:5432 PostgreSQL (no host port)
 ```
 
-- IIS publishes **only** Next.js (`deployment/web.config` rewrites every
-  path to port 3000; nothing targets 8001).
+- nginx publishes host `80`/`443`, terminates HTTPS with a Let's Encrypt
+  cert managed by certbot, and proxies every path to `frontend:3000` over
+  the internal Docker network (see [`../nginx/README.md`](../nginx/README.md)).
+  IIS `W3SVC` is stopped + disabled on the host; `ftpsvc` (FTP) is left
+  running. `../web.config` is kept as the IIS-rollback artifact.
 - PostgreSQL and the Private Model Service have **no host-published ports**
   (`deployment/docker-compose.prod.yml` — `expose` only for the model
   service, nothing for postgres). They are reachable only over the internal
@@ -33,9 +36,10 @@ Browser ──HTTPS──> IIS (web.config) ──> http://127.0.0.1:3000  Next.
 |---|---|
 | `backup-and-migrate.ps1` | Pre-release gate: pg_dump + uploads + `.env` backups, TypeORM `migration:run` + `seed` + `migration:verify` |
 | `smoke-test.ps1` | Post-deploy gate: model contract, public surface, model-backed recommendation, **fallback check**, network boundary |
-| `ROLLBACK.md` | Image / IIS / database / uploads rollback procedure |
-| `../web.config` | Version-controlled IIS routing (applied to the IIS site by ops) |
-| `../docker-compose.prod.yml` | Deployable topology (postgres + backend + frontend + migrate tool) |
+| `ROLLBACK.md` | Image / reverse-proxy / database / uploads rollback procedure |
+| `../web.config` | IIS-rollback routing artifact (applied to the IIS site only if rolling back from nginx) |
+| `../nginx/` | nginx + certbot reverse-proxy config (the live public proxy) |
+| `../docker-compose.prod.yml` | Deployable topology (postgres + backend + frontend + nginx + certbot + migrate tool) |
 
 ## Release phases
 
@@ -93,14 +97,30 @@ Checks, in order:
    model service and waits for it to be healthy again.
 7. Network boundary: no host listeners on 8001 or 5432.
 
-### Phase 4 — Flip IIS routing (the only public-facing change)
+### Phase 4 — Bring up the public reverse proxy (the only public-facing change)
 
-1. Apply the version-controlled `deployment/web.config` to the IIS site
-   (URL Rewrite rules: `api/*` and everything else → `http://127.0.0.1:3000`).
-2. Recycle the site / `iisreset`.
-3. Re-run the smoke test against the public URL
-   (`smoke-test.ps1 -FrontendPort 3000` still applies — IIS proxies to the
-   same loopback port) and spot-check the site in a browser.
+nginx + certbot are the public reverse proxy (replaced IIS W3SVC). For an
+app-only release where nginx is already running, this phase is a no-op —
+nginx already proxies to `frontend:3000`, and `docker compose up -d` only
+recreated the app containers.
+
+For the **first** nginx deployment, follow [`../nginx/README.md`](../nginx/README.md):
+
+1. Pre-stage the nginx config under `nginx\` (only the bootstrap config in
+   `conf.d\`; the steady-state `thaiarts.conf` staged outside `conf.d\`).
+2. `Stop-Service W3SVC`; `Set-Service W3SVC -StartupType Disabled`; verify
+   80/443 are free (delete lingering `http.sys` sslcert bindings on 443 if
+   needed).
+3. `docker compose up -d nginx` (bootstrap, HTTP only) and verify
+   `http://thaiperform.fed.bpi.ac.th/api/health`.
+4. Issue the Let's Encrypt cert (`docker compose run --rm --entrypoint
+   certbot certbot certonly --webroot …`).
+5. Swap `thaiarts.conf` into `conf.d\`, drop the bootstrap file,
+   `docker exec thaiarts-nginx nginx -s reload` (now serves 443).
+6. `docker compose up -d certbot` (renewal loop).
+
+Then re-run the smoke test against the public URL and spot-check the site
+in a browser at `https://thaiperform.fed.bpi.ac.th/`.
 
 ### Phase 5 — Acceptance
 
@@ -111,8 +131,8 @@ digests, backup stamps, web.config applied) in the release notes.
 ### Phase 6 — Rollback
 
 If any phase fails, follow `ROLLBACK.md` (restore previous images, revert
-IIS routing, restore the database/uploads backup only if data must be
-reverted, re-run the smoke test).
+the reverse proxy to IIS if needed, restore the database/uploads backup
+only if data must be reverted, re-run the smoke test).
 
 ## Notes
 

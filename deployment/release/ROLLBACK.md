@@ -15,9 +15,10 @@ incident) and the previous release must be restored.
   against a migrated database is usually fine (TypeORM migrations are
   additive); a rollback that needs the pre-release data uses the
   `pg_dump` backup from `backup-and-migrate.ps1`.
-- **IIS routing is the last thing to change and the first thing to revert.**
-  The version-controlled `deployment/web.config` is the source of truth;
-  keep a dated copy of the applied IIS configuration on the server.
+- **The public reverse proxy is the last thing to change and the first
+  thing to revert.** nginx + certbot (Docker) is the live proxy on host
+  80/443; `deployment/web.config` is the IIS-rollback artifact kept in the
+  repo. Keep a dated copy of the applied configuration on the server.
 
 ## 1. Before every deploy (pre-flight, mandatory)
 
@@ -27,7 +28,8 @@ docker compose images --format json > images-before-<date>.json
 # Optionally tag the running images so the previous release survives a pull.
 docker tag pichaya5502/web_rs_thaiarts-frontend:latest pichaya5502/web_rs_thaiarts-frontend:pre-<date>
 docker tag pichaya5502/web_rs_thaiarts-backend:latest  pichaya5502/web_rs_thaiarts-backend:pre-<date>
-# Keep a dated copy of the applied IIS configuration.
+# Keep a dated copy of the applied IIS configuration (only if IIS is still
+# the live proxy — skipped once nginx is the proxy).
 Copy-Item C:\Windows\System32\inetsrv\config\applicationHost.config .\iis-applicationHost-<date>.config
 ```
 
@@ -39,7 +41,7 @@ Then run `deployment\release\backup-and-migrate.ps1` (database + uploads +
 Roll back when any of these fails after a deploy:
 
 1. `deployment\release\smoke-test.ps1` reports failures.
-2. The public site (through IIS) returns 5xx for core journeys
+2. The public site (through nginx) returns 5xx for core journeys
    (`/api/health`, catalogue browse, recommendations).
 3. A regression is confirmed in auth, member journeys, admin, or analytics.
 
@@ -62,19 +64,31 @@ docker compose up -d
 `docker compose up -d` recreates only the containers whose image changed;
 PostgreSQL and the `uploads_data` volume are untouched.
 
-### 3.2 Revert IIS routing (if the web.config was changed in this release)
+### 3.2 Revert the public reverse proxy (nginx → IIS) — only if the proxy itself is at fault
+
+The default rollback keeps nginx (it proxies to `frontend:3000`, so reverting
+the app images in 3.1 is enough). Revert the proxy to IIS only when nginx or
+the cert is the cause of the incident:
 
 ```powershell
-# Restore the previous web.config from the dated copy, then recycle the site.
-# The version-controlled deployment/web.config is the source for the current
-# release; the previous release's web.config must have been archived with it.
-Copy-Item .\web.config.previous .\web.config   # or restore from IIS backup
-iisreset
+cd C:\Apps\ThaiArtsRecommender
+docker compose stop nginx
+# Re-enable IIS W3SVC so it reclaims host 80/443.
+Set-Service W3SVC -StartupType Automatic
+Start-Service W3SVC
+# If the http.sys sslcert binding on 0.0.0.0:443 was deleted during the
+# nginx cutover, re-bind it (netsh http add sslcert …) or re-add the cert
+# via the IIS manager before starting W3SVC.
 ```
 
-IIS routing is a pure function of the web.config: it always rewrites to
-`http://127.0.0.1:3000` (Next.js) and never to 8001, so reverting the file
-reverts the routing. Verify with `deployment\release\smoke-test.ps1`.
+`deployment/web.config` is unchanged in the repo and on the server
+(`C:\inetpub\wwwroot\web.config`): it rewrites every path to
+`http://127.0.0.1:3000` (Next.js) and never to 8001, so re-enabling IIS
+restores the previous routing. Verify with
+`deployment\release\smoke-test.ps1`.
+
+> Note: IIS HTTPS used a now-broken cert (the reason nginx+certbot replaced
+> it). Reverting to IIS restores HTTP only until a valid IIS cert is bound.
 
 ### 3.3 Restore the database (only when data must be reverted)
 

@@ -14,9 +14,6 @@ _Avoid_: Admin OAuth, Gmail OAuth sender, social login
 A short-lived, HttpOnly browser cookie containing the cryptographic OAuth state verifier, scoped to `path="/"` with SameSite=Lax and Secure enabled under HTTPS.
 _Avoid_: Session cookie, URL state token
 
-**Single-Use Exchange Code**:
-A temporary, single-use token issued by the backend upon successful Google OAuth callback, exchanged once by the frontend client for a JWT access token.
-_Avoid_: Google access token, Google refresh token
 
 ### Architecture & Reverse Proxy
 

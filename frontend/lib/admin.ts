@@ -56,7 +56,8 @@ export async function getAdminUsers(): Promise<AdminUserListOut> {
 export async function postAdminUser(body: AdminUserCreate): Promise<UserOut> {
   const res = await fetch(`${baseUrl()}/admin/users`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    headers: mutationHeaders({ "Content-Type": "application/json", ...getAuthHeaders() }),
+    credentials: "same-origin",
     body: JSON.stringify(body),
     cache: "no-store",
   });
@@ -66,7 +67,8 @@ export async function postAdminUser(body: AdminUserCreate): Promise<UserOut> {
 export async function putAdminUser(userId: number, body: AdminUserUpdate): Promise<UserOut> {
   const res = await fetch(`${baseUrl()}/admin/users/${userId}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    headers: mutationHeaders({ "Content-Type": "application/json", ...getAuthHeaders() }),
+    credentials: "same-origin",
     body: JSON.stringify(body),
     cache: "no-store",
   });
@@ -76,7 +78,8 @@ export async function putAdminUser(userId: number, body: AdminUserUpdate): Promi
 export async function deleteAdminUser(userId: number): Promise<AdminUserDeleteOut> {
   const res = await fetch(`${baseUrl()}/admin/users/${userId}`, {
     method: "DELETE",
-    headers: { ...getAuthHeaders() },
+    headers: mutationHeaders({ ...getAuthHeaders() }),
+    credentials: "same-origin",
     cache: "no-store",
   });
   return handle<AdminUserDeleteOut>(res);
@@ -85,7 +88,8 @@ export async function deleteAdminUser(userId: number): Promise<AdminUserDeleteOu
 export async function postItemDraft(body: ItemDraft): Promise<ItemDraftOut> {
   const res = await fetch(`${baseUrl()}/admin/items/draft`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    headers: mutationHeaders({ "Content-Type": "application/json", ...getAuthHeaders() }),
+    credentials: "same-origin",
     body: JSON.stringify(body),
     cache: "no-store",
   });
@@ -95,7 +99,8 @@ export async function postItemDraft(body: ItemDraft): Promise<ItemDraftOut> {
 export async function postItemCommit(body: ItemCommit): Promise<ItemCommitOut> {
   const res = await fetch(`${baseUrl()}/admin/items`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    headers: mutationHeaders({ "Content-Type": "application/json", ...getAuthHeaders() }),
+    credentials: "same-origin",
     body: JSON.stringify(body),
     cache: "no-store",
   });
@@ -108,7 +113,8 @@ export async function putAdminItem(
 ): Promise<ItemReassignOut> {
   const res = await fetch(`${baseUrl()}/admin/items/${artifactId}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    headers: mutationHeaders({ "Content-Type": "application/json", ...getAuthHeaders() }),
+    credentials: "same-origin",
     body: JSON.stringify(body),
     cache: "no-store",
   });
@@ -130,7 +136,8 @@ export async function getItemFacets(): Promise<ItemFacetsOut> {
 export async function createAdminContext(body: ContextCreateIn): Promise<ContextOut> {
   const res = await fetch(`${baseUrl()}/admin/contexts`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+    headers: mutationHeaders({ "Content-Type": "application/json", ...getAuthHeaders() }),
+    credentials: "same-origin",
     body: JSON.stringify(body),
     cache: "no-store",
   });
@@ -140,7 +147,8 @@ export async function createAdminContext(body: ContextCreateIn): Promise<Context
 export async function deleteAdminItem(artifactId: number): Promise<ItemDeleteOut> {
   const res = await fetch(`${baseUrl()}/admin/items/${artifactId}`, {
     method: "DELETE",
-    headers: { ...getAuthHeaders() },
+    headers: mutationHeaders({ ...getAuthHeaders() }),
+    credentials: "same-origin",
     cache: "no-store",
   });
   return handle<ItemDeleteOut>(res);
@@ -159,7 +167,8 @@ export async function uploadItemImage(
   form.append("file", file);
   const res = await fetch(`${baseUrl()}/admin/items/${artifactId}/image`, {
     method: "POST",
-    headers: { ...getAuthHeaders() },
+    headers: mutationHeaders({ ...getAuthHeaders() }),
+    credentials: "same-origin",
     body: form,
     cache: "no-store",
   });
@@ -175,7 +184,8 @@ export async function uploadItemVideo(
   form.append("file", file);
   const res = await fetch(`${baseUrl()}/admin/items/${artifactId}/video`, {
     method: "POST",
-    headers: { ...getAuthHeaders() },
+    headers: mutationHeaders({ ...getAuthHeaders() }),
+    credentials: "same-origin",
     body: form,
     cache: "no-store",
   });

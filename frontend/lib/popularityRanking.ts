@@ -10,6 +10,10 @@ export function toEngagementMap(rows: EngagementOut[]): Map<number, EngagementOu
  * Popular = items with live engagement (likes + saves + positive ratings),
  * ranked by engagement score descending. Tie-breakers: avg_rating desc,
  * total review count desc, catalog match_percent desc, then stable id desc.
+ *
+ * Quality gate: items that have received at least one review must have an
+ * avg_rating >= 3 to qualify. Items with no reviews yet (avg_rating === 0)
+ * are still eligible — only confirmed low-rated items are excluded.
  */
 export function rankPopularItems(
   items: ItemOut[],
@@ -23,7 +27,7 @@ export function rankPopularItems(
   const reviewCountFor = (id: number): number => legacy.get(id)?.count ?? 0;
 
   return [...items]
-    .filter((item) => scoreFor(item.id) > 0)
+    .filter((item) => scoreFor(item.id) > 0 && (avgFor(item.id) === 0 || avgFor(item.id) >= 3))
     .sort((a, b) => {
       const scoreDelta = scoreFor(b.id) - scoreFor(a.id);
       if (scoreDelta !== 0) return scoreDelta;

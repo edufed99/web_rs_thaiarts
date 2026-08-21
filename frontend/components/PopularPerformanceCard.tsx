@@ -5,31 +5,37 @@ import React, { useEffect, useState } from "react";
 
 import { getItemLegacyStats } from "@/lib/api";
 import { resolvedImageUrl, PerformanceCardMedia } from "@/components/PerformanceCardMedia";
-import type { ItemOut, LegacyStatsOut } from "@/lib/types";
+import type { EngagementOut, ItemOut, LegacyStatsOut } from "@/lib/types";
 
 interface Props {
   item: ItemOut;
-  /** Visual variant: "popular" shows popularity badge, "top-rated" shows rating badge, "seasonal" shows context badge. */
+  /** Visual variant: "popular" shows popularity badge & engagement %, "top-rated" shows rating badge & stars, "seasonal" shows context badge. */
   variant: "popular" | "top-rated" | "seasonal";
   /** Top contexts of the item (used by the seasonal variant). */
   topContexts?: string[];
+  /** Live engagement data for popular variant. */
+  engagement?: EngagementOut;
+  /** Max engagement score across the set for 100% scaling. */
+  engagementMax?: number;
 }
 
 /**
- * Renders a thumbnail card with REAL legacy rating + review count pulled from
- * ``GET /items/{id}/legacy-stats``. While loading or when the DB is disabled
- * we render a neutral "รอข้อมูล" placeholder rather than fake stars, so the
- * UI never lies about how many people rated the item.
+ * Renders a thumbnail card. For "popular" cards, displays a normalized
+ * Engagement Score percentage (100% scale) reflecting live likes/saves/reviews.
+ * For "top-rated" cards, displays legacy star ratings.
  */
 export default function PopularPerformanceCard({
   item,
   variant,
   topContexts = [],
+  engagement,
+  engagementMax,
 }: Props) {
   const [stats, setStats] = useState<LegacyStatsOut | null>(null);
   const [statsFailed, setStatsFailed] = useState(false);
 
   useEffect(() => {
+    if (variant === "popular") return;
     let cancelled = false;
     setStatsFailed(false);
     getItemLegacyStats(item.id)
@@ -42,24 +48,38 @@ export default function PopularPerformanceCard({
     return () => {
       cancelled = true;
     };
-  }, [item.id]);
+  }, [item.id, variant]);
 
   const description =
     item.description && item.description.length > 96
       ? `${item.description.slice(0, 96).trimEnd()}...`
       : item.description;
 
-  const badge = variant === "seasonal"
-    ? (topContexts[0] ?? "ช่วงเวลาแนะนำ")
-    : variant === "top-rated"
-      ? "คะแนนสูง"
-      : "ยอดนิยมในระบบ";
   const priceText =
     item.price_text && /บาท/.test(item.price_text)
       ? item.price_text
       : item.price_text
         ? `${item.price_text} บาท`
         : "";
+
+  const score = engagement?.engagement_score ?? 0;
+  const max = engagementMax && engagementMax > 0 ? engagementMax : Math.max(score, 1);
+  const percent = Math.min(100, Math.max(1, Math.round((score / max) * 100)));
+  const parts: string[] = [];
+  if (engagement) {
+    if (engagement.like_count > 0) parts.push(`ถูกใจ ${engagement.like_count}`);
+    if (engagement.save_count > 0) parts.push(`บันทึก ${engagement.save_count}`);
+    if (engagement.rating_count > 0) parts.push(`รีวิวบวก ${engagement.rating_count}`);
+  }
+  const detailText = parts.length > 0 ? parts.join(" • ") : "มีการตอบรับจากผู้ใช้";
+
+  const renderBadge = () => {
+    const badgeText =
+      variant === "seasonal"
+        ? (topContexts[0] ?? "ช่วงเวลาแนะนำ")
+        : "คะแนนสูง";
+    return <span className="popular-badge">{badgeText}</span>;
+  };
 
   const renderRating = () => {
     if (statsFailed) {
@@ -102,11 +122,19 @@ export default function PopularPerformanceCard({
         variant="card"
       />
       <div className="popular-card-body">
-        <span className="popular-badge">{badge}</span>
+        {variant === "popular" ? null : renderBadge()}
         <h3 className="popular-card-title">
           <Link href={`/items/${item.id}`} className="popular-title-link">{item.name}</Link>
         </h3>
-        {renderRating()}
+        {variant === "popular" ? (
+          <div className="popular-rating">
+            <span className="popular-badge popular-badge--engagement">
+              <span aria-hidden="true">🔥</span> ความนิยม <strong>{percent}%</strong>
+            </span>
+          </div>
+        ) : (
+          renderRating()
+        )}
         {description ? <p className="popular-card-desc">{description}</p> : null}
         <div className="popular-card-meta">
           {item.performers_count ? (

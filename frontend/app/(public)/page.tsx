@@ -229,6 +229,15 @@ export default function HomePage() {
     return rankPopularItems(live.items, live.engagement, live.legacy, 4);
   }, [live.items, live.engagement, live.legacy]);
 
+  const maxPopularScore = useMemo(() => {
+    let m = 0;
+    for (const item of popularTop4) {
+      const s = live.engagement.get(item.id)?.engagement_score ?? 0;
+      if (s > m) m = s;
+    }
+    return m > 0 ? m : 1;
+  }, [popularTop4, live.engagement]);
+
   // Top Rated cards: top 4 by avg_rating desc among items that received a
   // rating in the last 30 days, so the homepage preview matches the first 4
   // rows of the monthly section on /top-rated.
@@ -318,7 +327,12 @@ export default function HomePage() {
           <div className="home-card-grid" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
             {popularTop4.map((item, idx) => (
               <div key={item.id} className="popular-slot">
-                <PopularPerformanceCard item={item} variant="popular" />
+                <PopularPerformanceCard
+                  item={item}
+                  variant="popular"
+                  engagement={live.engagement.get(item.id)}
+                  engagementMax={maxPopularScore}
+                />
                 {/* Images are hardcoded — overlay the marketing thumbnail on
                     top of the component's media area so the live name/price
                     show while the photo stays put. */}

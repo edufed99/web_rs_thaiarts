@@ -201,37 +201,46 @@ export default function RecommendPage() {
             </p>
           </div>
         </div>
-        <div className="recommend-config-grid">
-          <ContextPicker value={contextId} onChange={handleContextChange} />
-          <div className="recommend-keyword-field">
+        <div className="recommend-config-form">
+          <div className="recommend-primary-grid">
+            <div className="recommend-context-field">
+              <ContextPicker value={contextId} onChange={handleContextChange} />
+            </div>
+            <div className="recommend-topk-field-wrap">
+              <label className="field recommend-topk-field">
+                <span>จำนวนผลลัพธ์ (top-K)</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={topK}
+                  onChange={(e) => {
+                    const n = parseInt(e.target.value, 10);
+                    if (!isNaN(n) && n >= 1 && n <= 50) setTopK(n);
+                  }}
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="recommend-keyword-section">
             <KeywordPicker
               selectedIds={keywordIds}
               onChange={setKeywordIds}
               contextId={contextId}
             />
           </div>
-          <label className="field recommend-topk-field">
-            <span>จำนวนผลลัพธ์ (top-K)</span>
-            <input
-              type="number"
-              min={1}
-              max={50}
-              value={topK}
-              onChange={(e) => {
-                const n = parseInt(e.target.value, 10);
-                if (!isNaN(n) && n >= 1 && n <= 50) setTopK(n);
-              }}
-            />
-          </label>
-        </div>
 
-        <button
-          type="submit"
-          disabled={!canSubmit}
-          className="recommend-submit-button"
-        >
-          {submitting ? "กำลังคำนวณ..." : "คำนวณคำแนะนำเฉพาะคุณ"}
-        </button>
+          <div className="recommend-actions-bar">
+            <button
+              type="submit"
+              disabled={!canSubmit}
+              className="recommend-submit-button"
+            >
+              {submitting ? "กำลังคำนวณ..." : "คำนวณคำแนะนำเฉพาะคุณ"}
+            </button>
+          </div>
+        </div>
       </section> : null}
     </form>
     </MemberShell>

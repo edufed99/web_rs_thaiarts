@@ -130,6 +130,15 @@ function PopularTopTen({
   engagement: Map<number, EngagementOut>;
   legacy: Map<number, LegacyStatsOut>;
 }) {
+  const maxScore = useMemo(() => {
+    let m = 0;
+    for (const item of items) {
+      const s = engagement.get(item.id)?.engagement_score ?? 0;
+      if (s > m) m = s;
+    }
+    return m > 0 ? m : 1;
+  }, [items, engagement]);
+
   return (
     <section className="popular-topten">
       <header>
@@ -146,7 +155,7 @@ function PopularTopTen({
               rank={idx + 1}
               item={item}
               engagement={engagement.get(item.id)}
-              stats={legacy.get(item.id)}
+              maxScore={maxScore}
             />
           ))}
         </ol>
@@ -159,13 +168,16 @@ function PopularRankRow({
   rank,
   item,
   engagement,
-  stats,
+  maxScore,
 }: {
   rank: number;
   item: ItemOut;
   engagement?: EngagementOut;
-  stats?: LegacyStatsOut;
+  maxScore: number;
 }) {
+  const score = engagement?.engagement_score ?? 0;
+  const percent = Math.min(100, Math.max(1, Math.round((score / (maxScore || 1)) * 100)));
+
   return (
     <li className="popular-rank-row">
       <span className="popular-rank-badge">{rank}</span>
@@ -182,22 +194,14 @@ function PopularRankRow({
           <Link href={`/items/${item.id}`}>{item.name}</Link>
         </strong>
         <span>{compactItemMeta(item)}</span>
-        <RatingLine stats={stats} />
-        <small>{engagementSummary(engagement)}</small>
+        <div className="popular-rank-engagement-line">
+          <span className="popular-rank-pct-badge">
+            <span aria-hidden="true">🔥</span> ความนิยม <strong>{percent}%</strong>
+          </span>
+          <span className="popular-rank-detail-summary">{engagementSummary(engagement)}</span>
+        </div>
       </div>
     </li>
-  );
-}
-
-function RatingLine({ stats }: { stats?: LegacyStatsOut }) {
-  if (!stats || stats.count <= 0) {
-    return <span className="popular-rank-rating muted">ยังไม่มีรีวิว</span>;
-  }
-  return (
-    <span className="popular-rank-rating">
-      <span aria-hidden="true">★</span>
-      {stats.avg_rating.toFixed(1)} ({formatCount(stats.count)} รีวิว)
-    </span>
   );
 }
 

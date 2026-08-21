@@ -111,11 +111,11 @@ export function KeywordPicker({ selectedIds, onChange, contextId, limit = 12 }: 
   }
 
   return (
-    <div>
-      <div className="form-label" style={{ marginBottom: "0.5rem" }}>
-        เลือกคุณลักษณะที่สนใจ (ไม่บังคับ)
+    <div className="keyword-picker-root">
+      <div className="form-label keyword-picker-label">
+        เลือกคุณลักษณะและคำสำคัญที่สนใจ <span className="keyword-picker-optional">(ไม่บังคับ)</span>
       </div>
-      <div className="taxonomy-search-row" style={{ maxWidth: "760px", marginBottom: "0.75rem" }}>
+      <div className="taxonomy-search-row">
         <input
           type="text"
           placeholder={
@@ -126,7 +126,6 @@ export function KeywordPicker({ selectedIds, onChange, contextId, limit = 12 }: 
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           disabled={waitsForContext}
-          style={{ width: "100%" }}
         />
         <button
           type="button"

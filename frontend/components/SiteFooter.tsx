@@ -41,9 +41,7 @@ export function SiteFooter() {
           <h3>ช่วยเหลือ</h3>
           <ul>
             <li>วิธีใช้งานระบบ</li>
-            <li>คำถามที่พบบ่อย</li>
             <li><Link href="/about">ติดต่อผู้พัฒนาระบบ</Link></li>
-            <li>รายงานปัญหาการใช้งาน</li>
             <li><Link href="/privacy">นโยบายความเป็นส่วนตัว</Link></li>
             <li><Link href="/terms">ข้อกำหนดการใช้งาน</Link></li>
           </ul>

@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) { const user = await requireUser
 export async function PATCH(request: NextRequest) {
   const authenticated = await authenticatedJsonMutation(request); if (authenticated instanceof Response) return authenticated;
   const { user, body } = authenticated;
-  if (Object.keys(body).some((key) => !["display_name", "avatar_url", "bio"].includes(key))) return apiError(422, "validation_error", "Only member profile fields may be changed.");
+  if (Object.keys(body).some((key) => !["display_name", "avatar_url", "bio", "withdraw_consent", "accept_consent"].includes(key))) return apiError(422, "validation_error", "Only member profile fields may be changed.");
   const dataSource = await getDataSource();
   const repo = dataSource.getRepository(MemberProfileEntity);
   const profile = await repo.findOneBy({ userId: Number(user.id) });
@@ -23,6 +23,16 @@ export async function PATCH(request: NextRequest) {
   if (typeof body.display_name === "string") current.displayName = body.display_name.trim().slice(0, 120);
   if (typeof body.avatar_url === "string") current.avatarUrl = body.avatar_url.trim().slice(0, 1000);
   if (typeof body.bio === "string") current.bio = body.bio.trim().slice(0, 1000);
+  if (body.withdraw_consent === true) {
+    current.consentAccepted = false;
+    current.consentWithdrawnAt = new Date();
+  }
+  if (body.accept_consent === true) {
+    current.consentAccepted = true;
+    current.consentVersion = "v1.0";
+    current.consentAcceptedAt = new Date();
+    current.consentWithdrawnAt = null;
+  }
   await repo.save(current);
   return NextResponse.json(await ensureProfile(user));
 }

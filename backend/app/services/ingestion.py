@@ -222,14 +222,14 @@ def _item_out_from_session(session: Session, item: Item) -> ItemOut:
         session.execute(
             select(ItemContext.context_id, func.count(ItemContext.item_id))
             .join(Item, Item.id == ItemContext.item_id)
-            .where(Item.is_active.is_(True))
+            .where(Item.is_active.is_(True), ItemContext.validity_status == "valid")
             .group_by(ItemContext.context_id)
         ).all()
     )
     context_rows = session.execute(
         select(Context.id, Context.name, Context.group_name, Context.description)
         .join(ItemContext, ItemContext.context_id == Context.id)
-        .where(ItemContext.item_id == db_id)
+        .where(ItemContext.item_id == db_id, ItemContext.validity_status == "valid")
         .order_by(Context.group_name, Context.name)
     ).all()
     keyword_rows = session.execute(

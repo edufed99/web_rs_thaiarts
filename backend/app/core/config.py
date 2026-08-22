@@ -103,7 +103,7 @@ class Settings(BaseSettings):
     allowed_video_upload_mime: Set[str] = Field(
         default_factory=lambda: {"video/mp4", "video/webm", "video/quicktime"}
     )
-    hybrid_alpha: float = 0.7
+    hybrid_alpha: float = 0.8
     cbf_keyword_boost: float = 0.05
     itemknn_k: int = 10
     itemknn_shrink: float = 50.0

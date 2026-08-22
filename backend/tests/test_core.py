@@ -27,7 +27,7 @@ from app.core.exceptions import (
 def test_settings_defaults(monkeypatch):
     monkeypatch.delenv("RECSYS_ARTIFACT_DIR", raising=False)
     s = Settings()
-    assert s.hybrid_alpha == 0.7
+    assert s.hybrid_alpha == 0.8
     assert s.itemknn_k == 10
     assert s.cbf_keyword_boost == 0.05
     assert s.positive_threshold == 4

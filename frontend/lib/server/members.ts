@@ -192,6 +192,10 @@ export async function ensureProfile(user: ApplicationUser): Promise<MemberProfil
     user_id: Number(user.id), username: user.username, email: user.email,
     display_name: profile.displayName || user.displayName || user.username,
     avatar_url: profile.avatarUrl, bio: profile.bio, role: user.isAdmin ? "super_admin" : "user",
+    consent_accepted: Boolean(profile.consentAccepted),
+    consent_version: profile.consentVersion || "",
+    consent_accepted_at: profile.consentAcceptedAt?.toISOString?.() ?? null,
+    consent_withdrawn_at: profile.consentWithdrawnAt?.toISOString?.() ?? null,
     created_at: user.createdAt?.toISOString?.() ?? null, last_login_at: user.lastLoginAt?.toISOString?.() ?? null,
     updated_at: profile.updatedAt?.toISOString?.() ?? null,
   };

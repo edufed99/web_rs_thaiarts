@@ -120,6 +120,10 @@ export function userOut(user: ApplicationUser) {
     role: user.isAdmin ? "super_admin" : "user",
     auth_provider: user.authProvider,
     email_verified: user.emailVerified,
+    consent_accepted: Boolean(user.consentAccepted),
+    consent_version: user.consentVersion || "",
+    consent_accepted_at: user.consentAcceptedAt?.toISOString?.() ?? null,
+    consent_withdrawn_at: user.consentWithdrawnAt?.toISOString?.() ?? null,
     created_at: user.createdAt?.toISOString?.() ?? null,
     last_login_at: user.lastLoginAt?.toISOString?.() ?? null,
   };

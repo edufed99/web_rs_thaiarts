@@ -90,6 +90,10 @@ export interface MemberProfileOut {
   avatar_url: string;
   bio: string;
   role: MemberRole;
+  consent_accepted?: boolean;
+  consent_version?: string;
+  consent_accepted_at?: string | null;
+  consent_withdrawn_at?: string | null;
   created_at: string | null;
   last_login_at: string | null;
   updated_at: string | null;
@@ -99,6 +103,8 @@ export interface MemberProfileUpdate {
   display_name?: string | null;
   avatar_url?: string | null;
   bio?: string | null;
+  withdraw_consent?: boolean;
+  accept_consent?: boolean;
 }
 
 export interface MemberDashboardOut {

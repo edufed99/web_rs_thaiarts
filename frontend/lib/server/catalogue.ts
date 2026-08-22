@@ -52,6 +52,7 @@ export function eligibleItemsForContext(
     .filter(
       (item) =>
         item.isActive &&
+        item.publishedAt !== null &&
         contextItemIds.has(numberOf(item.id)),
     )
     .sort(
@@ -350,7 +351,7 @@ export function catalogueItemOut(snapshot: CatalogueSnapshot, item: CatalogueIte
   const internalId = numberOf(item.id);
   const contextIds = new Set(
     snapshot.itemContexts
-      .filter((link) => numberOf(link.itemId) === internalId)
+      .filter((link) => numberOf(link.itemId) === internalId && (link.validityStatus ?? "valid") === "valid")
       .map((link) => numberOf(link.contextId)),
   );
   const keywordIds = new Set(
@@ -454,7 +455,7 @@ function linkedIds<T extends { itemId: number }>(
 function itemIdsForContext(snapshot: CatalogueSnapshot, contextId: number): Set<number> {
   return new Set(
     snapshot.itemContexts
-      .filter((link) => numberOf(link.contextId) === contextId)
+      .filter((link) => numberOf(link.contextId) === contextId && (link.validityStatus ?? "valid") === "valid")
       .map((link) => numberOf(link.itemId)),
   );
 }

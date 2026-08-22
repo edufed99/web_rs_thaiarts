@@ -16,6 +16,10 @@ export interface UserOut {
   role: MemberRole;
   auth_provider: string;
   email_verified: boolean;
+  consent_accepted?: boolean;
+  consent_version?: string;
+  consent_accepted_at?: string | null;
+  consent_withdrawn_at?: string | null;
   created_at: string | null;
   last_login_at: string | null;
 }
@@ -25,6 +29,7 @@ export interface UserSignup {
   email?: string | null;
   password: string;
   display_name?: string | null;
+  consent_accepted?: boolean;
 }
 
 export interface UserProfileUpdate {
@@ -33,6 +38,8 @@ export interface UserProfileUpdate {
   display_name?: string | null;
   current_password?: string | null;
   new_password?: string | null;
+  withdraw_consent?: boolean;
+  accept_consent?: boolean;
 }
 
 export interface PasswordResetRequest {

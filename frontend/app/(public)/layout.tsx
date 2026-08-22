@@ -1,5 +1,6 @@
 import React from "react";
 
+import { ConsentBanner } from "@/components/ConsentBanner";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 
@@ -19,6 +20,7 @@ export default function PublicLayout({
       <SiteHeader />
       <main className="site-main">{children}</main>
       <SiteFooter />
+      <ConsentBanner />
     </div>
   );
 }

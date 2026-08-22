@@ -35,7 +35,20 @@ export async function POST(request: NextRequest): Promise<Response> {
         await manager.query("SELECT pg_advisory_xact_lock($1)", [1786939200]);
       }
       const isAdmin = configuredAdmins.length > 0 ? configuredAdmins.includes(username) : await repo.count() === 0;
-      const saved = await repo.save({ username, email, passwordHash, displayName: displayName || username, isAdmin, authProvider: "password", emailVerified: false });
+      const consentAccepted = Boolean(body.consent_accepted);
+      const saved = await repo.save({
+        username,
+        email,
+        passwordHash,
+        displayName: displayName || username,
+        isAdmin,
+        authProvider: "password",
+        emailVerified: false,
+        consentAccepted,
+        consentVersion: consentAccepted ? "v1.0" : "",
+        consentAcceptedAt: consentAccepted ? new Date() : null,
+        consentWithdrawnAt: null,
+      });
       await manager.getRepository(MemberProfileEntity).save({ userId: Number(saved.id), displayName: saved.displayName, role: saved.isAdmin ? "super_admin" : "user", userGroup: saved.isAdmin ? "super_admin" : "user" });
       return saved;
     });

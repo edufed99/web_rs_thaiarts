@@ -133,7 +133,7 @@ def _db_contexts_by_item(session: Any, item_ids: list[int]) -> dict[int, list[di
         session.execute(
             select(ItemContext.context_id, func.count(ItemContext.item_id))
             .join(Item, Item.id == ItemContext.item_id)
-            .where(Item.is_active.is_(True))
+            .where(Item.is_active.is_(True), ItemContext.validity_status == "valid")
             .group_by(ItemContext.context_id)
         ).all()
     )
@@ -146,7 +146,7 @@ def _db_contexts_by_item(session: Any, item_ids: list[int]) -> dict[int, list[di
             Context.id,
         )
         .join(Context, Context.id == ItemContext.context_id)
-        .where(ItemContext.item_id.in_(item_ids))
+        .where(ItemContext.item_id.in_(item_ids), ItemContext.validity_status == "valid")
         .order_by(Context.group_name, Context.name)
     ).all()
     out: dict[int, list[dict[str, Any]]] = {}
@@ -607,7 +607,7 @@ def db_context_counts_by_name() -> Optional[dict[str, int]]:
                 select(Context.name, func.count(ItemContext.item_id))
                 .join(ItemContext, ItemContext.context_id == Context.id)
                 .join(Item, Item.id == ItemContext.item_id)
-                .where(Item.is_active.is_(True))
+                .where(Item.is_active.is_(True), ItemContext.validity_status == "valid")
                 .group_by(Context.name)
             ).all()
     except Exception:  # noqa: BLE001 - fall back to artifact counts

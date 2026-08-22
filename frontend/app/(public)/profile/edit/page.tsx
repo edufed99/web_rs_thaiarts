@@ -32,14 +32,18 @@ export default function EditMemberProfilePage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
+  const [currentUser, setCurrentUser] = useState(getCurrentUser());
+  const [savingConsent, setSavingConsent] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!getCurrentUser()) {
+    const user = getCurrentUser();
+    if (!user) {
       router.replace("/login?next=/profile/edit");
       return;
     }
+    setCurrentUser(user);
     getMemberProfile()
       .then((data) => {
         setProfile(data);
@@ -274,8 +278,95 @@ export default function EditMemberProfilePage() {
         </label>
         <button type="submit" disabled={savingPassword}>{savingPassword ? "กำลังบันทึก..." : "บันทึกข้อมูลเข้าสู่ระบบ"}</button>
       </form>
+
+      <section className="form-panel" style={{ maxWidth: 720 }} aria-label="ความยินยอมในการใช้ข้อมูล">
+        <h2 style={{ margin: 0 }}>ความยินยอมและการคุ้มครองข้อมูลส่วนบุคคล (PDPA)</h2>
+        <p className="muted" style={{ margin: 0 }}>
+          คุณสามารถจัดการความยินยอมในการให้ระบบเก็บข้อมูลความสนใจและการประเมินเพื่อการศึกษาวิจัยและปรับปรุงระบบแนะนำได้ตลอดเวลา
+        </p>
+        <div className="panel" style={{ boxShadow: "none" }}>
+          <p style={{ margin: "0 0 0.5rem" }}>
+            สถานะความยินยอม:{" "}
+            <strong>
+              {currentUser?.consent_accepted ? "✅ ยินยอมแล้ว" : "❌ ไม่ยินยอม / ถอนความยินยอมแล้ว"}
+            </strong>
+          </p>
+          {currentUser?.consent_accepted_at ? (
+            <p className="muted" style={{ margin: "0.25rem 0", fontSize: 13 }}>
+              ยินยอมเมื่อ: {formatDate(currentUser.consent_accepted_at)} (เวอร์ชัน {currentUser.consent_version || "1.0"})
+            </p>
+          ) : null}
+          {currentUser?.consent_withdrawn_at ? (
+            <p className="muted" style={{ margin: "0.25rem 0", fontSize: 13, color: "#b33a3a" }}>
+              ถอนความยินยอมเมื่อ: {formatDate(currentUser.consent_withdrawn_at)}
+            </p>
+          ) : null}
+        </div>
+        <div>
+          {currentUser?.consent_accepted ? (
+            <button
+              type="button"
+              className="secondary"
+              disabled={savingConsent}
+              onClick={handleWithdrawConsent}
+              style={{ color: "#b33a3a", borderColor: "#f0c4c4" }}
+            >
+              {savingConsent ? "กำลังบันทึก..." : "ถอนความยินยอม (Withdraw Consent)"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={savingConsent}
+              onClick={handleAcceptConsent}
+            >
+              {savingConsent ? "กำลังบันทึก..." : "ให้ความยินยอมเพื่อการวิจัย"}
+            </button>
+          )}
+        </div>
+      </section>
     </div>
   );
+
+  async function handleWithdrawConsent() {
+    setError(null);
+    setMessage(null);
+    setSavingConsent(true);
+    try {
+      const updated = await patchMe({ withdraw_consent: true });
+      updateStoredUser(updated);
+      setCurrentUser(updated);
+      setMessage("ถอนความยินยอมเรียบร้อยแล้ว");
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setSavingConsent(false);
+    }
+  }
+
+  async function handleAcceptConsent() {
+    setError(null);
+    setMessage(null);
+    setSavingConsent(true);
+    try {
+      const updated = await patchMe({ accept_consent: true });
+      updateStoredUser(updated);
+      setCurrentUser(updated);
+      setMessage("บันทึกการให้ความยินยอมเรียบร้อยแล้ว");
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setSavingConsent(false);
+    }
+  }
+}
+
+function formatDate(value: string | null): string {
+  if (!value) return "—";
+  try {
+    return new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+  } catch {
+    return value;
+  }
 }
 
 function errorMessage(reason: unknown): string {

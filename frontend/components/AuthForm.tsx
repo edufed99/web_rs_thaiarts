@@ -25,6 +25,7 @@ export function AuthForm({ mode }: AuthFormProps) {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [displayName, setDisplayName] = useState("");
+  const [consentAccepted, setConsentAccepted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,6 +42,7 @@ export function AuthForm({ mode }: AuthFormProps) {
               email: email.trim().toLowerCase(),
               password,
               display_name: displayName.trim() || null,
+              consent_accepted: consentAccepted,
             })
           : await postLogin({ username: trimmedUsername, password });
       setSessionUser(out.user);
@@ -199,6 +201,39 @@ export function AuthForm({ mode }: AuthFormProps) {
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
           />
+        </label>
+      ) : null}
+
+      {isSignup ? (
+        <label
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: "0.55rem",
+            fontSize: "0.85rem",
+            color: "#455065",
+            lineHeight: 1.45,
+            cursor: "pointer",
+          }}
+        >
+          <input
+            type="checkbox"
+            required
+            checked={consentAccepted}
+            onChange={(e) => setConsentAccepted(e.target.checked)}
+            style={{ marginTop: 3, accentColor: "#8a5b17" }}
+          />
+          <span>
+            ฉันยินยอมให้เก็บรวบรวมและประมวลผลข้อมูลการใช้งานเพื่อวัตถุประสงค์ในการวิจัยและพัฒนาระบบแนะนำ ตาม{" "}
+            <a
+              href="/privacy"
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: "#8a5b17", fontWeight: 700, textDecoration: "underline" }}
+            >
+              นโยบายความเป็นส่วนตัว
+            </a>
+          </span>
         </label>
       ) : null}
 

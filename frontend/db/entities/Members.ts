@@ -10,10 +10,6 @@ export interface ApplicationUser {
   emailVerified: boolean;
   displayName: string;
   isAdmin: boolean;
-  consentAccepted?: boolean;
-  consentVersion?: string;
-  consentAcceptedAt?: Date | null;
-  consentWithdrawnAt?: Date | null;
   createdAt: Date;
   lastLoginAt: Date | null;
 }
@@ -88,10 +84,6 @@ export const ApplicationUserEntity = new EntitySchema<ApplicationUser>({
     emailVerified: { name: "email_verified", type: Boolean, default: false },
     displayName: { name: "display_name", type: String, length: 120, default: "" },
     isAdmin: { name: "is_admin", type: Boolean, default: false },
-    consentAccepted: { name: "consent_accepted", type: Boolean, default: false },
-    consentVersion: { name: "consent_version", type: String, length: 40, default: "" },
-    consentAcceptedAt: { name: "consent_accepted_at", type: "timestamptz", nullable: true },
-    consentWithdrawnAt: { name: "consent_withdrawn_at", type: "timestamptz", nullable: true },
     createdAt: { name: "created_at", type: "timestamptz", createDate: true },
     lastLoginAt: { name: "last_login_at", type: "timestamptz", nullable: true },
   },

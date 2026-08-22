@@ -41,16 +41,6 @@ export async function PATCH(request: NextRequest): Promise<Response> {
     if (body.new_password.length < 8 || body.new_password.length > 128) return apiError(422, "validation_error", "Invalid password.");
     user.passwordHash = await bcrypt.hash(body.new_password, 12);
   }
-  if (body.accept_consent === true) {
-    user.consentAccepted = true;
-    user.consentVersion = "v1.0";
-    user.consentAcceptedAt = new Date();
-    user.consentWithdrawnAt = null;
-  }
-  if (body.withdraw_consent === true) {
-    user.consentAccepted = false;
-    user.consentWithdrawnAt = new Date();
-  }
   try {
     const dataSource = await getDataSource();
     const updated = await dataSource.getRepository(ApplicationUserEntity).save(user);

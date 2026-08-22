@@ -288,22 +288,22 @@ export default function EditMemberProfilePage() {
           <p style={{ margin: "0 0 0.5rem" }}>
             สถานะความยินยอม:{" "}
             <strong>
-              {currentUser?.consent_accepted ? "✅ ยินยอมแล้ว" : "❌ ไม่ยินยอม / ถอนความยินยอมแล้ว"}
+              {profile?.consent_accepted ? "✅ ยินยอมแล้ว" : "❌ ไม่ยินยอม / ถอนความยินยอมแล้ว"}
             </strong>
           </p>
-          {currentUser?.consent_accepted_at ? (
+          {profile?.consent_accepted_at ? (
             <p className="muted" style={{ margin: "0.25rem 0", fontSize: 13 }}>
-              ยินยอมเมื่อ: {formatDate(currentUser.consent_accepted_at)} (เวอร์ชัน {currentUser.consent_version || "1.0"})
+              ยินยอมเมื่อ: {formatDate(profile.consent_accepted_at)} (เวอร์ชัน {profile.consent_version || "1.0"})
             </p>
           ) : null}
-          {currentUser?.consent_withdrawn_at ? (
+          {profile?.consent_withdrawn_at ? (
             <p className="muted" style={{ margin: "0.25rem 0", fontSize: 13, color: "#b33a3a" }}>
-              ถอนความยินยอมเมื่อ: {formatDate(currentUser.consent_withdrawn_at)}
+              ถอนความยินยอมเมื่อ: {formatDate(profile.consent_withdrawn_at)}
             </p>
           ) : null}
         </div>
         <div>
-          {currentUser?.consent_accepted ? (
+          {profile?.consent_accepted ? (
             <button
               type="button"
               className="secondary"
@@ -332,9 +332,8 @@ export default function EditMemberProfilePage() {
     setMessage(null);
     setSavingConsent(true);
     try {
-      const updated = await patchMe({ withdraw_consent: true });
-      updateStoredUser(updated);
-      setCurrentUser(updated);
+      const updated = await patchMemberProfile({ withdraw_consent: true });
+      setProfile(updated);
       setMessage("ถอนความยินยอมเรียบร้อยแล้ว");
     } catch (reason) {
       setError(errorMessage(reason));
@@ -348,9 +347,8 @@ export default function EditMemberProfilePage() {
     setMessage(null);
     setSavingConsent(true);
     try {
-      const updated = await patchMe({ accept_consent: true });
-      updateStoredUser(updated);
-      setCurrentUser(updated);
+      const updated = await patchMemberProfile({ accept_consent: true });
+      setProfile(updated);
       setMessage("บันทึกการให้ความยินยอมเรียบร้อยแล้ว");
     } catch (reason) {
       setError(errorMessage(reason));

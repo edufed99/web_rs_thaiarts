@@ -825,10 +825,10 @@ function ModelQualityStrip({ quality }: { quality: ModelQualityOut }) {
 
 function qualitySourceLabel(quality: ModelQualityOut): string {
   if (quality.source === "online") {
-    return `ที่มา: online (${formatRelative(quality.ran_at)}) · ${formatNumber(quality.test_user_count)} users · ${formatNumber(quality.test_interaction_count)} interactions`;
+    return `ที่มา: online (${formatRelative(quality.ran_at)})`;
   }
   if (quality.source === "offline") {
-    return `ที่มา: offline holdout (${formatRelative(quality.ran_at)}) · ${formatNumber(quality.test_user_count)} users`;
+    return `ที่มา: offline holdout (${formatRelative(quality.ran_at)})`;
   }
   return "ยังไม่มี evaluation_runs — รัน python pipelines/run_offline_evaluation.py เพื่อสร้าง holdout";
 }

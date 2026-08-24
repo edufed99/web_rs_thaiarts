@@ -15,6 +15,7 @@ import { CreateRecommendationRequests1787025600000 } from "./migrations/17870256
 import { RecommendationRequestEntity, RecommendationRequestSelectedKeywordEntity, RecommendationResultEntity } from "./entities/RecommendationRequests";
 import { AddArtifactPublication1787100000000 } from "./migrations/1787100000000-AddArtifactPublication";
 import { CreatePasswordResetTokens1787200000000 } from "./migrations/1787200000000-CreatePasswordResetTokens";
+import { FixAyutthayaPerformanceType1787300000000 } from "./migrations/1787300000000-FixAyutthayaPerformanceType";
 
 export function createAppDataSource(databaseUrl = process.env.DATABASE_URL): DataSource {
   if (!databaseUrl) {
@@ -44,6 +45,7 @@ export function createAppDataSource(databaseUrl = process.env.DATABASE_URL): Dat
       CreateRecommendationRequests1787025600000,
       AddArtifactPublication1787100000000,
       CreatePasswordResetTokens1787200000000,
+      FixAyutthayaPerformanceType1787300000000,
     ],
     logging: process.env.TYPEORM_LOGGING === "1",
   });

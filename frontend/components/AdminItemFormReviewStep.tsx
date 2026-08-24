@@ -103,7 +103,14 @@ export function AdminItemFormReviewStep({
                       checked={checked}
                       onChange={() => toggleProposal(p.id)}
                     />
-                    <span style={{ fontWeight: 600 }}>{p.name}</span>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+                      <span style={{ fontWeight: 600 }}>{p.name}</span>
+                      {p.taxonomy_path ? (
+                        <span style={{ fontSize: "0.75rem", color: "#666" }}>
+                          หมวด: {p.taxonomy_path}
+                        </span>
+                      ) : null}
+                    </div>
                     <span
                       style={{
                         fontSize: "0.75rem",
@@ -142,12 +149,12 @@ export function AdminItemFormReviewStep({
               margin: "0.25rem 0 0 0",
               border: "1px solid #e3e3e3",
               borderRadius: "4px",
-              maxHeight: "180px",
+              maxHeight: "220px",
               overflowY: "auto",
             }}
           >
             {searchResults.map((k) => (
-              <li key={k.id} style={{ padding: "0.2rem 0" }}>
+              <li key={k.id} style={{ padding: "0.25rem 0", display: "flex", alignItems: "center", gap: "0.5rem" }}>
                 <button
                   type="button"
                   onClick={() => addFromSearch(k.id)}
@@ -160,10 +167,16 @@ export function AdminItemFormReviewStep({
                     borderRadius: "3px",
                     fontSize: "0.85rem",
                     cursor: selectedIds.has(k.id) ? "default" : "pointer",
+                    whiteSpace: "nowrap",
                   }}
                 >
                   {selectedIds.has(k.id) ? "เพิ่มแล้ว" : "เพิ่ม"} · {k.name}
                 </button>
+                {k.taxonomy_path ? (
+                  <span style={{ fontSize: "0.75rem", color: "#666" }}>
+                    ({k.taxonomy_path})
+                  </span>
+                ) : null}
               </li>
             ))}
           </ul>

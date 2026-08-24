@@ -189,7 +189,13 @@ export async function createItemDraft(input: {
   const proposals = layerAIds
     .map((id) => vocab.find((entry) => entry.id === id))
     .filter((entry): entry is GroundingVocabEntry => entry !== undefined)
-    .map((entry) => ({ id: entry.id, name: entry.name, source: "auto" as const, confidence: 1 }));
+    .map((entry) => ({
+      id: entry.id,
+      name: entry.name,
+      source: "auto" as const,
+      confidence: 1,
+      taxonomy_path: entry.taxonomyPath,
+    }));
   const { context_ids: contextIds, warnings } = await resolveContextNames(
     dataSource.manager,
     input.context_names ?? [],

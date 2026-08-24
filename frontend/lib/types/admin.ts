@@ -59,6 +59,7 @@ export interface KeywordProposal {
   name: string;
   source: "auto" | "llm" | "human";
   confidence: number;
+  taxonomy_path?: string;
 }
 
 export interface ItemDraft {

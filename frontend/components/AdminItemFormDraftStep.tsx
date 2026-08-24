@@ -273,20 +273,6 @@ export function AdminItemFormDraftStep({
         ) : null}
       </Field>
 
-      <Field label="คำสำคัญที่รู้แล้ว (คั่นด้วยจุลภาค, ไม่บังคับ)">
-        <input
-          placeholder="เช่น โขน, ละคร, นาฏศิลป์"
-          value={fields.keyword_names.join(", ")}
-          onChange={(e) =>
-            update(
-              "keyword_names",
-              e.target.value.split(",").map((s) => s.trim()),
-            )
-          }
-          style={inputStyle}
-        />
-      </Field>
-
       {error ? <ErrorBlock message={error} /> : null}
 
       <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>

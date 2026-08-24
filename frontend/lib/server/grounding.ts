@@ -2,8 +2,8 @@
  * grounding.ts — Integrated 3-Stage Grounding & Semantic Engine.
  *
  * Implements the methodology from the paper §2.3, §3.1.1, §3.1.2, §3.1.3:
- * 1. Layer A (Step 3 Grounding): Domain-aware Lexical Matcher with CUSTOM_WORDS.
- * 2. Layer B (Step 1 & 2): Gemini-assisted Stopword Filtering & Taxonomy Classification.
+ * 1. Layer A: Exact token and substring matching against Master Vocab.
+ * 2. Layer B: Two-Tier Gemini recommendation from Master Vocab + New Non-stopword classification.
  * 3. Layer C: UI Review & Selection Gate.
  */
 
@@ -12,7 +12,7 @@ import {
   GENERIC_TERMS_PREDEFINED,
   cleanKeywordString,
   domainAwareTokenize,
-  extractNonStopwordsWithGemini,
+  recommendTwoTierKeywordsWithGemini,
   normalizeThaiText,
 } from "./semantic-pipeline";
 import {
@@ -93,46 +93,85 @@ export async function executeSemanticPipelineGrounding(
   vocab: GroundingVocabEntry[],
 ): Promise<KeywordProposal[]> {
   const proposals: KeywordProposal[] = [];
-  const matchedVocabNames = new Set<string>();
+  const seenNormalizedNames = new Set<string>();
 
-  // 1. Layer A (Grounding from Master 584 Vocab)
+  // Lookup map from normalized name to vocab entry
+  const vocabByNormName = new Map<string, GroundingVocabEntry>();
+  for (const v of vocab) {
+    vocabByNormName.set(normalizeThaiText(v.name), v);
+  }
+
+  // 1. Layer A: Exact & Substring Match from Master Vocab
   const layerAIds = autoGroundKeywords(item, vocab);
   for (const id of layerAIds) {
     const entry = vocab.find((v) => v.id === id);
     if (entry) {
-      matchedVocabNames.add(normalizeThaiText(entry.name));
-      proposals.push({
-        id: entry.id,
-        name: cleanKeywordString(entry.name),
-        source: "auto",
-        confidence: 1.0,
-        taxonomy_path: entry.taxonomyPath,
-        is_new: false,
-      });
+      const norm = normalizeThaiText(entry.name);
+      if (!seenNormalizedNames.has(norm)) {
+        seenNormalizedNames.add(norm);
+        proposals.push({
+          id: entry.id,
+          name: cleanKeywordString(entry.name),
+          source: "auto",
+          confidence: 1.0,
+          taxonomy_path: entry.taxonomyPath,
+          is_new: false,
+        });
+      }
     }
   }
 
-  // 2. Step 1 (Stopword Filtering) & Step 2 (Taxonomy Classification) for Newly Discovered Words
+  // 2. Layer B: Two-Tier Gemini Recommendation & New Keyword Classification
   if (process.env.GEMINI_API_KEY?.trim()) {
     try {
-      // Step 1: Extract and Filter Stopwords via Gemini (strictly atomic non-stopwords)
-      const extractedNonStopwords = await extractNonStopwordsWithGemini(item);
+      const masterWordsList = vocab.map((v) => v.name);
+      const aiResult = await recommendTwoTierKeywordsWithGemini(item, masterWordsList);
 
-      // Keep only truly new keywords (not already matched in Layer A or generic terms)
+      // (A) Process AI Recommended Master Keywords
+      for (const recMaster of aiResult.master_keywords) {
+        const norm = normalizeThaiText(recMaster);
+        if (!seenNormalizedNames.has(norm)) {
+          const matchedEntry = vocabByNormName.get(norm);
+          if (matchedEntry) {
+            seenNormalizedNames.add(norm);
+            proposals.push({
+              id: matchedEntry.id,
+              name: cleanKeywordString(matchedEntry.name),
+              source: "auto",
+              confidence: 0.95,
+              taxonomy_path: matchedEntry.taxonomyPath,
+              is_new: false,
+            });
+          }
+        }
+      }
+
+      // (B) Process AI Discovered New Keywords
       const newKeywordsToClassify: string[] = [];
-      const seenNew = new Set<string>();
-
-      for (const rawWord of extractedNonStopwords) {
-        const clean = cleanKeywordString(rawWord);
+      for (const rawNew of aiResult.new_keywords) {
+        const clean = cleanKeywordString(rawNew);
         const norm = normalizeThaiText(clean);
-        if (norm.length >= 2 && !matchedVocabNames.has(norm) && !seenNew.has(norm) && !GENERIC_TERMS_PREDEFINED.has(clean)) {
-          seenNew.add(norm);
-          newKeywordsToClassify.push(clean);
+        if (norm.length >= 2 && !seenNormalizedNames.has(norm) && !GENERIC_TERMS_PREDEFINED.has(clean)) {
+          // If it matches a master word in DB, treat as master word instead
+          const existingEntry = vocabByNormName.get(norm);
+          if (existingEntry) {
+            seenNormalizedNames.add(norm);
+            proposals.push({
+              id: existingEntry.id,
+              name: cleanKeywordString(existingEntry.name),
+              source: "auto",
+              confidence: 0.95,
+              taxonomy_path: existingEntry.taxonomyPath,
+              is_new: false,
+            });
+          } else {
+            seenNormalizedNames.add(norm);
+            newKeywordsToClassify.push(clean);
+          }
         }
       }
 
       if (newKeywordsToClassify.length > 0) {
-        // Step 2: Classify into 23 Taxonomy Paths
         const classifications = await classifyNewKeywordsWithGemini(newKeywordsToClassify);
         let tempId = -1;
         for (const [word, cls] of classifications.entries()) {
@@ -147,7 +186,7 @@ export async function executeSemanticPipelineGrounding(
         }
       }
     } catch (e) {
-      console.warn("[grounding] Semantic pipeline AI step encountered error:", e);
+      console.warn("[grounding] Semantic pipeline AI recommendation encountered error:", e);
     }
   }
 

@@ -144,7 +144,8 @@ export function AdminItemForm() {
   function addFromSearch(id: number) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }

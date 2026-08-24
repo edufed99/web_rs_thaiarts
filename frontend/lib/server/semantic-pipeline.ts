@@ -5,7 +5,7 @@
  * 1. Domain-specific custom dictionary (CUSTOM_WORDS) for Thai performing arts.
  * 2. Text normalization and diacritic stripping (NFKC, lowercase, diacritic regex [่-์​-‏]).
  * 3. Predefined generic low-value terms filter.
- * 4. Gemini-assisted semantic stopword filtering under controlled prompt protocol.
+ * 4. Two-Tier Gemini recommendation: Matches Master 584 Words + Extracts New Atomic Non-stopwords.
  */
 
 export const CUSTOM_WORDS = [
@@ -77,7 +77,7 @@ export const GENERIC_TERMS_PREDEFINED = new Set([
 export function cleanKeywordString(word: string): string {
   if (!word) return "";
   return word
-    .replace(/^["'“‘]+|["'”’]+$/g, "") // strip quotes
+    .replace(/^["'“‘«]+|["'”’»]+$/g, "") // strip quotes
     .replace(/^[,\-–—.;:()\[\]{}]+|[,\-–—.;:()\[\]{}]+$/g, "") // strip punctuation
     .trim();
 }
@@ -118,22 +118,21 @@ export function domainAwareTokenize(text: string, vocabulary: string[]): Set<str
 }
 
 /**
- * Step 1: Gemini-assisted Domain Non-stopword Keyword Extraction & Filtering.
- * Evaluates the full item description and extracts ONLY atomic, high-value domain keywords
- * according to the 4 Paper Criteria (§3.1.1).
+ * Two-Tier Gemini Recommendation & Stopword Filter.
+ * 1. Recommends relevant master keywords from the 584 Vocabulary.
+ * 2. Extracts newly discovered atomic domain non-stopwords from the item description.
+ * 3. Enforces 4 Paper Criteria (§3.1.1).
  */
-const EXTRACT_NON_STOPWORDS_PROMPT = `คุณคือผู้เชี่ยวชาญด้านภาษาศาสตร์เชิงคำนวณและนาฏศิลป์ไทย (Computational Linguist in Thai Performing Arts).
+const TWO_TIER_RECOMMENDATION_PROMPT = `คุณคือผู้เชี่ยวชาญด้านนาฏศิลป์และศิลปวัฒนธรรมไทย (Expert Computational Linguist & Taxonomist in Thai Performing Arts).
 
-จงทำหน้าที่ 2 ขั้นตอน:
-1. วิเคราะห์ข้อมูลชุดการแสดงด้านล่าง และสกัด "คำสำคัญเฉพาะทางที่เป็น Non-stopwords (Atomic Domain Keywords)"
-2. กรองและตัดคำหยุด (Stopwords) ออกตามเกณฑ์ Paper §3.1.1 อย่างเคร่งครัด:
-   - ห้ามนำประโยคหรือวลียาวๆ มาเป็นคำสำคัญ (เช่น 'มีวัฒนธรรมประเพณีที่งดงาม', 'สะท้อนวิถีชีวิตไทย')
-   - กรองคำที่มีความหมายกว้าง/ครอบจักรวาลออก (Umbrella Terms: เช่น ประเทศไทย, รูปแบบ, ชุดการแสดง, ลักษณะ, กิจกรรม)
-   - กรองคำเชิงนามธรรมหรือคำประเมินค่าออก (Abstract/Evaluative Terms: เช่น งดงาม, สวยงาม, ประทับใจ, ความสุข, โดดเด่น)
-   - กรองคำเฉพาะโดเมนที่พบบ่อยจนไม่ช่วยจำแนกออก (Domain-Specific Overuse: เช่น การแสดง, ศิลปะ, วัฒนธรรม, นาฏศิลป์, การแสดงสร้างสรรค์, การแสดงชุด)
-   - กรองคำซ้ำซ้อน
-3. สกัดเฉพาะ "คำสำคัญเดี่ยว (Atomic Keywords / Specific Noun Phrases ความยาวกระชับ 1-3 คำ)" ที่ระบุอัตลักษณ์เฉพาะทาง เช่น:
-   - ชื่อชุดการแสดงเฉพาะ, เครื่องแต่งกาย, เครื่องประดับ, เครื่องดนตรี, ท่ารำ, ทำนองเพลง, ตัวละคร, วรรณคดี, พิธีกรรม, วิถีชีวิตเฉพาะ, ชาติพันธุ์, ภูมิศาสตร์เฉพาะ
+จงวิเคราะห์ข้อมูลชุดการแสดงด้านล่าง และทำหน้าที่ 2 ส่วน:
+1. "คัดเลือกคำสำคัญที่ตรงและเกี่ยวข้องที่สุดจากคลัง Master 584 คำ" (แนะนำมา 5-15 คำ ครอบคลุมทุกมิติ เช่น ดนตรี, เครื่องแต่งกาย, ท่ารำ, ภูมิภาค/ชาติพันธุ์, ความเชื่อ/พิธีกรรม, วรรณคดี)
+2. "สกัดคำสำคัญเฉพาะทางที่เป็นคำศัพท์ใหม่ (New Atomic Non-stopwords)" จากคำอธิบาย หากมีคำเฉพาะที่ไม่อยู่ในคลัง
+3. กรองคำหยุด (Stopwords) ออกตามเกณฑ์ Paper §3.1.1 อย่างเคร่งครัด:
+   - ห้ามนำประโยคหรือวลียาวๆ มาเป็นคำสำคัญ (เช่น 'มีวัฒนธรรมประเพณีที่งดงาม')
+   - กรองคำครอบจักรวาลออก (Umbrella: เช่น ประเทศไทย, รูปแบบ, การแสดงชุด, ลักษณะ)
+   - กรองคำนามธรรมหรือคำประเมินค่าออก (Abstract/Evaluative: เช่น งดงาม, สวยงาม, ประทับใจ, ความสุข)
+   - กรองคำเฉพาะโดเมนที่พบบ่อยจนไม่ช่วยจำแนกออก (Domain overuse: เช่น การแสดง, ศิลปะ, วัฒนธรรม, นาฏศิลป์, การแสดงสร้างสรรค์)
 
 [ข้อมูลชุดการแสดง]
 ชื่อการแสดง: {name}
@@ -141,22 +140,32 @@ const EXTRACT_NON_STOPWORDS_PROMPT = `คุณคือผู้เชี่ย
 หมวดหมู่: {category}
 คำอธิบาย: {description}
 
-จงตอบเป็น JSON array ของคำสำคัญที่กระชับและผ่านเกณฑ์เท่านั้น (ตัดเครื่องหมายคำพูด/อัญประกาศออก):
-{"keywords": ["คำสำคัญ 1", "คำสำคัญ 2"]}
+[รายชื่อคำในคลัง Master 584 คำ]:
+{master_keywords_list}
+
+จงตอบเป็น JSON ในรูปแบบนี้เท่านั้น:
+{
+  "master_keywords": ["คำจากคลัง 1", "คำจากคลัง 2"],
+  "new_keywords": ["คำศัพท์ใหม่ 1", "คำศัพท์ใหม่ 2"]
+}
 `;
 
-export async function extractNonStopwordsWithGemini(
+export async function recommendTwoTierKeywordsWithGemini(
   item: { name: string; description?: string; category_group?: string; performance_type?: string },
-): Promise<string[]> {
+  masterVocabulary: string[],
+): Promise<{ master_keywords: string[]; new_keywords: string[] }> {
   const apiKey = process.env.GEMINI_API_KEY?.trim();
-  if (!apiKey) return [];
+  if (!apiKey) return { master_keywords: [], new_keywords: [] };
 
   const model = process.env.GEMINI_MODEL?.trim() || "gemini-3.1-flash-lite";
-  const prompt = EXTRACT_NON_STOPWORDS_PROMPT
+  const masterListStr = masterVocabulary.slice(0, 600).join(", ");
+
+  const prompt = TWO_TIER_RECOMMENDATION_PROMPT
     .replace("{name}", item.name || "")
     .replace("{category}", item.category_group || "")
     .replace("{ptype}", item.performance_type || "")
-    .replace("{description}", item.description || "");
+    .replace("{description}", item.description || "")
+    .replace("{master_keywords_list}", masterListStr);
 
   try {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
@@ -174,29 +183,29 @@ export async function extractNonStopwordsWithGemini(
     });
 
     if (!response.ok) {
-      console.warn(`[semantic-pipeline] Gemini extraction returned status ${response.status}`);
-      return [];
+      console.warn(`[semantic-pipeline] Gemini recommendation returned status ${response.status}`);
+      return { master_keywords: [], new_keywords: [] };
     }
 
     const data = await response.json();
     const rawJson = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!rawJson) return [];
+    if (!rawJson) return { master_keywords: [], new_keywords: [] };
 
     const parsed = JSON.parse(rawJson);
-    const rawKeywords: string[] = Array.isArray(parsed?.keywords) ? parsed.keywords : [];
+    const rawMaster: string[] = Array.isArray(parsed?.master_keywords) ? parsed.master_keywords : [];
+    const rawNew: string[] = Array.isArray(parsed?.new_keywords) ? parsed.new_keywords : [];
 
-    const cleanKeywords: string[] = [];
-    for (const kw of rawKeywords) {
-      if (typeof kw !== "string") continue;
-      const clean = cleanKeywordString(kw);
-      // Filter out long phrases (> 35 chars) or empty or known generic terms
-      if (clean.length >= 2 && clean.length <= 35 && !GENERIC_TERMS_PREDEFINED.has(clean)) {
-        cleanKeywords.push(clean);
-      }
-    }
-    return cleanKeywords;
+    const cleanMaster = rawMaster
+      .map(cleanKeywordString)
+      .filter((w) => w.length >= 2 && w.length <= 35 && !GENERIC_TERMS_PREDEFINED.has(w));
+
+    const cleanNew = rawNew
+      .map(cleanKeywordString)
+      .filter((w) => w.length >= 2 && w.length <= 35 && !GENERIC_TERMS_PREDEFINED.has(w));
+
+    return { master_keywords: cleanMaster, new_keywords: cleanNew };
   } catch (error) {
-    console.warn("[semantic-pipeline] Non-stopword extraction failed:", error);
-    return [];
+    console.warn("[semantic-pipeline] Two-tier recommendation failed:", error);
+    return { master_keywords: [], new_keywords: [] };
   }
 }

@@ -46,7 +46,19 @@ export function AdminItemFormDraftStep({
     Record<string, string[]>
   >({});
   const [contextOptions, setContextOptions] = useState<ContextOut[]>([]);
+  const [contextSearch, setContextSearch] = useState<string>("");
   const [facetsLoading, setFacetsLoading] = useState(true);
+
+  const filteredContextOptions = useMemo(() => {
+    const term = contextSearch.trim().toLowerCase();
+    if (!term) return contextOptions;
+    return contextOptions.filter(
+      (c) =>
+        c.name.toLowerCase().includes(term) ||
+        (c.group && c.group.toLowerCase().includes(term)),
+    );
+  }, [contextOptions, contextSearch]);
+
   // Cascade: when the admin picks ``ประเภทการแสดง`` the ``หมวดหมู่``
   // dropdown is filtered to the categories seen with that performance
   // type. If the previously-picked category no longer matches the new
@@ -205,27 +217,133 @@ export function AdminItemFormDraftStep({
         </Field>
       </div>
 
-      <Field label="โอกาสการแสดง">
-        <select
-          value={fields.context_names[0] ?? ""}
-          onChange={(e) =>
-            update(
-              "context_names",
-              e.target.value ? [e.target.value] : [],
-            )
-          }
-          disabled={facetsLoading}
-          style={inputStyle}
+      <Field label="โอกาสการแสดง (เลือกได้หลายโอกาส)">
+        <div
+          style={{
+            border: "1px solid #e0d8c8",
+            borderRadius: "8px",
+            padding: "0.85rem",
+            backgroundColor: "#fffdfa",
+          }}
         >
-          <option value="">
-            {facetsLoading ? "กำลังโหลด..." : "— เลือกโอกาสการแสดง —"}
-          </option>
-          {contextOptions.map((ctx) => (
-            <option key={ctx.id} value={ctx.name}>
-              {ctx.name}
-            </option>
-          ))}
-        </select>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: "0.6rem",
+              flexWrap: "wrap",
+              gap: "0.5rem",
+            }}
+          >
+            <div style={{ fontSize: "0.85rem", color: "#666" }}>
+              เลือกแล้ว <strong>{fields.context_names.length}</strong> / {contextOptions.length} โอกาส
+            </div>
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              {fields.context_names.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => update("context_names", [])}
+                  style={{
+                    fontSize: "0.75rem",
+                    padding: "0.2rem 0.5rem",
+                    borderRadius: "4px",
+                    border: "1px solid #e3e3e3",
+                    background: "#f5f5f5",
+                    cursor: "pointer",
+                    color: "#666",
+                  }}
+                >
+                  ล้างทั้งหมด
+                </button>
+              )}
+              {fields.context_names.length < contextOptions.length && (
+                <button
+                  type="button"
+                  onClick={() => update("context_names", contextOptions.map((c) => c.name))}
+                  style={{
+                    fontSize: "0.75rem",
+                    padding: "0.2rem 0.5rem",
+                    borderRadius: "4px",
+                    border: "1px solid #c5913b",
+                    background: "#fff7e5",
+                    cursor: "pointer",
+                    color: "#8a6015",
+                    fontWeight: 600,
+                  }}
+                >
+                  เลือกทั้งหมด
+                </button>
+              )}
+            </div>
+          </div>
+
+          <input
+            type="text"
+            placeholder="พิมพ์เพื่อค้นหาโอกาสการแสดง..."
+            value={contextSearch}
+            onChange={(e) => setContextSearch(e.target.value)}
+            style={{
+              ...inputStyle,
+              padding: "0.35rem 0.6rem",
+              fontSize: "0.85rem",
+              marginBottom: "0.6rem",
+            }}
+          />
+
+          {facetsLoading ? (
+            <p style={{ color: "#888", fontSize: "0.85rem", margin: 0 }}>กำลังโหลดโอกาสการแสดง...</p>
+          ) : filteredContextOptions.length === 0 ? (
+            <p style={{ color: "#888", fontSize: "0.85rem", margin: 0 }}>ไม่พบโอกาสการแสดงที่ค้นหา</p>
+          ) : (
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "0.4rem",
+                maxHeight: "220px",
+                overflowY: "auto",
+                padding: "2px",
+              }}
+            >
+              {filteredContextOptions.map((ctx) => {
+                const selected = fields.context_names.includes(ctx.name);
+                return (
+                  <button
+                    key={ctx.id}
+                    type="button"
+                    onClick={() => {
+                      const next = selected
+                        ? fields.context_names.filter((n) => n !== ctx.name)
+                        : [...fields.context_names, ctx.name];
+                      update("context_names", next);
+                    }}
+                    style={{
+                      padding: "0.35rem 0.75rem",
+                      borderRadius: "999px",
+                      border: selected ? "1.5px solid #c5913b" : "1px solid #dcd5c7",
+                      backgroundColor: selected ? "#fff7e5" : "#ffffff",
+                      color: selected ? "#8a6015" : "#333333",
+                      fontWeight: selected ? 600 : 400,
+                      fontSize: "0.85rem",
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.35rem",
+                      transition: "all 0.15s ease",
+                      boxShadow: selected ? "0 1px 3px rgba(197, 145, 59, 0.2)" : "none",
+                    }}
+                  >
+                    <span style={{ fontSize: "0.9rem", color: selected ? "#c5913b" : "#888", fontWeight: 700 }}>
+                      {selected ? "✓" : "+"}
+                    </span>
+                    <span>{ctx.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </Field>
 
       <Field label="รูปภาพการแสดง (ไม่บังคับ)">

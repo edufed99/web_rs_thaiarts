@@ -181,6 +181,13 @@ export async function createItemDraft(input: {
     throw new AdminItemError(422, "validation_error", "name is required.");
   }
   const dataSource = await getDataSource();
+  const existing = await dataSource.getRepository(CatalogueItemEntity)
+    .createQueryBuilder("item")
+    .where("LOWER(TRIM(item.name)) = LOWER(TRIM(:name))", { name })
+    .getOne();
+  if (existing) {
+    throw new AdminItemError(409, "already_exists", `มีชุดการแสดงชื่อ "${name}" อยู่ในระบบแล้ว (ID: ${existing.artifactItemId})`);
+  }
   const vocab = await keywordVocabulary(dataSource.manager);
   const proposals = await executeSemanticPipelineGrounding(
     {

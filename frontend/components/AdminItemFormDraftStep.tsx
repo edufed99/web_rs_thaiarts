@@ -6,8 +6,8 @@
 // the keyword selection, and the submit handlers are owned by the parent
 // and passed down.
 import React, { useEffect, useMemo, useState } from "react";
-import { getContexts, getItemFacets } from "@/lib/api";
-import type { ContextOut } from "@/lib/types";
+import { getContexts, getItemFacets, getItems } from "@/lib/api";
+import type { ContextOut, ItemOut } from "@/lib/types";
 import { ErrorBlock, Field, inputStyle } from "./AdminItemFormShared";
 import type { UseCoverImageReturn } from "./useCoverImage";
 import { canSave, type DraftFields } from "./AdminItemFormHelpers";
@@ -58,6 +58,57 @@ export function AdminItemFormDraftStep({
         (c.group && c.group.toLowerCase().includes(term)),
     );
   }, [contextOptions, contextSearch]);
+
+  const [duplicateCheck, setDuplicateCheck] = useState<{
+    checking: boolean;
+    isDuplicate: boolean;
+    duplicateItem: ItemOut | null;
+    similarItems: ItemOut[];
+  }>({
+    checking: false,
+    isDuplicate: false,
+    duplicateItem: null,
+    similarItems: [],
+  });
+
+  useEffect(() => {
+    const raw = fields.name.trim();
+    if (raw.length < 2) {
+      setDuplicateCheck({ checking: false, isDuplicate: false, duplicateItem: null, similarItems: [] });
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      setDuplicateCheck((prev) => ({ ...prev, checking: true }));
+      getItems({ search: raw, limit: 5 })
+        .then((res) => {
+          if (cancelled) return;
+          const items = res.items || [];
+          const exact = items.find(
+            (it) => it.name.trim().toLowerCase() === raw.toLowerCase(),
+          );
+          const similar = items.filter(
+            (it) => it.name.trim().toLowerCase() !== raw.toLowerCase(),
+          );
+          setDuplicateCheck({
+            checking: false,
+            isDuplicate: Boolean(exact),
+            duplicateItem: exact || null,
+            similarItems: similar,
+          });
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setDuplicateCheck({ checking: false, isDuplicate: false, duplicateItem: null, similarItems: [] });
+        });
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [fields.name]);
 
   // Cascade: when the admin picks ``ประเภทการแสดง`` the ``หมวดหมู่``
   // dropdown is filtered to the categories seen with that performance
@@ -116,8 +167,88 @@ export function AdminItemFormDraftStep({
           maxLength={255}
           value={fields.name}
           onChange={(e) => update("name", e.target.value)}
-          style={inputStyle}
+          style={{
+            ...inputStyle,
+            borderColor: duplicateCheck.isDuplicate
+              ? "#ff6b6b"
+              : !duplicateCheck.checking && fields.name.trim().length >= 2 && !duplicateCheck.isDuplicate
+                ? "#51cf66"
+                : undefined,
+          }}
         />
+        {duplicateCheck.checking && (
+          <small style={{ color: "#888", display: "block", marginTop: "0.25rem" }}>
+            กำลังตรวจสอบชื่อซ้ำในระบบ...
+          </small>
+        )}
+        {duplicateCheck.isDuplicate && duplicateCheck.duplicateItem && (
+          <div
+            style={{
+              marginTop: "0.4rem",
+              padding: "0.5rem 0.75rem",
+              borderRadius: "6px",
+              backgroundColor: "#fff0f0",
+              border: "1px solid #ffcccc",
+              color: "#c92a2a",
+              fontSize: "0.85rem",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "0.5rem",
+            }}
+          >
+            <div>
+              <strong>⚠️ พบชื่อชุดการแสดงนี้ในระบบแล้ว:</strong> &quot;{duplicateCheck.duplicateItem.name}&quot; (ID: {duplicateCheck.duplicateItem.id})
+            </div>
+            <a
+              href={`/items/${duplicateCheck.duplicateItem.id}`}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                color: "#1e6fd9",
+                textDecoration: "underline",
+                fontSize: "0.8rem",
+                whiteSpace: "nowrap",
+                fontWeight: 600,
+              }}
+            >
+              ดูข้อมูลชุดการแสดงเดิม ↗
+            </a>
+          </div>
+        )}
+        {!duplicateCheck.isDuplicate && duplicateCheck.similarItems.length > 0 && (
+          <div
+            style={{
+              marginTop: "0.35rem",
+              padding: "0.4rem 0.6rem",
+              borderRadius: "6px",
+              backgroundColor: "#f7f9fc",
+              border: "1px solid #e2e8f0",
+              fontSize: "0.8rem",
+              color: "#475569",
+            }}
+          >
+            <span>💡 ชื่อชุดการแสดงที่ใกล้เคียงในระบบ: </span>
+            {duplicateCheck.similarItems.map((sim, idx) => (
+              <span key={sim.id}>
+                {idx > 0 && ", "}
+                <a
+                  href={`/items/${sim.id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ color: "#1e6fd9", textDecoration: "underline" }}
+                >
+                  {sim.name}
+                </a>
+              </span>
+            ))}
+          </div>
+        )}
+        {!duplicateCheck.checking && !duplicateCheck.isDuplicate && fields.name.trim().length >= 2 && duplicateCheck.similarItems.length === 0 && (
+          <small style={{ color: "#2b8a3e", display: "block", marginTop: "0.25rem", fontWeight: 600 }}>
+            ✓ ชื่อการแสดงนี้สามารถใช้ได้ (ไม่ซ้ำกับในระบบ)
+          </small>
+        )}
       </Field>
 
       <Field label="คำอธิบาย">
@@ -396,7 +527,7 @@ export function AdminItemFormDraftStep({
       <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
         <button
           type="button"
-          disabled={submitting || !canSave(fields)}
+          disabled={submitting || !canSave(fields) || duplicateCheck.isDuplicate}
           onClick={() => void handleSave()}
           className="secondary"
         >
@@ -404,9 +535,9 @@ export function AdminItemFormDraftStep({
         </button>
         <button
           type="submit"
-          disabled={submitting}
+          disabled={submitting || duplicateCheck.isDuplicate}
         >
-          {submitting && !saveMode ? "กำลังวิเคราะห์..." : "ดูคำสำคัญที่เสนอ"}
+          {submitting && !saveMode ? "กำลังวิเคราะห์คำสำคัญ..." : "ถัดไป (ตรวจสอบคำสำคัญ)"}
         </button>
       </div>
     </form>

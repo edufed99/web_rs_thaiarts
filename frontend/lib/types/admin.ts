@@ -60,6 +60,7 @@ export interface KeywordProposal {
   source: "auto" | "llm" | "human";
   confidence: number;
   taxonomy_path?: string;
+  is_new?: boolean;
 }
 
 export interface ItemDraft {
@@ -97,6 +98,7 @@ export interface ItemCommit {
   draft_id: string;
   additional_keyword_ids: number[];
   removed_keyword_ids: number[];
+  new_keywords?: { name: string; taxonomy_path?: string }[];
 }
 
 export interface ItemCommitOut {

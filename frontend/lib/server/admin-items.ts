@@ -7,16 +7,21 @@ import {
   CatalogueKeywordEntity,
   ItemContextEntity,
   ItemKeywordEntity,
+  TaxonomyNodeEntity,
   type CatalogueItem,
 } from "@/db/entities/Catalogue";
 import type { ApplicationUser } from "@/db/entities/Members";
-import type { ItemOut } from "@/lib/types";
+import type { ItemOut, KeywordProposal } from "@/lib/types";
 import {
   loadCatalogueSnapshot,
   catalogueItemOut,
   stableId,
 } from "@/lib/server/catalogue";
-import { autoGroundKeywords, type GroundingVocabEntry } from "@/lib/server/grounding";
+import {
+  autoGroundKeywords,
+  executeSemanticPipelineGrounding,
+  type GroundingVocabEntry,
+} from "@/lib/server/grounding";
 import { markItemsUnpublished } from "@/lib/server/publication";
 
 /**
@@ -152,7 +157,7 @@ export async function itemFacets(): Promise<{
   };
 }
 
-// --- Draft (Layer A grounding) ---------------------------------------------
+// --- Draft (Layer A + Layer B Semantic Pipeline) ----------------------------
 
 // fallow-ignore-next-line complexity -- Grounding, context resolution, and draft persistence are one workflow.
 export async function createItemDraft(input: {
@@ -167,7 +172,7 @@ export async function createItemDraft(input: {
   keyword_names: string[];
 }): Promise<{
   draft_id: string;
-  proposals: { id: number; name: string; source: "auto"; confidence: number }[];
+  proposals: KeywordProposal[];
   context_ids: number[];
   warnings: string[];
 }> {
@@ -177,7 +182,7 @@ export async function createItemDraft(input: {
   }
   const dataSource = await getDataSource();
   const vocab = await keywordVocabulary(dataSource.manager);
-  const layerAIds = autoGroundKeywords(
+  const proposals = await executeSemanticPipelineGrounding(
     {
       name,
       description: input.description ?? "",
@@ -186,16 +191,7 @@ export async function createItemDraft(input: {
     },
     vocab,
   );
-  const proposals = layerAIds
-    .map((id) => vocab.find((entry) => entry.id === id))
-    .filter((entry): entry is GroundingVocabEntry => entry !== undefined)
-    .map((entry) => ({
-      id: entry.id,
-      name: entry.name,
-      source: "auto" as const,
-      confidence: 1,
-      taxonomy_path: entry.taxonomyPath,
-    }));
+  const layerAIds = proposals.filter((p) => !p.is_new && p.id > 0).map((p) => p.id);
   const { context_ids: contextIds, warnings } = await resolveContextNames(
     dataSource.manager,
     input.context_names ?? [],
@@ -219,17 +215,53 @@ export async function createItemDraft(input: {
   return { draft_id: draftId, proposals, context_ids: contextIds, warnings };
 }
 
+async function ensureTaxonomyNodeId(manager: EntityManager, taxonomyPath?: string): Promise<number | null> {
+  if (!taxonomyPath) return null;
+  const parts = taxonomyPath.split(">").map((s) => s.trim()).filter(Boolean);
+  if (parts.length === 0) return null;
+
+  let parentId: number | null = null;
+  for (let level = 0; level < parts.length; level++) {
+    const name = parts[level];
+    const levelNum = level + 1;
+    const repo = manager.getRepository(TaxonomyNodeEntity);
+    let nodeQuery = repo
+      .createQueryBuilder("node")
+      .where("node.name = :name AND node.level = :level", { name, level: levelNum });
+    if (parentId !== null) {
+      nodeQuery = nodeQuery.andWhere("node.parentId = :parentId", { parentId });
+    } else {
+      nodeQuery = nodeQuery.andWhere("node.parentId IS NULL");
+    }
+    let node = await nodeQuery.getOne();
+    if (!node) {
+      node = await repo.save({
+        name,
+        level: levelNum,
+        parentId,
+      });
+    }
+    parentId = Number(node.id);
+  }
+  return parentId;
+}
+
 // fallow-ignore-next-line complexity -- Draft merge, uniqueness, and link persistence are one transaction.
 export async function commitItemDraft(
   _admin: ApplicationUser,
-  input: { draft_id: string; additional_keyword_ids: number[]; removed_keyword_ids: number[] },
+  input: {
+    draft_id: string;
+    additional_keyword_ids: number[];
+    removed_keyword_ids: number[];
+    new_keywords?: { name: string; taxonomy_path?: string }[];
+  },
 ): Promise<{ item: ItemOut; warnings: string[] }> {
   const payload = consumeDraft(input.draft_id);
   const merged: number[] = [];
   const seen = new Set<number>();
   for (const id of [...payload.layer_a_ids, ...payload.additional_keyword_ids, ...(input.additional_keyword_ids ?? [])]) {
     const value = Number(id);
-    if (!Number.isSafeInteger(value) || seen.has(value)) continue;
+    if (!Number.isSafeInteger(value) || seen.has(value) || value <= 0) continue;
     seen.add(value);
     merged.push(value);
   }
@@ -281,12 +313,41 @@ export async function commitItemDraft(
         validityStatus: "valid",
       });
     }
+
+    // Persist and link existing keywords
     for (const keywordId of finalKeywordIds) {
       await manager.getRepository(ItemKeywordEntity).save({
         itemId: internalId,
         keywordId,
         source: "human",
       });
+    }
+
+    // Persist and link newly discovered keywords from AI pipeline
+    if (Array.isArray(input.new_keywords) && input.new_keywords.length > 0) {
+      const keywordRepo = manager.getRepository(CatalogueKeywordEntity);
+      for (const newKw of input.new_keywords) {
+        const kwName = (newKw.name || "").trim();
+        if (!kwName) continue;
+        let kwRow = await keywordRepo
+          .createQueryBuilder("k")
+          .where("LOWER(k.name) = LOWER(:name)", { name: kwName })
+          .getOne();
+        if (!kwRow) {
+          const taxonomyNodeId = await ensureTaxonomyNodeId(manager, newKw.taxonomy_path);
+          kwRow = await keywordRepo.save({
+            name: kwName,
+            taxonomyNodeId,
+          });
+          warnings.push(`Created keyword: "${kwName}"`);
+        }
+        const kwId = Number(kwRow.id);
+        await manager.getRepository(ItemKeywordEntity).save({
+          itemId: internalId,
+          keywordId: kwId,
+          source: "llm",
+        });
+      }
     }
   });
   const item = await activeItemOut(artifactId);

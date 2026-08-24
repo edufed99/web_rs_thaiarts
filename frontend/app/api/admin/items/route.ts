@@ -28,7 +28,22 @@ export async function POST(request: NextRequest): Promise<Response> {
     const removed = Array.isArray(body.removed_keyword_ids)
       ? (body.removed_keyword_ids as unknown[]).map((value) => Number(value))
       : [];
-    return NextResponse.json(await commitItemDraft(admin, { draft_id: draftId, additional_keyword_ids: additional, removed_keyword_ids: removed }));
+    const newKeywords = Array.isArray(body.new_keywords)
+      ? (body.new_keywords as { name?: string; taxonomy_path?: string }[])
+          .filter((k) => typeof k?.name === "string" && k.name.trim().length > 0)
+          .map((k) => ({
+            name: k.name!.trim(),
+            taxonomy_path: typeof k.taxonomy_path === "string" ? k.taxonomy_path.trim() : undefined,
+          }))
+      : [];
+    return NextResponse.json(
+      await commitItemDraft(admin, {
+        draft_id: draftId,
+        additional_keyword_ids: additional,
+        removed_keyword_ids: removed,
+        new_keywords: newKeywords,
+      }),
+    );
   } catch (error) {
     return itemMutationCaughtError(error);
   }

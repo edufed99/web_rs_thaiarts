@@ -71,10 +71,14 @@ export function AdminItemForm() {
     setSubmitting(true);
     try {
       const draft = await postItemDraft(buildDraftBody(fields));
+      const newKeywords = (draft.proposals || [])
+        .filter((p) => p.is_new || p.id < 0)
+        .map((p) => ({ name: p.name, taxonomy_path: p.taxonomy_path }));
       const out = await postItemCommit({
         draft_id: draft.draft_id,
         additional_keyword_ids: [],
         removed_keyword_ids: [],
+        new_keywords: newKeywords,
       });
       await cover.uploadCoverIfAny(out.item.id);
       try {
@@ -96,16 +100,24 @@ export function AdminItemForm() {
     setError(null);
     setSubmitting(true);
     try {
+      const selectedProposals = draftResult.proposals.filter((p) => selectedIds.has(p.id));
+      const newKeywords = selectedProposals
+        .filter((p) => p.is_new || p.id < 0)
+        .map((p) => ({ name: p.name, taxonomy_path: p.taxonomy_path }));
+
       const proposalIds = new Set(draftResult.proposals.map((p) => p.id));
       const allSelected = Array.from(selectedIds);
-      const additional = allSelected.filter((id) => !proposalIds.has(id));
+      const additional = allSelected.filter((id) => id > 0 && !proposalIds.has(id));
       const removed = draftResult.proposals
+        .filter((p) => !p.is_new && p.id > 0)
         .map((p) => p.id)
         .filter((id) => !selectedIds.has(id));
+
       const out = await postItemCommit({
         draft_id: draftResult.draft_id,
         additional_keyword_ids: additional,
         removed_keyword_ids: removed,
+        new_keywords: newKeywords,
       });
       await cover.uploadCoverIfAny(out.item.id);
       // Best-effort: re-fetch the item so we get full context lists, then redirect.

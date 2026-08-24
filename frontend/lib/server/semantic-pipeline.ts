@@ -64,7 +64,23 @@ export const GENERIC_TERMS_PREDEFINED = new Set([
   "วัฒนธรรม",
   "ศิลปะ",
   "การ",
+  "ชุดการแสดง",
+  "การแสดงชุด",
+  "การแสดงสร้างสรรค์",
+  "การแสดงนาฏศิลป์สร้างสรรค์",
+  "ประเทศไทย",
+  "ประเทศ",
+  "รูปแบบ",
+  "ลักษณะ",
 ]);
+
+export function cleanKeywordString(word: string): string {
+  if (!word) return "";
+  return word
+    .replace(/^["'“‘]+|["'”’]+$/g, "") // strip quotes
+    .replace(/^[,\-–—.;:()\[\]{}]+|[,\-–—.;:()\[\]{}]+$/g, "") // strip punctuation
+    .trim();
+}
 
 export function normalizeThaiText(text: string): string {
   if (!text) return "";
@@ -84,7 +100,6 @@ export function domainAwareTokenize(text: string, vocabulary: string[]): Set<str
   if (!normText) return new Set();
 
   const tokens = new Set<string>();
-  // Split on whitespace as baseline
   const spaceTokens = normText.split(/\s+/).filter(Boolean);
   for (const st of spaceTokens) {
     tokens.add(st);
@@ -103,54 +118,45 @@ export function domainAwareTokenize(text: string, vocabulary: string[]): Set<str
 }
 
 /**
- * Step 1: Prompt protocol for Semantic Stopword Filtering using Gemini.
- * Evaluates candidates against 4 paper criteria:
- * 1. Umbrella / generic terms
- * 2. Abstract / evaluative terms
- * 3. Domain overuse terms
- * 4. Redundant / synonym terms
+ * Step 1: Gemini-assisted Domain Non-stopword Keyword Extraction & Filtering.
+ * Evaluates the full item description and extracts ONLY atomic, high-value domain keywords
+ * according to the 4 Paper Criteria (§3.1.1).
  */
-const STOPWORD_FILTER_PROMPT = `คุณคือผู้เชี่ยวชาญด้านภาษาศาสตร์และนาฏศิลป์ไทย (Expert Curator in Thai Performing Arts).
+const EXTRACT_NON_STOPWORDS_PROMPT = `คุณคือผู้เชี่ยวชาญด้านภาษาศาสตร์เชิงคำนวณและนาฏศิลป์ไทย (Computational Linguist in Thai Performing Arts).
 
-จงทำหน้าที่คัดกรองคำสำคัญ (Semantic Stopword Filtering) จากรายชื่อคำศัพท์ที่สกัดได้จากข้อมูลชุดการแสดงต่อไปนี้:
+จงทำหน้าที่ 2 ขั้นตอน:
+1. วิเคราะห์ข้อมูลชุดการแสดงด้านล่าง และสกัด "คำสำคัญเฉพาะทางที่เป็น Non-stopwords (Atomic Domain Keywords)"
+2. กรองและตัดคำหยุด (Stopwords) ออกตามเกณฑ์ Paper §3.1.1 อย่างเคร่งครัด:
+   - ห้ามนำประโยคหรือวลียาวๆ มาเป็นคำสำคัญ (เช่น 'มีวัฒนธรรมประเพณีที่งดงาม', 'สะท้อนวิถีชีวิตไทย')
+   - กรองคำที่มีความหมายกว้าง/ครอบจักรวาลออก (Umbrella Terms: เช่น ประเทศไทย, รูปแบบ, ชุดการแสดง, ลักษณะ, กิจกรรม)
+   - กรองคำเชิงนามธรรมหรือคำประเมินค่าออก (Abstract/Evaluative Terms: เช่น งดงาม, สวยงาม, ประทับใจ, ความสุข, โดดเด่น)
+   - กรองคำเฉพาะโดเมนที่พบบ่อยจนไม่ช่วยจำแนกออก (Domain-Specific Overuse: เช่น การแสดง, ศิลปะ, วัฒนธรรม, นาฏศิลป์, การแสดงสร้างสรรค์, การแสดงชุด)
+   - กรองคำซ้ำซ้อน
+3. สกัดเฉพาะ "คำสำคัญเดี่ยว (Atomic Keywords / Specific Noun Phrases ความยาวกระชับ 1-3 คำ)" ที่ระบุอัตลักษณ์เฉพาะทาง เช่น:
+   - ชื่อชุดการแสดงเฉพาะ, เครื่องแต่งกาย, เครื่องประดับ, เครื่องดนตรี, ท่ารำ, ทำนองเพลง, ตัวละคร, วรรณคดี, พิธีกรรม, วิถีชีวิตเฉพาะ, ชาติพันธุ์, ภูมิศาสตร์เฉพาะ
 
 [ข้อมูลชุดการแสดง]
-ชื่อ: {name}
-หมวดหมู่: {category}
+ชื่อการแสดง: {name}
 ประเภทการแสดง: {ptype}
+หมวดหมู่: {category}
 คำอธิบาย: {description}
 
-[เกณฑ์การคัดกรองคำตามระเบียบวิธีวิจัย]
-1. กรองคำที่เป็น Stopword ออก ได้แก่:
-   - คำครอบจักรวาล/ทั่วไปเกินไป (Umbrella/Generic terms เช่น การแสดง, วัฒนธรรม, ศิลปะ, สวยงาม, ประทับใจ, ดีเลิศ)
-   - คำนามธรรมหรือคำประเมินค่า (Abstract/Evaluative terms)
-   - คำเชื่อม คำบุพบท หรือคำกริยาทั่วไปที่ไม่มีคุณค่าเชิงความหมายเฉพาะทางนาฏศิลป์
-2. เก็บรักษาเฉพาะคำที่ไม่ใช่ Stopword (Non-stopwords) ได้แก่:
-   - ศัพท์เฉพาะทางนาฏศิลป์ไทย, ชื่อเพลง, ทำนอง, ท่ารำ, เครื่องแต่งกาย, เครื่องประดับ, วรรณคดี, ตัวละคร, เครื่องดนตรี, วิถีชีวิต, พิธีกรรม, ยุคสมัย, ชาติพันธุ์
-
-[รายชื่อคำศัพท์ที่ต้องคัดกรอง]
-{candidate_words}
-
-จงส่งผลลัพธ์เฉพาะคำที่ "ผ่านการคัดกรองว่าเป็น Non-stopwords" ในรูปแบบ JSON array อย่างเคร่งครัด:
-{"non_stopwords": ["คำที่ 1", "คำที่ 2", ...]}
+จงตอบเป็น JSON array ของคำสำคัญที่กระชับและผ่านเกณฑ์เท่านั้น (ตัดเครื่องหมายคำพูด/อัญประกาศออก):
+{"keywords": ["คำสำคัญ 1", "คำสำคัญ 2"]}
 `;
 
-export async function filterStopwordsWithGemini(
-  candidates: string[],
+export async function extractNonStopwordsWithGemini(
   item: { name: string; description?: string; category_group?: string; performance_type?: string },
 ): Promise<string[]> {
   const apiKey = process.env.GEMINI_API_KEY?.trim();
-  if (!apiKey || candidates.length === 0) {
-    return candidates;
-  }
+  if (!apiKey) return [];
 
-  const model = process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
-  const prompt = STOPWORD_FILTER_PROMPT
+  const model = process.env.GEMINI_MODEL?.trim() || "gemini-3.1-flash-lite";
+  const prompt = EXTRACT_NON_STOPWORDS_PROMPT
     .replace("{name}", item.name || "")
     .replace("{category}", item.category_group || "")
     .replace("{ptype}", item.performance_type || "")
-    .replace("{description}", item.description || "")
-    .replace("{candidate_words}", candidates.map((c) => `- ${c}`).join("\n"));
+    .replace("{description}", item.description || "");
 
   try {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
@@ -168,19 +174,29 @@ export async function filterStopwordsWithGemini(
     });
 
     if (!response.ok) {
-      console.warn(`[semantic-pipeline] Gemini stopword filter returned status ${response.status}`);
-      return candidates;
+      console.warn(`[semantic-pipeline] Gemini extraction returned status ${response.status}`);
+      return [];
     }
 
     const data = await response.json();
     const rawJson = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!rawJson) return candidates;
+    if (!rawJson) return [];
 
     const parsed = JSON.parse(rawJson);
-    const nonStopwords: string[] = Array.isArray(parsed?.non_stopwords) ? parsed.non_stopwords : [];
-    return nonStopwords.filter((w) => typeof w === "string" && w.trim().length > 0);
+    const rawKeywords: string[] = Array.isArray(parsed?.keywords) ? parsed.keywords : [];
+
+    const cleanKeywords: string[] = [];
+    for (const kw of rawKeywords) {
+      if (typeof kw !== "string") continue;
+      const clean = cleanKeywordString(kw);
+      // Filter out long phrases (> 35 chars) or empty or known generic terms
+      if (clean.length >= 2 && clean.length <= 35 && !GENERIC_TERMS_PREDEFINED.has(clean)) {
+        cleanKeywords.push(clean);
+      }
+    }
+    return cleanKeywords;
   } catch (error) {
-    console.warn("[semantic-pipeline] Stopword filter failed, graceful fallback:", error);
-    return candidates;
+    console.warn("[semantic-pipeline] Non-stopword extraction failed:", error);
+    return [];
   }
 }

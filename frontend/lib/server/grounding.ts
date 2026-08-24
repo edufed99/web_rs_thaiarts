@@ -10,8 +10,9 @@
 import {
   CUSTOM_WORDS,
   GENERIC_TERMS_PREDEFINED,
+  cleanKeywordString,
   domainAwareTokenize,
-  filterStopwordsWithGemini,
+  extractNonStopwordsWithGemini,
   normalizeThaiText,
 } from "./semantic-pipeline";
 import {
@@ -85,43 +86,6 @@ export function autoGroundKeywords(
 }
 
 /**
- * Extract candidate phrase fragments from text that are not yet matched in the vocabulary.
- */
-function extractUnmatchedCandidatePhrases(
-  text: string,
-  matchedVocabNames: Set<string>,
-): string[] {
-  const normText = normalizeThaiText(text);
-  if (!normText) return [];
-
-  // Match words from CUSTOM_WORDS and potential domain phrases
-  const candidates = new Set<string>();
-
-  for (const cw of CUSTOM_WORDS) {
-    const normCw = normalizeThaiText(cw);
-    if (normCw && normText.includes(normCw) && !matchedVocabNames.has(normCw)) {
-      if (!GENERIC_TERMS_PREDEFINED.has(normCw)) {
-        candidates.add(cw);
-      }
-    }
-  }
-
-  // Also extract space-delimited segments of 3-30 chars that look like domain terms
-  const rawSegments = text.split(/[\s,.;:()\[\]{}'"\-–—\/]+/);
-  for (const seg of rawSegments) {
-    const s = seg.trim();
-    if (s.length >= 3 && s.length <= 30 && !GENERIC_TERMS_PREDEFINED.has(s)) {
-      const normS = normalizeThaiText(s);
-      if (!matchedVocabNames.has(normS) && !candidates.has(s)) {
-        candidates.add(s);
-      }
-    }
-  }
-
-  return Array.from(candidates).slice(0, 40); // Cap batch size for Gemini
-}
-
-/**
  * End-to-end Semantic Pipeline Grounding (Step 1 -> Step 2 -> Step 3)
  */
 export async function executeSemanticPipelineGrounding(
@@ -139,7 +103,7 @@ export async function executeSemanticPipelineGrounding(
       matchedVocabNames.add(normalizeThaiText(entry.name));
       proposals.push({
         id: entry.id,
-        name: entry.name,
+        name: cleanKeywordString(entry.name),
         source: "auto",
         confidence: 1.0,
         taxonomy_path: entry.taxonomyPath,
@@ -148,22 +112,28 @@ export async function executeSemanticPipelineGrounding(
     }
   }
 
-  // 2. Step 1 (Stopword Filtering) & Step 2 (Taxonomy Classification) for Candidate Words
-  const fullText = `${item.name} ${item.description || ""} ${item.category_group || ""} ${item.performance_type || ""}`;
-  const candidatePhrases = extractUnmatchedCandidatePhrases(fullText, matchedVocabNames);
-
-  if (candidatePhrases.length > 0 && process.env.GEMINI_API_KEY?.trim()) {
+  // 2. Step 1 (Stopword Filtering) & Step 2 (Taxonomy Classification) for Newly Discovered Words
+  if (process.env.GEMINI_API_KEY?.trim()) {
     try {
-      // Step 1: Filter Stopwords
-      const nonStopwords = await filterStopwordsWithGemini(candidatePhrases, item);
-      // Remove any that happen to match existing proposals
-      const newNonStopwords = nonStopwords.filter(
-        (w) => !matchedVocabNames.has(normalizeThaiText(w)),
-      );
+      // Step 1: Extract and Filter Stopwords via Gemini (strictly atomic non-stopwords)
+      const extractedNonStopwords = await extractNonStopwordsWithGemini(item);
 
-      if (newNonStopwords.length > 0) {
+      // Keep only truly new keywords (not already matched in Layer A or generic terms)
+      const newKeywordsToClassify: string[] = [];
+      const seenNew = new Set<string>();
+
+      for (const rawWord of extractedNonStopwords) {
+        const clean = cleanKeywordString(rawWord);
+        const norm = normalizeThaiText(clean);
+        if (norm.length >= 2 && !matchedVocabNames.has(norm) && !seenNew.has(norm) && !GENERIC_TERMS_PREDEFINED.has(clean)) {
+          seenNew.add(norm);
+          newKeywordsToClassify.push(clean);
+        }
+      }
+
+      if (newKeywordsToClassify.length > 0) {
         // Step 2: Classify into 23 Taxonomy Paths
-        const classifications = await classifyNewKeywordsWithGemini(newNonStopwords);
+        const classifications = await classifyNewKeywordsWithGemini(newKeywordsToClassify);
         let tempId = -1;
         for (const [word, cls] of classifications.entries()) {
           proposals.push({

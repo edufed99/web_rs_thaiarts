@@ -7,6 +7,8 @@
  * 3. Gemini-assisted classification for newly discovered non-stopwords.
  */
 
+import { cleanKeywordString } from "./semantic-pipeline";
+
 export interface TaxonomyPathDefinition {
   level1: string;
   level2: string;
@@ -77,7 +79,6 @@ export async function classifyNewKeywordsWithGemini(
 
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   if (!apiKey) {
-    // Default fallback to "ศิลปะการแสดงและดนตรี > นาฏยศิลป์และการแสดง"
     for (const word of words) {
       result.set(word, {
         level1: "ศิลปะการแสดงและดนตรี",
@@ -89,7 +90,7 @@ export async function classifyNewKeywordsWithGemini(
     return result;
   }
 
-  const model = process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
+  const model = process.env.GEMINI_MODEL?.trim() || "gemini-3.1-flash-lite";
   const pathList = CANONICAL_TAXONOMY_PATHS.map((p) => `- [${p.level1}] -> ${p.level2}`).join("\n");
   const wordsList = words.map((w) => `- ${w}`).join("\n");
 
@@ -126,28 +127,32 @@ export async function classifyNewKeywordsWithGemini(
 
     for (const c of classifications) {
       if (!c?.word) continue;
+      const wordClean = cleanKeywordString(String(c.word));
       const matchedPath = CANONICAL_TAXONOMY_PATHS.find(
         (p) => p.level1 === c.level1 && p.level2 === c.level2,
       ) || CANONICAL_TAXONOMY_PATHS.find(
         (p) => p.level2 === c.level2,
-      ) || CANONICAL_TAXONOMY_PATHS[17]; // default to "นาฏยศิลป์และการแสดง"
+      ) || CANONICAL_TAXONOMY_PATHS.find(
+        (p) => p.level1 === c.level1,
+      ) || CANONICAL_TAXONOMY_PATHS[17];
 
-      result.set(String(c.word).trim(), {
+      result.set(wordClean, {
         level1: matchedPath.level1,
         level2: matchedPath.level2,
         fullPath: matchedPath.fullPath,
-        confidence: typeof c.confidence === "number" ? c.confidence : 0.85,
+        confidence: typeof c.confidence === "number" ? c.confidence : 0.92,
       });
     }
 
     // Any words missing from classification get fallback
     for (const word of words) {
-      if (!result.has(word)) {
-        result.set(word, {
+      const wordClean = cleanKeywordString(word);
+      if (!result.has(wordClean)) {
+        result.set(wordClean, {
           level1: "ศิลปะการแสดงและดนตรี",
           level2: "นาฏยศิลป์และการแสดง",
           fullPath: "ศิลปะการแสดงและดนตรี > นาฏยศิลป์และการแสดง",
-          confidence: 0.5,
+          confidence: 0.8,
         });
       }
     }
@@ -162,11 +167,12 @@ export async function classifyNewKeywordsWithGemini(
 function fallbackAll(words: string[]): Map<string, { level1: string; level2: string; fullPath: string; confidence: number }> {
   const map = new Map<string, { level1: string; level2: string; fullPath: string; confidence: number }>();
   for (const w of words) {
-    map.set(w, {
+    const clean = cleanKeywordString(w);
+    map.set(clean, {
       level1: "ศิลปะการแสดงและดนตรี",
       level2: "นาฏยศิลป์และการแสดง",
       fullPath: "ศิลปะการแสดงและดนตรี > นาฏยศิลป์และการแสดง",
-      confidence: 0.5,
+      confidence: 0.8,
     });
   }
   return map;

@@ -7,7 +7,12 @@ import {
 } from "@/db/entities/ArtifactPublication";
 import { CatalogueItemEntity } from "@/db/entities/Catalogue";
 import type { ApplicationUser } from "@/db/entities/Members";
-import type { ArtifactPublicationOut } from "@/lib/types";
+import {
+  LikeEntity,
+  RatingEntity,
+  SavedItemEntity,
+} from "@/db/entities/Members";
+import type { ArtifactPublicationOut, PublicationLiveSignals } from "@/lib/types";
 import { ModelServiceUnavailableError } from "@/lib/server/model-service";
 
 /**
@@ -53,6 +58,8 @@ export interface PublicationStatus {
     count: number;
     items: PendingItem[];
   };
+  /** Live interactions recorded in the database. */
+  live_signals?: PublicationLiveSignals;
   /** What the Private Model Service reports it is serving. */
   model: ModelServiceHealth;
 }
@@ -100,7 +107,7 @@ export async function markItemsUnpublished(
 
 export async function publicationStatus(): Promise<PublicationStatus> {
   const dataSource = await getDataSource();
-  const [published, pendingRows] = await Promise.all([
+  const [published, pendingRows, liveLikes, liveSaves, liveRatings] = await Promise.all([
     dataSource.getRepository(ArtifactPublicationEntity).find({
       order: { id: "DESC" },
       take: 1,
@@ -113,13 +120,23 @@ export async function publicationStatus(): Promise<PublicationStatus> {
       .where("item.published_at IS NULL")
       .orderBy("item.id", "ASC")
       .getRawMany<{ id: string; name: string }>(),
+    dataSource.getRepository(LikeEntity).count(),
+    dataSource.getRepository(SavedItemEntity).count(),
+    dataSource.getRepository(RatingEntity).count(),
   ]);
+  const liveTotal = liveLikes + liveSaves + liveRatings;
   const model = await fetchModelServiceHealth();
   return {
     published: published[0] ? publicationOut(published[0]) : null,
     pending: {
       count: pendingRows.length,
       items: pendingRows.map((row) => ({ id: Number(row.id), name: row.name })),
+    },
+    live_signals: {
+      likes: liveLikes,
+      saves: liveSaves,
+      ratings: liveRatings,
+      total: liveTotal,
     },
     model,
   };

@@ -4,6 +4,8 @@
 .next-dev
 .next-*
 node_modules
+**/node_modules
+frontend/
 __pycache__
 *.pyc
 *.pyo
@@ -23,5 +25,13 @@ output/
 phase4/
 _backup/
 _staging/
+old code/
+imageRS/
+backups/
+data/
+.worktrees/
+.claude/
+.playwright-mcp/
+.superpowers/
 backend/data/uploads/*
 !backend/data/uploads/.gitkeep

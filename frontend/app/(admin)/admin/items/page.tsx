@@ -9,7 +9,9 @@ import {
   ApiClientError,
   deleteAdminItem,
   deleteAdminUser,
+  executeBenchmarkEvaluation,
   executePublication,
+  rebuildAdminArtifacts,
   getAdminUsers,
   getContexts,
   getItems,
@@ -233,6 +235,31 @@ export default function AdminItemsListPage() {
     };
   }, [activeDataTab, ready, publicationReloadKey]);
 
+  const [evaluating, setEvaluating] = useState(false);
+  const [rebuilding, setRebuilding] = useState(false);
+
+  async function handleRebuildArtifacts() {
+    const ok = window.confirm(
+      "ระบบจะทำการประมวลผล Vector Embeddings (Multilingual E5) และกราฟความสัมพันธ์ ItemKNN ใหม่สำหรับชุดการแสดงทั้งหมดในฐานข้อมูล\n\nขั้นตอนนี้อาจใช้เวลาประมาณ 10-60 วินาที คุณต้องการเริ่มการเทรนและสร้าง Artifact ใหม่หรือไม่?"
+    );
+    if (!ok) return;
+    setRebuilding(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await rebuildAdminArtifacts();
+      setPublicationStatus(await getPublicationStatus());
+      setNotice(
+        `🚀 เทรนและสร้าง Artifact โมเดลใหม่สำเร็จ! ครอบคลุมชุดการแสดง ${res.rebuild.item_count} รายการ (Dimension: ${res.rebuild.embedding_dim}, เวลาประมวลผล: ${(res.rebuild.duration_ms / 1000).toFixed(1)} วินาที) โมเดลพร้อมสำหรับการเผยแพร่แล้ว`
+      );
+      setPublicationReloadKey((k) => k + 1);
+    } catch (e) {
+      setError(e instanceof ApiClientError ? e.message : String(e));
+    } finally {
+      setRebuilding(false);
+    }
+  }
+
   async function handlePublish() {
     setPublishing(true);
     setError(null);
@@ -249,6 +276,23 @@ export default function AdminItemsListPage() {
       setError(e instanceof ApiClientError ? e.message : String(e));
     } finally {
       setPublishing(false);
+    }
+  }
+
+  async function handleRunBenchmark() {
+    setEvaluating(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const data = await executeBenchmarkEvaluation();
+      setNotice(
+        `รันประเมินผล Benchmark สำเร็จ · nDCG@10: ${data.quality?.ndcg10 ?? "—"} · HR@10: ${data.quality?.hr10 ?? "—"} · MRR@10: ${data.quality?.mrr10 ?? "—"}`,
+      );
+      setPublicationReloadKey((k) => k + 1);
+    } catch (e) {
+      setError(e instanceof ApiClientError ? e.message : String(e));
+    } finally {
+      setEvaluating(false);
     }
   }
 
@@ -1128,6 +1172,16 @@ export default function AdminItemsListPage() {
                           : "ข้อมูลทั้งหมดอยู่ใน build ปัจจุบันแล้ว"
                       }
                     />
+                    <PublicationItem
+                      label="สัญญาณเรียลไทม์สะสม"
+                      value={publicationStatus.live_signals ? `+${publicationStatus.live_signals.total}` : "—"}
+                      tone="neutral"
+                      detail={
+                        publicationStatus.live_signals
+                          ? `ถูกใจ ${publicationStatus.live_signals.likes} · บันทึก ${publicationStatus.live_signals.saves} · รีวิว ${publicationStatus.live_signals.ratings} (คำนวณเรียลไทม์แล้ว)`
+                          : "รอข้อมูลปฏิสัมพันธ์"
+                      }
+                    />
                   </div>
 
                   {publicationStatus.pending.count > 0 ? (
@@ -1150,19 +1204,71 @@ export default function AdminItemsListPage() {
                   ) : null}
 
                   <div className="publication-actions">
-                    <p className="muted">
-                      การแก้ไข catalog จะแสดงผลทันทีในหน้ารายการ แต่จะไม่ถูกใช้ใน
-                      การให้คะแนนส่วนบุคคล (personalized scoring) จนกว่าการเผยแพร่
-                      จะสำเร็จ
-                    </p>
-                    <button
-                      type="button"
-                      className="primary"
-                      disabled={publishing || !publicationStatus.model.reachable}
-                      onClick={() => void handlePublish()}
+                    <div
+                      style={{
+                        background: "#fff9eb",
+                        border: "1px solid #f6c343",
+                        borderRadius: "8px",
+                        padding: "1rem 1.25rem",
+                        marginBottom: "1.25rem",
+                        color: "#664d03",
+                      }}
                     >
-                      {publishing ? "กำลังเผยแพร่..." : "เผยแพร่ Artifact ฉบับปัจจุบัน"}
-                    </button>
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
+                        <span style={{ fontSize: "1.25rem", lineHeight: "1" }} aria-hidden="true">⚠️</span>
+                        <div>
+                          <strong style={{ fontSize: "0.95rem", display: "block", marginBottom: "0.3rem" }}>
+                            คำเตือนและข้อปฏิบัติเกี่ยวกับการเพิ่มชุดการแสดง & การเทรนโมเดล AI
+                          </strong>
+                          <p style={{ margin: "0 0 0.4rem", fontSize: "0.875rem", lineHeight: "1.5" }}>
+                            • <strong>กรณีมีการเพิ่มชุดการแสดงใหม่:</strong> กรุณากดปุ่ม <strong>"🚀 เทรนและสร้าง Artifact โมเดลใหม่"</strong> ก่อน เพื่อให้ระบบประมวลผล Dense Vector Embeddings (Multilingual E5) และ ItemKNN สำหรับชุดการแสดงใหม่ให้โมเดล AI รู้จักอย่างสมบูรณ์
+                          </p>
+                          <p style={{ margin: "0 0 0.4rem", fontSize: "0.875rem", lineHeight: "1.5" }}>
+                            • <strong>กรณีแก้ไขข้อมูลเดิม / เผยแพร่ทั่วไป:</strong> สามารถกดปุ่ม <strong>"เผยแพร่ Artifact ฉบับปัจจุบัน"</strong> ได้ทันที
+                          </p>
+                          <p style={{ margin: 0, fontSize: "0.8rem", color: "#856404", lineHeight: "1.4" }}>
+                            * ระบบมีระบบ Safe Fallback ป้องกันการขัดข้อง แต่หากไม่ได้กดเทรนโมเดล ชุดการแสดงใหม่จะยังไม่ได้รับคะแนน Dense AI จนกว่าจะมีการประมวลผลโมเดลใหม่
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+                      <button
+                        type="button"
+                        className="primary"
+                        style={{
+                          background: "linear-gradient(135deg, #1e5ba8 0%, #0e3768 100%)",
+                          borderColor: "#1e5ba8",
+                          fontWeight: 700,
+                          padding: "10px 18px",
+                          borderRadius: "8px",
+                          color: "#fff",
+                          cursor: "pointer",
+                        }}
+                        disabled={rebuilding || publishing}
+                        onClick={() => void handleRebuildArtifacts()}
+                      >
+                        {rebuilding ? "⏳ กำลังเทรนและสร้าง Artifact ใหม่..." : "🚀 เทรนและสร้าง Artifact โมเดลใหม่ (Re-train Models)"}
+                      </button>
+                      <button
+                        type="button"
+                        className="primary"
+                        disabled={publishing || rebuilding || !publicationStatus.model.reachable}
+                        onClick={() => void handlePublish()}
+                      >
+                        {publishing ? "กำลังเผยแพร่..." : "เผยแพร่ Artifact ฉบับปัจจุบัน"}
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary"
+                        style={{ padding: "10px 18px", borderRadius: "8px", fontWeight: 700, cursor: "pointer" }}
+                        disabled={evaluating || rebuilding}
+                        onClick={() => void handleRunBenchmark()}
+                      >
+                        {evaluating ? "⏳ กำลังรัน Benchmark..." : "🔄 รันประเมินผล Benchmark โมเดล"}
+                      </button>
+                    </div>
                   </div>
                 </div>
               ) : (

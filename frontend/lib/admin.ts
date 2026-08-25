@@ -226,3 +226,53 @@ export async function executePublication(
   });
   return handle<PublicationExecuteOut>(res);
 }
+
+export async function executeBenchmarkEvaluation(): Promise<{
+  success: boolean;
+  message: string;
+  quality: {
+    ndcg10: number;
+    hr10: number;
+    mrr10: number;
+    coverage: number;
+    violation_rate: number;
+    source: string;
+    ran_at: string;
+  };
+}> {
+  const res = await fetch(`${baseUrl()}/admin/evaluation/run`, {
+    method: "POST",
+    headers: mutationHeaders({
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+    }),
+    credentials: "same-origin",
+    body: JSON.stringify({}),
+    cache: "no-store",
+  });
+  return handle(res);
+}
+
+export async function rebuildAdminArtifacts(options: { synthetic?: boolean } = {}): Promise<{
+  status: string;
+  rebuild: {
+    status: string;
+    artifact_version: string;
+    item_count: number;
+    embedding_dim: number;
+    duration_ms: number;
+  };
+}> {
+  const res = await fetch(`${baseUrl()}/admin/artifacts/rebuild`, {
+    method: "POST",
+    headers: mutationHeaders({
+      "Content-Type": "application/json",
+      ...getAuthHeaders(),
+    }),
+    credentials: "same-origin",
+    body: JSON.stringify({ synthetic: Boolean(options.synthetic) }),
+    cache: "no-store",
+  });
+  return handle(res);
+}
+

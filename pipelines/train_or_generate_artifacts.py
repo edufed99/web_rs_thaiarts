@@ -39,6 +39,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+sys.path.insert(0, str(Path(__file__).parent.resolve()))
 from select_best_experiment_config import select_best_experiment_config
 
 SCHEMA_VERSION = "1.0.0"

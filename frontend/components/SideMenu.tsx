@@ -47,6 +47,25 @@ export function SideMenu() {
         ))}
       </nav>
 
+      <div className="side-menu-title" style={{ marginTop: "0.5rem" }}>
+        <span>Public pages</span>
+        <i aria-hidden="true" />
+      </div>
+      <nav className="side-menu-links admin-research-links" aria-label="Public pages">
+        <SideNavLink
+          href="/"
+          icon="🌐"
+          label="หน้าเว็บไซต์ทั่วไป"
+          active={false}
+        />
+        <SideNavLink
+          href="/profile"
+          icon="👤"
+          label="โปรไฟล์ผู้ใช้ของฉัน"
+          active={pathname.startsWith("/profile")}
+        />
+      </nav>
+
       <div className="admin-side-status" aria-label="สถานะระบบ">
         <span aria-hidden="true" />
         <div>

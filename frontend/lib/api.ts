@@ -79,4 +79,7 @@ export {
   uploadItemVideo,
   getPublicationStatus,
   executePublication,
+  executeBenchmarkEvaluation,
+  rebuildAdminArtifacts,
 } from "./admin";
+

@@ -25,6 +25,7 @@ export default function MemberDashboardPage() {
   const [userKey, setUserKey] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [avatarError, setAvatarError] = useState(false);
 
   useEffect(() => {
     const reload = () => setReloadKey((value) => value + 1);
@@ -75,12 +76,13 @@ export default function MemberDashboardPage() {
 
       <section className="panel" style={{ display: "grid", gap: "1rem" }} aria-label="โปรไฟล์สมาชิก">
         <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
-          {profile.avatar_url ? (
+          {profile.avatar_url && !avatarError ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={resolveImageUrl(profile.avatar_url) ?? undefined}
               alt={`รูปโปรไฟล์ ${displayName}`}
               style={{ width: 76, height: 76, borderRadius: "50%", objectFit: "cover" }}
+              onError={() => setAvatarError(true)}
             />
           ) : (
             <div className="member-avatar" aria-hidden="true" style={{ width: 76, height: 76, fontSize: 28 }}>

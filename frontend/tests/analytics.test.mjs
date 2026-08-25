@@ -297,6 +297,7 @@ test("dashboard returns a zeroed but fully-populated payload on a fresh database
   assert.equal(payload.kpis.members.raw_value, 2, "two signups exist");
   assert.equal(payload.kpis.performances.raw_value, 3);
   assert.equal(payload.kpis.indices.raw_value, 0);
+  assert.equal(payload.kpis.points.raw_value, 0, "no interactions on fresh DB");
   assert.equal(payload.kpis.active_users.raw_value, 0);
   assert.equal(payload.trend_30d.labels.length, 0);
   assert.equal(payload.user_growth.new_users.length, 1, "both signups land on today's bucket");
@@ -452,6 +453,7 @@ test("metrics reflect persisted actions and recommendation outcomes", async () =
   assert.equal(dashboard.status, 200);
   const payload = await dashboard.json();
   assert.equal(payload.kpis.indices.raw_value, 4, "recommendation_results count");
+  assert.equal(payload.kpis.points.raw_value, 4, "1 like + 1 save + 2 ratings");
   assert.equal(payload.kpis.active_users.raw_value, 1);
   assert.equal(payload.kpis.sessions.raw_value, 1, "one user on one day");
   assert.equal(payload.popular_subcontexts.total_requests, 2);

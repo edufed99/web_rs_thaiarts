@@ -138,3 +138,41 @@ class PrivateHealthResponse(BaseModel):
     status: str
     artifact_version: str
     artifact_item_count: int = Field(ge=0)
+
+
+class RebuildItemPayload(BaseModel):
+    item_id: int
+    name: str
+    description: str = ""
+    category_group: str = ""
+    performance_type: str = ""
+    performers_count: int | None = None
+    duration_minutes: int | None = None
+    price_text: str = ""
+    is_active: bool = True
+    keyword_names: list[str] = Field(default_factory=list)
+    context_names: list[str] = Field(default_factory=list)
+    taxonomy_paths: list[str] = Field(default_factory=list)
+
+
+class RebuildInteractionPayload(BaseModel):
+    user_key: str
+    item_id: int
+    rating: int
+
+
+class ArtifactRebuildRequest(BaseModel):
+    items: list[RebuildItemPayload]
+    interactions: list[RebuildInteractionPayload] = Field(default_factory=list)
+    synthetic_embeddings: bool = False
+
+
+class ArtifactRebuildResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: str
+    artifact_version: str
+    item_count: int
+    embedding_dim: int
+    duration_ms: float
+

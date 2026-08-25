@@ -10,7 +10,7 @@ import { apiError, internalApiError } from "@/lib/server/api-response";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const publicDirectories = new Set(["items", "avatars"]);
+const publicDirectories = new Set(["items", "avatars", "profiles"]);
 const contentTypes: Record<string, string> = {
   ".gif": "image/gif",
   ".jpeg": "image/jpeg",

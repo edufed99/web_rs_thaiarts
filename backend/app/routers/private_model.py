@@ -12,12 +12,15 @@ from ..core.exceptions import (
 )
 from ..model_loader import ArtifactLoader, get_singleton
 from ..schemas.inference import (
+    ArtifactRebuildRequest,
+    ArtifactRebuildResponse,
     InferenceRequest,
     InferenceResponse,
     PrivateHealthResponse,
     SimilarityRequest,
     SimilarityResponse,
 )
+from ..services.artifact_rebuild import rebuild_artifacts
 from ..services.model_inference import score_inference
 from ..services.model_similarity import rank_similar_items
 
@@ -76,3 +79,13 @@ def similarity(
     loader: ArtifactLoader = Depends(get_singleton),
 ) -> SimilarityResponse:
     return rank_similar_items(loader, request)
+
+
+@router.post("/artifacts/rebuild", response_model=ArtifactRebuildResponse)
+def rebuild(
+    request: ArtifactRebuildRequest,
+    loader: ArtifactLoader = Depends(get_singleton),
+    settings: Settings = Depends(get_settings),
+) -> ArtifactRebuildResponse:
+    return rebuild_artifacts(loader, request, settings)
+

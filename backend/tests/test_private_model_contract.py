@@ -78,6 +78,7 @@ def test_private_app_exposes_only_versioned_authenticated_model_routes(private_c
         "/internal/v1/health",
         "/internal/v1/inference",
         "/internal/v1/similarity",
+        "/internal/v1/artifacts/rebuild",
     }
 
 
@@ -266,3 +267,65 @@ def test_private_contract_unavailable_when_secret_not_configured(
         assert response.json()["error"]["code"] == "internal_service_not_configured"
     reset_singleton()
     reset_settings_cache()
+
+
+def test_rebuild_artifacts_endpoint(private_client, artifacts_dir):
+    rebuild_payload = {
+        "items": [
+            {
+                "item_id": 1,
+                "name": "โขนพระราชทาน ชุดใหม่",
+                "description": "การแสดงโขนสุดอลังการ",
+                "category_group": "โขน",
+                "performance_type": "การแสดงนาฏศิลป์",
+                "performers_count": 20,
+                "duration_minutes": 60,
+                "price_text": "500 บาท",
+                "is_active": True,
+                "keyword_names": ["โขน", "ศิลปะ"],
+                "context_names": ["งานพิธี"],
+                "taxonomy_paths": ["ศิลปะการแสดง > โขน"],
+            },
+            {
+                "item_id": 2,
+                "name": "ระบำสุโขทัย",
+                "description": "ระบำโบราณคดี",
+                "category_group": "ระบำ",
+                "performance_type": "ระบำ",
+                "performers_count": 8,
+                "duration_minutes": 15,
+                "price_text": "300 บาท",
+                "is_active": True,
+                "keyword_names": ["ระบำ", "สุโขทัย"],
+                "context_names": ["งานต้อนรับ"],
+                "taxonomy_paths": ["ศิลปะการแสดง > ระบำ"],
+            },
+        ],
+        "interactions": [
+            {"user_key": "user:1", "item_id": 1, "rating": 5},
+            {"user_key": "user:2", "item_id": 2, "rating": 4},
+        ],
+        "synthetic_embeddings": True,
+    }
+
+    # Unauthorized request
+    assert private_client.post("/internal/v1/artifacts/rebuild", json=rebuild_payload).status_code == 401
+
+    # Authorized request
+    response = private_client.post(
+        "/internal/v1/artifacts/rebuild",
+        json=rebuild_payload,
+        headers=_auth(),
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
+    assert data["item_count"] == 2
+    assert data["embedding_dim"] == 4
+    assert data["duration_ms"] >= 0
+
+    # Verify health now reflects the updated 2 items
+    health_resp = private_client.get("/internal/v1/health", headers=_auth())
+    assert health_resp.status_code == 200
+    assert health_resp.json()["artifact_item_count"] == 2
+

@@ -17,6 +17,7 @@ import { randomUUID } from "node:crypto";
 
 import type { ApplicationUser } from "@/db/entities/Members";
 import {
+  InteractionLogEntity,
   LikeEntity,
   RatingEntity,
   SavedItemEntity,
@@ -202,11 +203,12 @@ export async function generateRecommendations(
     ranked = await rankInferenceCandidates(inferenceRequest);
     latencyMs = Date.now() - startedAt;
   } catch (error) {
-    if (error instanceof ModelServiceUnavailableError) {
-      fallbackReason = error.message;
-    } else {
-      throw error;
-    }
+    fallbackReason =
+      error instanceof ModelServiceUnavailableError
+        ? error.message
+        : error instanceof Error
+        ? error.message
+        : "Model inference fallback";
   }
 
   const historyEvidence: HistoryEvidence = {
@@ -216,22 +218,29 @@ export async function generateRecommendations(
     states: personalization.user_state_by_artifact,
   };
 
-  let results: RecommendationResultOut[];
-  if (fallbackReason !== null) {
+  let results: RecommendationResultOut[] = [];
+  if (fallbackReason === null && ranked.length > 0) {
+    results = ranked
+      .map((candidate, index) => {
+        const item = byArtifactId.get(candidate.artifact_item_id);
+        if (!item) return null;
+        return buildResultRow(
+          snapshot,
+          item,
+          candidate,
+          context.name,
+          keywordResolution.names,
+          personalization,
+          historyEvidence,
+          index + 1,
+        );
+      })
+      .filter((r): r is RecommendationResultOut => r !== null)
+      .slice(0, input.topK);
+  }
+
+  if (results.length === 0) {
     results = await fallbackRanking(snapshot, eligible, personalization, input.topK);
-  } else {
-    results = ranked.slice(0, input.topK).map((candidate, index) =>
-      buildResultRow(
-        snapshot,
-        byArtifactId.get(candidate.artifact_item_id)!,
-        candidate,
-        context.name,
-        keywordResolution.names,
-        personalization,
-        historyEvidence,
-        index + 1,
-      ),
-    );
   }
 
   const requestId = await recordRecommendation({
@@ -289,7 +298,7 @@ function modelConfigMetadata(caps: { maxCands?: number; minCands: number }): Rec
   return {
     cbf_model: "precomputed-E5",
     cf_model: "ItemKNN",
-    hybrid_alpha: envFloat("RECSYS_HYBRID_ALPHA", 0.7),
+    hybrid_alpha: envFloat("RECSYS_HYBRID_ALPHA", 0.8),
     cbf_keyword_boost: envFloat("RECSYS_CBF_KEYWORD_BOOST", 0.05),
     itemknn_k: envInt("RECSYS_ITEMKNN_K", 10),
     itemknn_shrink: envFloat("RECSYS_ITEMKNN_SHRINK", 50.0),
@@ -1087,6 +1096,21 @@ async function recordRecommendation(options: {
           })),
         );
       }
+      const effectiveUserKey =
+        options.userKey || (options.userId ? `user:${options.userId}` : "anon:visitor");
+      await manager.getRepository(InteractionLogEntity).save({
+        userKey: effectiveUserKey,
+        itemId: null,
+        actionType: "search",
+        metadataJson: JSON.stringify({
+          context_id: options.contextInternalId,
+          keyword_ids: options.selectedKeywordInternalIds,
+          candidate_count: options.candidateCount,
+          top_k: options.topK,
+          method: options.method,
+        }),
+        recommendationRequestId: Number(request.id),
+      });
     });
     return requestId;
   } catch {

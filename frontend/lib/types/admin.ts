@@ -188,6 +188,13 @@ export interface PublicationModelHealth {
   error?: string;
 }
 
+export interface PublicationLiveSignals {
+  likes: number;
+  saves: number;
+  ratings: number;
+  total: number;
+}
+
 export interface PublicationStatusOut {
   /** Latest recorded publication, or null when none has succeeded yet. */
   published: ArtifactPublicationOut | null;
@@ -196,6 +203,8 @@ export interface PublicationStatusOut {
     count: number;
     items: { id: number; name: string }[];
   };
+  /** Live interactions recorded in the database. */
+  live_signals?: PublicationLiveSignals;
   /** What the Private Model Service reports it is serving. */
   model: PublicationModelHealth;
 }
@@ -327,6 +336,25 @@ export interface RatingDistributionOut {
  * offline evaluation pipeline), ``"unavailable"`` (no evaluation
  * row yet — UI shows zeros).
  */
+export interface QualityMetricSet {
+  title: string;
+  subtitle: string;
+  source_name: string;
+  ndcg10: number;
+  hr10: number;
+  mrr10: number;
+  coverage: number;
+  violation_rate: number;
+  evaluated_count: number;
+  badge_text: string;
+  theme: "research" | "hybrid";
+}
+
+/**
+ * Model Quality metrics supporting dual frames:
+ * 1. Research Model Benchmark (Paper 80/20 Holdout)
+ * 2. Content & Interaction Relevance (Live System)
+ */
 export interface ModelQualityOut {
   ndcg10: number;
   hr10: number;
@@ -337,6 +365,8 @@ export interface ModelQualityOut {
   ran_at: string;
   test_user_count: number;
   test_interaction_count: number;
+  benchmark?: QualityMetricSet;
+  content_interaction?: QualityMetricSet;
 }
 
 /** Funnel summary for the recommendation click-through card. */

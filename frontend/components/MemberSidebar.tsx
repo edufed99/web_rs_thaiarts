@@ -59,10 +59,37 @@ export function MemberSidebar({
           <div>
             <p className="member-profile-name">{name}</p>
             <p className="member-profile-meta">
-              {isAuthed ? "สมาชิกที่ลงทะเบียน" : "ผู้เยี่ยมชม (ยังไม่ได้เข้าสู่ระบบ)"}
+              {isAuthed
+                ? user?.is_admin
+                  ? "ผู้ดูแลระบบ (Admin)"
+                  : "สมาชิกที่ลงทะเบียน"
+                : "ผู้เยี่ยมชม (ยังไม่ได้เข้าสู่ระบบ)"}
             </p>
           </div>
         </div>
+        {user?.is_admin ? (
+          <div style={{ marginTop: "var(--space-2, 0.5rem)", paddingTop: "var(--space-2, 0.5rem)", borderTop: "1px solid var(--line-1, rgba(0,0,0,0.08))" }}>
+            <Link
+              href="/admin"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "6px",
+                padding: "6px 12px",
+                background: "var(--navy-900, #102044)",
+                color: "#fff",
+                borderRadius: "var(--radius-md, 6px)",
+                fontSize: "13px",
+                fontWeight: 600,
+                textDecoration: "none",
+                textAlign: "center",
+              }}
+            >
+              ⚙ กลับไป Admin Console
+            </Link>
+          </div>
+        ) : null}
       </section>
 
       <nav className="member-side-nav" aria-label="เมนูกิจกรรม">

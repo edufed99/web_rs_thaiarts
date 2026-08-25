@@ -30,7 +30,7 @@ const PRIMARY_NAV: NavItem[] = [
   { href: "/items", label: "ค้นหาชุดการแสดง" },
   { href: "/categories", label: "หมวดหมู่" },
   { href: "/about", label: "เกี่ยวกับเรา" },
-  { href: "/profile", label: "ข้อมูลผู้ใช้", authOnly: true, memberOnly: true },
+  { href: "/profile", label: "ข้อมูลผู้ใช้", authOnly: true },
 ];
 
 /**
@@ -70,12 +70,11 @@ export function SiteHeader() {
 
   const admin = Boolean(user?.is_admin) || isAdmin();
   const readable = user ? getReadableUserName(user) : "";
-  const homeHref = admin ? "/admin" : "/";
 
   return (
     <header className="site-header" role="banner">
       <div className="site-header-inner">
-        <Link href={homeHref} className="site-brand" aria-label="หน้าแรก Thai Performing Arts Recommendation System">
+        <Link href="/" className="site-brand" aria-label="หน้าแรก Thai Performing Arts Recommendation System">
           <span className="site-brand-logo-frame" aria-hidden="true">
             <span className="site-brand-logo-copy">
               Thai Performing Arts
@@ -91,15 +90,14 @@ export function SiteHeader() {
               (!item.authOnly || Boolean(user)) &&
               (!item.memberOnly || !admin);
             if (!visible) return null;
-            const effectiveHref = item.href === "/" ? homeHref : item.href;
             const active =
               item.href === "/"
-                ? pathname === effectiveHref
+                ? pathname === "/"
                 : pathname.startsWith(item.href.split("?")[0]);
             return (
               <Link
                 key={item.href}
-                href={effectiveHref}
+                href={item.href}
                 className={active ? "site-nav-link active" : "site-nav-link"}
               >
                 {item.label}
@@ -111,10 +109,19 @@ export function SiteHeader() {
         <div className="site-actions">
           {user === undefined ? null : user ? (
             <>
+              {admin ? (
+                <Link
+                  href="/admin"
+                  className="site-button primary site-admin-btn"
+                  title="ไปยังระบบจัดการผู้ดูแลระบบ (Admin Console)"
+                >
+                  ⚙ Admin Console
+                </Link>
+              ) : null}
               <Link
-                href={admin ? "/admin" : "/profile"}
+                href="/profile"
                 className="site-user-chip site-user-chip-link"
-                title={user.is_admin ? "ไปยังข้อมูลผู้ดูแลระบบ" : "ไปยังข้อมูลผู้ใช้"}
+                title={user.is_admin ? "ไปยังข้อมูลโปรไฟล์ Admin" : "ไปยังข้อมูลผู้ใช้"}
                 aria-label={`เปิดข้อมูลผู้ใช้ ${readable}`}
               >
                 {user.is_admin ? "Admin · " : ""}
@@ -153,15 +160,23 @@ export function SiteHeader() {
 
       {drawerOpen ? (
         <div className="site-drawer" role="dialog" aria-label="เมนูมือถือ">
+          {admin ? (
+            <Link
+              href="/admin"
+              className="site-drawer-link"
+              style={{ fontWeight: 700, color: "var(--gold-600, #c89536)" }}
+            >
+              ⚙ Admin Console
+            </Link>
+          ) : null}
           {PRIMARY_NAV.map((item) => {
             const visible =
               (!item.adminOnly || admin) &&
               (!item.authOnly || Boolean(user)) &&
               (!item.memberOnly || !admin);
             if (!visible) return null;
-            const effectiveHref = item.href === "/" ? homeHref : item.href;
             return (
-              <Link key={item.href} href={effectiveHref} className="site-drawer-link">
+              <Link key={item.href} href={item.href} className="site-drawer-link">
                 {item.label}
               </Link>
             );

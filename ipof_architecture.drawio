@@ -1,0 +1,101 @@
+<mxfile host="app.diagrams.net" agent="Antigravity" version="21.0.0" type="device">
+  <diagram id="webapp-ipof-framework" name="Thai Arts Web App - IPOF Architecture">
+    <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1550" pageHeight="1150" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" value="สถาปัตยกรรมการทำงานของเว็บแอปพลิเคชัน (Web App Functional IPOF Framework)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=22;fontStyle=1;fontColor=#0D47A1;" vertex="1" parent="1">
+          <mxGeometry x="375" y="20" width="800" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="input_container" value="1. ข้อมูลนำเข้าจากหน้าเว็บ (INPUTS)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FE;strokeColor=#0288D1;strokeWidth=2;verticalAlign=top;fontStyle=1;fontSize=15;fontColor=#01579B;spacingTop=12;shadow=1;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="80" width="330" height="710" as="geometry" />
+        </mxCell>
+        <mxCell id="in_rec" value="หน้าแนะนำและสืบค้น (/recommend, /items)&#xa;&#xa;• บริบทที่เลือก (Context Dropdown)&#xa;• คำสำคัญที่เลือก (Keyword Checklist)&#xa;• คำค้นหาในช่อง Search Bar&#xa;• ตัวกรองหมวดหมู่ (Category Facets)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0288D1;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="55" y="125" width="300" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="in_auth" value="หน้าระบบสมาชิก (/login, /signup, /profile)&#xa;&#xa;• ข้อมูลบัญชีผู้ใช้ และรหัสผ่าน&#xa;• การเข้าสู่ระบบด้วย Google Login (OAuth PKCE)&#xa;• Session Cookie (ผู้ใช้ทั่วไป anon / สมาชิก user)&#xa;• ข้อมูลขอรีเซ็ตรหัสผ่าน (/reset-password)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0288D1;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="55" y="260" width="300" height="125" as="geometry" />
+        </mxCell>
+        <mxCell id="in_admin" value="หน้าผู้ดูแลระบบ (/admin)&#xa;&#xa;• ฟอร์มเพิ่ม/แก้ไขข้อมูลการแสดง (/admin/items)&#xa;• ไฟล์รูปภาพปก (JPEG/PNG/WebP ≤ 5MB)&#xa;• ไฟล์วิดีโอสาธิต (MP4/WebM ≤ 100MB)&#xa;• คำสั่ง Publish โมเดล (/admin/publication)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0288D1;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="55" y="400" width="300" height="125" as="geometry" />
+        </mxCell>
+        <mxCell id="in_db" value="ฐานข้อมูลและโมเดลหลังบ้าน (Data &amp; Models)&#xa;&#xa;• ฐานข้อมูล PostgreSQL 18 (Items, Users, Actions)&#xa;• Precomputed ML Artifacts (E5 Embeddings .npz)&#xa;• ItemKNN Co-occurrence Index (.json)&#xa;• แคตตาล็อกและโครงสร้าง Taxonomy (.parquet)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0288D1;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="55" y="540" width="300" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="process_container" value="2. โมดูลประมวลผลบน Web App (PROCESSES)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#F57C00;strokeWidth=2;verticalAlign=top;fontStyle=1;fontSize=15;fontColor=#E65100;spacingTop=12;shadow=1;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="410" y="80" width="460" height="710" as="geometry" />
+        </mxCell>
+        <mxCell id="proc_rec_engine" value="Recommendation Engine Module&#xa;&#xa;• Eligibility Gate: กรองรายการที่สอดคล้องกับบริบท&#xa;• CBF Service: Cosine Similarity (E5 Vectors) + Keyword Boost&#xa;• CF Service: Shrinkage ItemKNN (shrink=50, top-10) จากประวัติ&#xa;• Hybrid Fusion: รวมคะแนน Z-Score (α = 0.8 CBF + 0.2 CF)&#xa;• Negative Penalty: ลดคะแนนรายการที่เคยได้คะแนน &lt; 4 ดาว&#xa;• XAI Builder: สร้างประโยคอธิบายเหตุผลภาษาไทย" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F57C00;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="425" y="125" width="430" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="proc_catalog" value="Catalogue &amp; Similar Discovery Module&#xa;&#xa;• สืบค้นแบบ Full-text Search และคัดกรองตาม Taxonomy&#xa;• คำนวณชุดการแสดงที่คล้ายกัน (Item Semantic Similarity)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F57C00;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="425" y="295" width="430" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="proc_profile" value="Profile Recommender Module&#xa;&#xa;• แนะนำเฉพาะบุคคล (75% ItemKNN + 25% Content Affinity Overlap)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F57C00;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="425" y="370" width="430" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="proc_auth" value="Authentication &amp; Session Security Module&#xa;&#xa;• ตรวจสอบรหัสผ่าน bcrypt, สร้าง HttpOnly Session และป้องกัน CSRF&#xa;• บริการส่งอีเมลรีเซ็ตรหัสผ่านผ่าน Gmail API / SMTP" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F57C00;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="425" y="435" width="430" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="proc_admin_media" value="Catalogue &amp; Media Management Module&#xa;&#xa;• ตรวจสอบคำสำคัญอัตโนมัติ (Layer A Keyword Grounding)&#xa;• จัดเก็บไฟล์ภาพ/วิดีโอ และตรวจสอบความพร้อมการเผยแพร่โมเดล" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F57C00;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="425" y="510" width="430" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="proc_analytics" value="Analytics &amp; Telemetry Engine Module&#xa;&#xa;• ประมวลผลแดชบอร์ด 14 มิติ, วิเคราะห์ Conversion Funnel&#xa;• สร้างไฟล์สรุปสถิติรายงานวิจัย Excel (.xlsx) แบบ Multi-sheet" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F57C00;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="425" y="585" width="430" height="65" as="geometry" />
+        </mxCell>
+        <mxCell id="output_container" value="3. ผลลัพธ์บนหน้าจอ Web App (OUTPUTS)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#388E3C;strokeWidth=2;verticalAlign=top;fontStyle=1;fontSize=15;fontColor=#1B5E20;spacingTop=12;shadow=1;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="910" y="80" width="370" height="710" as="geometry" />
+        </mxCell>
+        <mxCell id="out_rec_page" value="หน้าแสดงผลการแนะนำ (/results)&#xa;&#xa;• การ์ดชุดการแสดง Top-10 เรียงตามคะแนนความเหมาะสม&#xa;• กล่องข้อความอธิบายเหตุผลภาษาไทย (XAI Card)&#xa;• แถบคะแนนความเหมาะสมเชิงบริบท (Suitability %)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#388E3C;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="925" y="125" width="340" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="out_items_page" value="หน้าคลังการแสดง (/items, /categories, /occasions)&#xa;&#xa;• กริดแสดงรายการศิลปะการแสดงพร้อมระบบค้นหาและตัวกรอง&#xa;• หน้ารายการยอดนิยม (Popular) และคะแนนสูงสุด (Top Rated)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#388E3C;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="925" y="245" width="340" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="out_detail_page" value="หน้ารายละเอียดการแสดง (/items/[id])&#xa;&#xa;• ข้อมูลองค์ความรู้สมบูรณ์ (ประวัติ, ท่ารำ, ดนตรี, การแต่งกาย)&#xa;• วิดีโอคลิปสาธิตและภาพหน้าปกความคมชัดสูง&#xa;• แถบชุดการแสดงที่ใกล้เคียงกัน (Similar Arts Carousel)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#388E3C;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="925" y="345" width="340" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="out_profile_page" value="หน้าโปรไฟล์สมาชิก (/profile, /me)&#xa;&#xa;• แถบแนะนำ &#39;คาดว่าคุณจะชอบจากพฤติกรรมในอดีต&#39;&#xa;• คลังรายการที่ถูกใจ (Liked), บันทึกไว้ (Saved), ประวัติให้ดาว" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#388E3C;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="925" y="465" width="340" height="95" as="geometry" />
+        </mxCell>
+        <mxCell id="out_admin_page" value="หน้าแดชบอร์ดผู้ดูแลระบบ (/dashboard, /admin)&#xa;&#xa;• Dashboard สถิติ Real-time และกราฟิกแนวโน้มการใช้งาน&#xa;• หน้าจอจัดการผู้ใช้, จัดการข้อมูลการแสดง, จัดการสื่อ&#xa;• ดาวน์โหลดไฟล์รายงานสรุปผลวิจัย (.xlsx)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#388E3C;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="925" y="570" width="340" height="105" as="geometry" />
+        </mxCell>
+        <mxCell id="feedback_container" value="4. วงรอบการป้อนกลับบนหน้าเว็บ (FEEDBACK LOOP)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#7B1FA2;strokeWidth=2;verticalAlign=top;fontStyle=1;fontSize=15;fontColor=#4A148C;spacingTop=12;shadow=1;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="170" y="820" width="980" height="190" as="geometry" />
+        </mxCell>
+        <mxCell id="fb_action_bar" value="ปุ่มมีส่วนร่วมบนการ์ดและหน้ารายละเอียด (Interactive Action Bar)&#xa;&#xa;• ปุ่ม Like / Unlike: กดถูกใจชุดการแสดง&#xa;• ปุ่ม Save / Bookmark: บันทึกไว้ในรายการโปรด&#xa;• แถบประเมินคะแนน: ให้คะแนนดาวความพึงพอใจ (1 - 5 ดาว)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7B1FA2;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="195" y="870" width="450" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="fb_telemetry" value="การบันทึกพฤติกรรมอัตโนมัติ (Implicit Telemetry &amp; Logs)&#xa;&#xa;• View Counter: บันทึกการเข้าชมหน้ารายละเอียดอัตโนมัติ&#xa;• 30-Min Deduplication: ระบบตัดการนับยอดชมซ้ำซ้อนภายใน 30 นาที&#xa;• Search Query Log: เก็บรวบรวมคำค้นหาและบริบทที่นิยม" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7B1FA2;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="675" y="870" width="450" height="110" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_in_proc" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=4;strokeColor=#0288D1;endArrow=block;endFill=1;" edge="1" source="input_container" target="process_container" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_proc_out" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=4;strokeColor=#F57C00;endArrow=block;endFill=1;" edge="1" source="process_container" target="output_container" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_out_fb" value="ผู้ใช้คลิก/ให้คะแนน/เข้าชมบนหน้าเว็บ" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#388E3C;dashed=1;endArrow=block;endFill=1;fontSize=11;fontColor=#1B5E20;exitX=0.5;exitY=1;entryX=0.9;entryY=0;" edge="1" source="output_container" target="feedback_container" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="1095" y="805" />
+              <mxPoint x="1052" y="805" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="edge_fb_proc" value="Real-Time Feedback Loop: ตัดรายการที่ชอบแล้ว / ลดอันดับรายการ &lt; 4 ดาว / คำนวณหน้า Profile ทันที" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#7B1FA2;endArrow=block;endFill=1;fontSize=11;fontColor=#4A148C;exitX=0.5;exitY=0;entryX=0.5;entryY=1;" edge="1" source="feedback_container" target="process_container" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_fb_in" value="Long-Term Retraining Loop: บันทึกลง PostgreSQL 18 เพื่อ Re-generate Artifacts" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=2;strokeColor=#7B1FA2;dashed=1;endArrow=block;endFill=1;fontSize=11;fontColor=#4A148C;exitX=0.08;exitY=0;entryX=0.5;entryY=1;" edge="1" source="feedback_container" target="input_container" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="248" y="805" />
+              <mxPoint x="205" y="805" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -187,7 +187,7 @@ export function activeModelConfig(): ModelConfigOut {
     cbf_model: process.env.RECSYS_E5_MODEL || "intfloat/multilingual-e5-large-instruct",
     cf_model: "ItemKNN",
     hybrid_method: "Hybrid-WeightedSum",
-    hybrid_alpha: envFloat("RECSYS_HYBRID_ALPHA", 0.7),
+    hybrid_alpha: envFloat("RECSYS_HYBRID_ALPHA", 0.8),
     candidate_strategy: "EligibilityGate",
     embedding_dim: null,
     itemknn_k: envInt("RECSYS_ITEMKNN_K", 10),

@@ -1,0 +1,115 @@
+<mxfile host="app.diagrams.net" agent="Antigravity" version="21.0.0" type="device">
+  <diagram id="system-architecture" name="Thai Arts Recommender - System Architecture">
+    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="main_title" value="สถาปัตยกรรมระบบแนะนำศิลปะการแสดงไทย (System Architecture: UI, Modules and Database)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=22;fontStyle=1;fontColor=#0D47A1;" vertex="1" parent="1">
+          <mxGeometry x="350" y="20" width="900" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="layer_ui" value="1. USER INTERFACE LAYER (หน้าจอและส่วนประสานผู้ใช้งาน)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E1F5FE;strokeColor=#0288D1;strokeWidth=2;verticalAlign=top;fontStyle=1;fontSize=15;fontColor=#01579B;spacingTop=10;shadow=1;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="80" width="1520" height="210" as="geometry" />
+        </mxCell>
+        <mxCell id="ui_user_actor" value="ผู้ใช้งานทั่วไป / สมาชิก&#xa;&#xa;• สืบค้นการแสดงตามโอกาส&#xa;• ดูผลการแนะนำและคำอธิบาย&#xa;• มีปฏิสัมพันธ์ (Like/Save/Rate)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#B3E5FC;strokeColor=#0288D1;align=center;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="60" y="125" width="170" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="ui_rec_page" value="หน้าแนะนำ and ค้นหา&#xa;(/recommend, /results, /items)&#xa;&#xa;• เลือกบริบทและคำสำคัญ&#xa;• แสดงการ์ด Top-10 แนะนำ&#xa;• กล่องคำอธิบายเหตุผลภาษาไทย&#xa;• แถบคะแนนความเหมาะสม %" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0288D1;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="250" y="125" width="280" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="ui_detail_page" value="หน้ารายละเอียดการแสดง&#xa;(/items/[id])&#xa;&#xa;• ข้อมูลประวัติ, ท่ารำ, ดนตรี, การแต่งกาย&#xa;• เครื่องเล่นวิดีโอสาธิตและภาพหน้าปก&#xa;• แถบการแสดงที่คล้ายกัน (Similar Arts)&#xa;• ปุ่ม Action Bar (Like/Save/Rating)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0288D1;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="550" y="125" width="280" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="ui_profile_page" value="หน้าโปรไฟล์ and บัญชีสมาชิก&#xa;(/profile, /me, /login, /signup)&#xa;&#xa;• เข้าสู่ระบบ / Google Login (OAuth)&#xa;• แนะนำ &#39;คาดว่าคุณจะชอบจากอดีต&#39;&#xa;• รายการที่เคยกดถูกใจ/บันทึกไว้&#xa;• ประวัติการประเมินดาว (1-5 ดาว)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0288D1;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="850" y="125" width="280" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="ui_admin_page" value="หน้าผู้ดูแลระบบ and แดชบอร์ด&#xa;(/admin, /dashboard, /admin/items)&#xa;&#xa;• CRUD จัดการข้อมูลการแสดง and อัปโหลดสื่อ&#xa;• ระบบผูกคำสำคัญอัตโนมัติ (Grounding)&#xa;• Dashboard 14 มิติ and สถิติ Real-time&#xa;• ส่งออกรายงานผลวิจัย Excel (.xlsx)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#0288D1;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1150" y="125" width="280" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="ui_admin_actor" value="ผู้ดูแลระบบ (Admin)&#xa;&#xa;• จัดการข้อมูลการแสดง&#xa;• อัปโหลดภาพ/วิดีโอ&#xa;• ดูรายงานและสถิติวิจัย" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#B3E5FC;strokeColor=#0288D1;align=center;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1450" y="125" width="90" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="layer_app" value="2. APPLICATION BACKEND and API GATEWAY (Next.js 14 App Router :3000)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#F57C00;strokeWidth=2;verticalAlign=top;fontStyle=1;fontSize=15;fontColor=#E65100;spacingTop=10;shadow=1;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="320" width="1520" height="230" as="geometry" />
+        </mxCell>
+        <mxCell id="mod_rec_bridge" value="Recommendation and Discovery Service&#xa;(/api/recommendations, /api/items, /api/contexts)&#xa;&#xa;• รับคำขอจาก UI และแปลงเป็น Candidate Query&#xa;• เชื่อมต่อ Private Model Service ด้วย Bearer Secret&#xa;• ผูกข้อมูลแคตตาล็อก, สื่อ, และสถานะผู้ใช้ส่งกลับ UI&#xa;• Fallback Mechanism หาก Model Service ปิดตัว" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F57C00;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="60" y="365" width="340" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="mod_auth" value="Auth and Session Security Service&#xa;(/api/auth/*, /api/me/*)&#xa;&#xa;• เข้ารหัสรหัสผ่าน bcrypt and จัดการ Session 7 วัน&#xa;• Google OAuth 2.0 PKCE Verification&#xa;• บริการรีเซ็ตรหัสผ่านผ่าน Gmail API / SMTP&#xa;• แยกตัวตน: anon:&lt;uuid&gt; และ user:&lt;id&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F57C00;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="430" y="365" width="340" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="mod_action" value="Live Action and Telemetry Service&#xa;(/api/actions/like, /save, /rating, /view)&#xa;&#xa;• บันทึกการกด Like, Save, Rating (1-5 ดาว)&#xa;• View Telemetry Logging พร้อมตัดนับซ้ำ 30 นาที&#xa;• ซิงค์สถานะความชอบแบบ Real-time เข้า Session&#xa;• ส่งต่อพฤติกรรมสดไปยัง Recommender ทันที" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F57C00;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="800" y="365" width="340" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="mod_admin" value="Admin, Media and Analytics Service&#xa;(/api/admin/*, /api/metrics/*)&#xa;&#xa;• Layer A Keyword Grounding ตรวจสอบคำสำคัญ&#xa;• จัดเก็บและบริการไฟล์ภาพ/วิดีโอ (/api/uploads)&#xa;• Artifact Publication System ตรวจสอบเวอร์ชัน ML&#xa;• Analytics Engine สรุป KPI 14 มิติ and Export Excel" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#F57C00;align=left;spacingLeft=8;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1170" y="365" width="370" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="layer_ai" value="3. PRIVATE AI MODEL SERVICE (FastAPI Process :8001 - Internal Only)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F3E5F5;strokeColor=#7B1FA2;strokeWidth=2;verticalAlign=top;fontStyle=1;fontSize=15;fontColor=#4A148C;spacingTop=10;shadow=1;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="580" width="1520" height="210" as="geometry" />
+        </mxCell>
+        <mxCell id="ai_step1" value="1. Eligibility Gating&#xa;&#xa;กรองการแสดงที่ตรงบริบท&#xa;จัดอันดับคำสำคัญ and ปรับขนาด&#xa;Candidate Pool (10 - 50)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7B1FA2;align=center;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="60" y="625" width="220" height="135" as="geometry" />
+        </mxCell>
+        <mxCell id="ai_step2" value="2. CBF Model (E5)&#xa;&#xa;เวกเตอร์ความหมาย 1024d&#xa;คำนวณ Cosine Similarity&#xa;+ Keyword Boost (+0.05)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7B1FA2;align=center;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="310" y="625" width="220" height="135" as="geometry" />
+        </mxCell>
+        <mxCell id="ai_step3" value="3. CF Model (ItemKNN)&#xa;&#xa;Shrinkage Cosine (shrink=50)&#xa;Top-10 เพื่อนบ้านที่คล้ายกัน&#xa;ผสานประวัติสดจาก Live DB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7B1FA2;align=center;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="560" y="625" width="220" height="135" as="geometry" />
+        </mxCell>
+        <mxCell id="ai_step4" value="4. Hybrid Fusion&#xa;&#xa;ปรับสเกลมาตรฐาน Z-Score&#xa;รวมคะแนนถ่วงน้ำหนัก:&#xa;α = 0.8 (CBF 80% + CF 20%)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7B1FA2;align=center;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="810" y="625" width="220" height="135" as="geometry" />
+        </mxCell>
+        <mxCell id="ai_step5" value="5. Negative Demotion&#xa;&#xa;Monotonic Severity Penalty&#xa;หักลดคะแนนรายการที่เคยได้&#xa;ต่ำกว่า 4 ดาว และจัด Top-K" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7B1FA2;align=center;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1060" y="625" width="220" height="135" as="geometry" />
+        </mxCell>
+        <mxCell id="ai_step6" value="6. Explainable AI (XAI)&#xa;&#xa;สร้างคำอธิบายภาษาไทย&#xa;ชี้แจงความตรงบริบท คำสำคัญ&#xa;และประวัติความชอบเดิม" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#7B1FA2;align=center;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1310" y="625" width="230" height="135" as="geometry" />
+        </mxCell>
+        <mxCell id="ai_e1" style="edgeStyle=straight;strokeColor=#7B1FA2;strokeWidth=2;endArrow=block;endFill=1;" edge="1" source="ai_step1" target="ai_step2" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ai_e2" style="edgeStyle=straight;strokeColor=#7B1FA2;strokeWidth=2;endArrow=block;endFill=1;" edge="1" source="ai_step2" target="ai_step3" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ai_e3" style="edgeStyle=straight;strokeColor=#7B1FA2;strokeWidth=2;endArrow=block;endFill=1;" edge="1" source="ai_step3" target="ai_step4" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ai_e4" style="edgeStyle=straight;strokeColor=#7B1FA2;strokeWidth=2;endArrow=block;endFill=1;" edge="1" source="ai_step4" target="ai_step5" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ai_e5" style="edgeStyle=straight;strokeColor=#7B1FA2;strokeWidth=2;endArrow=block;endFill=1;" edge="1" source="ai_step5" target="ai_step6" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="layer_db" value="4. DATABASE and PERSISTENT STORAGE LAYER" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#E8F5E9;strokeColor=#388E3C;strokeWidth=2;verticalAlign=top;fontStyle=1;fontSize=15;fontColor=#1B5E20;spacingTop=10;shadow=1;arcSize=4;" vertex="1" parent="1">
+          <mxGeometry x="40" y="820" width="1520" height="230" as="geometry" />
+        </mxCell>
+        <mxCell id="db_postgres" value="PostgreSQL 18 Database (TypeORM Authority)&#xa;&#xa;• Catalog: items, contexts, keywords, taxonomy_nodes, item_keywords&#xa;• Users and Security: users, sessions, password_reset_tokens&#xa;• Live Actions: likes, saved_items, ratings, item_views (deduplicated)&#xa;• Audit and Telemetry: recommendation_requests, artifact_publications, legacy_interactions" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#388E3C;align=left;spacingLeft=10;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="60" y="865" width="560" height="155" as="geometry" />
+        </mxCell>
+        <mxCell id="fs_uploads" value="Uploaded Media Storage (/app/data/uploads)&#xa;&#xa;• Cover Images: ภาพหน้าปกชุดการแสดง (JPEG / PNG / WebP สูงสุด 5 MB)&#xa;• Video Clips: คลิปวิดีโอสาธิตการแสดง (MP4 / WebM / MOV สูงสุด 100 MB)&#xa;• ระบบความปลอดภัย Symlink Traversal Protection" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#388E3C;align=left;spacingLeft=10;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="650" y="865" width="410" height="155" as="geometry" />
+        </mxCell>
+        <mxCell id="fs_artifacts" value="Precomputed ML Artifacts (artifacts/ Directory)&#xa;&#xa;• item_embeddings.npz: Float32 Multilingual E5 Matrix (1024d)&#xa;• cf_user_item.json / cf_item_users.json: Co-occurrence Inverted Index&#xa;• catalog.parquet and metadata.json: Static Catalog and Schema&#xa;• best_model_config.json: ค่าพารามิเตอร์ที่จูนแล้ว (α = 0.8, shrink = 50)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#388E3C;align=left;spacingLeft=10;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1090" y="865" width="450" height="155" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_ui_app" value="HTTPS / JSON / Server Actions" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=3;strokeColor=#0288D1;endArrow=block;endFill=1;fontSize=11;fontColor=#01579B;" edge="1" source="layer_ui" target="layer_app" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_app_ai" value="Internal HTTP + Bearer Secret Credential (:8001)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeWidth=3;strokeColor=#F57C00;endArrow=block;endFill=1;fontSize=11;fontColor=#E65100;" edge="1" source="mod_rec_bridge" target="layer_ai" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_app_pg" value="TypeORM CRUD Queries" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=2;strokeColor=#388E3C;endArrow=block;endFill=1;fontSize=11;fontColor=#1B5E20;exitX=0.2;exitY=1;entryX=0.2;entryY=0;" edge="1" source="layer_app" target="db_postgres" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_app_media" value="File Stream" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=2;strokeColor=#388E3C;endArrow=block;endFill=1;fontSize=11;fontColor=#1B5E20;exitX=0.6;exitY=1;entryX=0.5;entryY=0;" edge="1" source="layer_app" target="fs_uploads" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_ai_artifacts" value="In-Memory Load (Startup)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=2;strokeColor=#7B1FA2;endArrow=block;endFill=1;fontSize=11;fontColor=#4A148C;exitX=0.85;exitY=1;entryX=0.5;entryY=0;" edge="1" source="layer_ai" target="fs_artifacts" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="edge_ai_pg" value="Fetch Live Actions for CF and Negative Penalty" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeWidth=2;strokeColor=#7B1FA2;dashed=1;endArrow=block;endFill=1;fontSize=11;fontColor=#4A148C;exitX=0.45;exitY=1;entryX=0.7;entryY=0;" edge="1" source="layer_ai" target="db_postgres" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

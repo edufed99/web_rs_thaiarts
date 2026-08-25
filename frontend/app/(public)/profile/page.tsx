@@ -13,7 +13,7 @@ import { MemberStats } from "@/components/MemberStats";
 import { getMemberDashboard, getProfileRecommendations, resolveImageUrl } from "@/lib/api";
 import { getCurrentUser, getReadableUserName, userNeedsPasswordReset } from "@/lib/auth";
 import { MEMBER_ACTIVITY_CHANGED_EVENT } from "@/lib/memberEvents";
-import type { MemberDashboardOut, ProfileRecommendationResponseOut } from "@/lib/types";
+import type { MemberDashboardOut, ProfileRecommendationResponseOut, UserState } from "@/lib/types";
 import { useAuthHeaders } from "@/lib/useAuthHeaders";
 import { getUserKey } from "@/lib/user";
 
@@ -28,7 +28,12 @@ export default function MemberDashboardPage() {
   const [avatarError, setAvatarError] = useState(false);
 
   useEffect(() => {
-    const reload = () => setReloadKey((value) => value + 1);
+    const reload = () => {
+      // Reload dashboard stats/activity on user action without wiping the active recommendations
+      getMemberDashboard()
+        .then((memberData) => setDashboard(memberData))
+        .catch(() => {});
+    };
     window.addEventListener(MEMBER_ACTIVITY_CHANGED_EVENT, reload);
     return () => window.removeEventListener(MEMBER_ACTIVITY_CHANGED_EVENT, reload);
   }, []);
@@ -57,6 +62,18 @@ export default function MemberDashboardPage() {
       cancelled = true;
     };
   }, [router, authHeaders, reloadKey]);
+
+  function handleRecommendationStateChange(itemId: number, next: UserState) {
+    setRecommendations((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        results: prev.results.map((r) =>
+          r.item.id === itemId ? { ...r, item: { ...r.item, user_state: next } } : r,
+        ),
+      };
+    });
+  }
 
   if (error) {
     return <ErrorState message={error} onRetry={() => setReloadKey((value) => value + 1)} />;
@@ -143,7 +160,13 @@ export default function MemberDashboardPage() {
         {recommendations?.results.length ? (
           <div className="member-grid">
             {recommendations.results.map((result) => (
-              <CatalogItemCard key={result.item.id} item={result.item} userKey={userKey} rank={result.rank} />
+              <CatalogItemCard
+                key={result.item.id}
+                item={result.item}
+                userKey={userKey}
+                rank={result.rank}
+                onUserStateChange={handleRecommendationStateChange}
+              />
             ))}
           </div>
         ) : <p className="muted">เริ่มกดถูกใจ บันทึก หรือให้คะแนน เพื่อให้ระบบเรียนรู้ความสนใจของคุณ</p>}

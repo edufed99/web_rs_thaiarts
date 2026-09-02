@@ -917,9 +917,9 @@ function ModelQualityStrip({ quality }: { quality: ModelQualityOut }) {
             <small>ความสอดคล้องระดับสูง</small>
           </div>
           <div className="quality-mini-card">
-            <span>MRR@10</span>
+            <span>Conditional MRR@10</span>
             <strong>{content.mrr10.toFixed(3)}</strong>
-            <small>ชิ้นที่สอดคล้องสูงสุด</small>
+            <small>ชิ้นที่สอดคล้องสูงสุด (เฉพาะที่มี Hit)</small>
           </div>
           <div className="quality-mini-card">
             <span>Violation</span>

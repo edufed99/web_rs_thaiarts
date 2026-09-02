@@ -558,19 +558,15 @@ async function modelQuality(dataSource: Awaited<ReturnType<typeof getDataSource>
         reqCount++;
         // DCG
         let dcg = 0;
-        let hasHit = false;
-        let bestRank = 1;
-        let maxRel = -1;
+        let firstHitRank = 0;
 
         items.forEach((item, idx) => {
           totalItems++;
           if (!item.isValid) badCount++;
           const rank = idx + 1;
           dcg += (Math.pow(2, item.rel) - 1) / log2(rank + 1);
-          if (item.rel >= 0.70) hasHit = true;
-          if (item.rel > maxRel) {
-            maxRel = item.rel;
-            bestRank = rank;
+          if (item.rel >= 0.70 && firstHitRank === 0) {
+            firstHitRank = rank;
           }
         });
 
@@ -582,8 +578,10 @@ async function modelQuality(dataSource: Awaited<ReturnType<typeof getDataSource>
         });
 
         dcgSum += idcg > 0 ? dcg / idcg : 1.0;
-        if (hasHit) hrHits++;
-        mrrSum += 1.0 / bestRank;
+        if (firstHitRank > 0) {
+          hrHits++;
+          mrrSum += 1.0 / firstHitRank;
+        }
       }
 
       if (reqCount > 0) {

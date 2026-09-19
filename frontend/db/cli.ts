@@ -5,6 +5,7 @@ import { migrateAndSeed } from "./bootstrap";
 import { createAppDataSource } from "./data-source";
 import { seedAdminUser } from "./seeds/admin.seed";
 import { seedApplicationStatus } from "./seeds/application-status.seed";
+import { seedCatalogueBilingual } from "./seeds/catalogue-bilingual.seed";
 
 function loadEnvFiles(): void {
   const envFiles = [".env.local", ".env"];
@@ -67,6 +68,7 @@ async function main(): Promise<void> {
       seed: async () => {
         await seedApplicationStatus(dataSource);
         await seedAdminUser(dataSource);
+        await seedCatalogueBilingual(dataSource);
       },
       rebuild: async () => {
         assertResetIsAllowed();

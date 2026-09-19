@@ -127,8 +127,13 @@ export async function listItems(options: {
   const terms = searchTerms(options.search);
   if (terms.length > 0) {
     for (const field of ["name", "categoryGroup", "description"] as const) {
+      const enField = `${field}En` as "nameEn" | "categoryGroupEn" | "descriptionEn";
       const matches = items.filter((item) =>
-        terms.every((term) => item[field].toLocaleLowerCase().includes(term)),
+        terms.every((term) => {
+          const thVal = (item[field] ?? "").toLocaleLowerCase();
+          const enVal = (item[enField] ?? "").toLocaleLowerCase();
+          return thVal.includes(term) || enVal.includes(term);
+        }),
       );
       if (matches.length > 0) {
         items = matches;
@@ -380,9 +385,13 @@ export function catalogueItemOut(snapshot: CatalogueSnapshot, item: CatalogueIte
   return {
     id: numberOf(item.artifactItemId),
     name: item.name,
+    name_en: item.nameEn ?? null,
     description: item.description,
+    description_en: item.descriptionEn ?? null,
     category_group: item.categoryGroup,
+    category_group_en: item.categoryGroupEn ?? null,
     performance_type: item.performanceType,
+    performance_type_en: item.performanceTypeEn ?? null,
     performers_count: nullableNumber(item.performersCount),
     duration_minutes: nullableNumber(item.durationMinutes),
     price_text: item.priceText,
@@ -393,6 +402,7 @@ export function catalogueItemOut(snapshot: CatalogueSnapshot, item: CatalogueIte
     user_state: { ...anonymousState },
     match_percent: matchPercent,
     suitability_label: suitabilityLabel(matchPercent),
+    suitability_label_en: suitabilityLabelEn(matchPercent),
   };
 }
 
@@ -400,8 +410,10 @@ function contextOut(context: CatalogueContext, activeItemCount: number): Context
   return {
     id: stableId("context", context.name),
     name: context.name,
+    name_en: context.nameEn ?? null,
     group: context.groupName,
     description: context.description,
+    description_en: context.descriptionEn ?? null,
     active_item_count: activeItemCount,
   };
 }
@@ -410,6 +422,7 @@ export function keywordOut(snapshot: CatalogueSnapshot, keyword: CatalogueKeywor
   return {
     id: numberOf(keyword.id),
     name: keyword.name,
+    name_en: keyword.nameEn ?? null,
     taxonomy_path: taxonomyPath(snapshot.taxonomyNodes, keyword.taxonomyNodeId),
   };
 }
@@ -500,6 +513,12 @@ function suitabilityLabel(matchPercent: number): string {
   if (matchPercent >= 92) return "เหมาะมาก";
   if (matchPercent >= 87) return "เหมาะสม";
   return "เหมาะใช้ได้";
+}
+
+function suitabilityLabelEn(matchPercent: number): string {
+  if (matchPercent >= 92) return "Highly Recommended";
+  if (matchPercent >= 87) return "Recommended";
+  return "Suitable";
 }
 
 function numberOf(value: number): number {

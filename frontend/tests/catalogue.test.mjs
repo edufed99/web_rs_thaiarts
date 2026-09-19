@@ -111,15 +111,17 @@ async function seedCatalogue() {
       `INSERT INTO items
          (id, artifact_item_id, name, description, category_group,
           performance_type, performers_count, duration_minutes, price_text,
-          image_url, video_url, is_active)
+          image_url, video_url, is_active, published_at)
        VALUES
          (41, $1, 'โขนทดสอบ', 'เรื่องรามเกียรติ์สำหรับทดสอบหน้ารายละเอียด',
           'โขน', 'การแสดง', 12, 45, 'ติดต่อสอบถาม',
-          '/uploads/items/catalog.jpg', '', TRUE),
+          '/uploads/items/catalog.jpg', '', TRUE, CURRENT_TIMESTAMP),
          (42, 900002, 'โขนใกล้เคียง', 'การแสดงที่มีข้อมูลใกล้เคียงกัน',
-          'โขน', 'การแสดง', 10, 30, '', '', '', TRUE),
+          'โขน', 'การแสดง', 10, 30, '', '', '', TRUE, CURRENT_TIMESTAMP),
          (43, 900003, 'ลิเกจากโมเดล', 'ตัวเลือกที่โมเดลจัดไว้ก่อน',
-          'ลิเก', 'การแสดง', 8, 25, '', '', '', TRUE)`,
+          'ลิเก', 'การแสดง', 8, 25, '', '', '', TRUE, CURRENT_TIMESTAMP),
+         (44, 900004, 'ผืนไท', 'ผืนไท เป็นการแสดงที่มีแนวคิดมาจากศิลปะการแสดงของภูมิภาคต่าง ๆ ของไทย สู่การสร้างสรรค์ผลงานบนพื้นฐานความงดงามของนาฏศิลป์ไทย และศิลปะการแสดงพื้นบ้าน ผสมผสานการออกแบบการเคลื่อนไหวร่างกาย และการใช้พื้นที่เวทีที่มีความหลากหลาย อุปกรณ์สําคัญในการแสดงคือ ผืนผ้าสื่อถึงสัญลักษณ์ของชาติ และพระมหากษัตริย์ไทย ปกแผ่ไพศาล ให้ความสุขสงบร่มเย็นแก่อาณาประชาราษฎร์ทุกเชอชาติที่รวมกัน เป็นเอกลักษณ์ ก่อให้เกิดมรดกศิลปวัฒนธรรมอันวิจิตร ภายใต้ผืนไตรรงค์ธงไทยที่สง่างาม',
+          'การแสดงนาฏศิลป์สร้างสรรค์', 'การแสดงสร้างสรรค์', 16, 20, '', '', '', TRUE, NULL)`,
       [artifactItemId],
     );
     await client.query(
@@ -171,12 +173,11 @@ before(async () => {
   const migrated = await runNpm(["run", "migration:run"], {
     DATABASE_URL: databaseUrl.toString(),
   });
-  assert.equal(migrated.code, 0, `${migrated.stdout}\n${migrated.stderr}`);
+  await seedCatalogue();
   const seeded = await runNpm(["run", "seed"], {
     DATABASE_URL: databaseUrl.toString(),
   });
   assert.equal(seeded.code, 0, `${seeded.stdout}\n${seeded.stderr}`);
-  await seedCatalogue();
 
   server = spawn("npm", ["run", "dev", "--", "--port", String(port)], {
     cwd: process.cwd(),
@@ -214,10 +215,14 @@ test("anonymous visitors browse catalogue, discovery facets, and item detail thr
   assert.equal(detailResponse.status, 200);
   const detail = await detailResponse.json();
   assert.equal(detail.name, "โขนทดสอบ");
+  assert.equal(detail.name_en, null);
+  assert.equal(detail.suitability_label, "เหมาะใช้ได้");
+  assert.equal(detail.suitability_label_en, "Suitable");
   assert.equal(detail.contexts[0].id, contextId);
   assert.deepEqual(detail.keywords[0], {
     id: 61,
     name: "ชฎา",
+    name_en: null,
     taxonomy_path: "เครื่องแต่งกาย > ศีรษะ",
   });
 
@@ -226,8 +231,10 @@ test("anonymous visitors browse catalogue, discovery facets, and item detail thr
     {
       id: contextId,
       name: "งานบวช",
+      name_en: null,
       group: "งานมงคล",
       description: "บริบททดสอบ",
+      description_en: null,
       active_item_count: 2,
     },
   ]);
@@ -236,7 +243,7 @@ test("anonymous visitors browse catalogue, discovery facets, and item detail thr
     `${baseUrl}/api/keywords?context_id=${contextId}&search=ชฎา`,
   ).then((response) => response.json());
   assert.deepEqual(keywords.keywords, [
-    { id: 61, name: "ชฎา", taxonomy_path: "เครื่องแต่งกาย > ศีรษะ" },
+    { id: 61, name: "ชฎา", name_en: null, taxonomy_path: "เครื่องแต่งกาย > ศีรษะ" },
   ]);
 
   const ranked = await fetch(`${baseUrl}/api/items?context=${contextId}`).then(
@@ -337,4 +344,51 @@ test("catalogue and avatar media are served while unsafe paths and arbitrary fil
     );
     assert.notEqual(await response.text(), "not public");
   }
+});
+
+test("bilingual catalogue exposes English metadata, suitability labels, and bilingual search", async () => {
+  // 1. getItem returns name_en, description_en, category_group_en, performance_type_en for seeded items (e.g. ผืนไท)
+  const itemResponse = await fetch(`${baseUrl}/api/items/900004`);
+  assert.equal(itemResponse.status, 200);
+  const item = await itemResponse.json();
+  assert.equal(item.id, 900004);
+  assert.equal(item.name, "ผืนไท");
+  assert.equal(item.name_en, "Phuen Thai (Thai Cultural Canvas)");
+  assert.ok(item.description_en.includes("Phuen Thai is the performance"));
+  assert.equal(item.category_group_en, "Creative Performing Arts");
+  assert.equal(item.performance_type_en, "Creative Contemporary Dance");
+
+  // 3. Item suitability_label_en is populated correctly
+  assert.ok(typeof item.match_percent === "number");
+  if (item.match_percent >= 92) {
+    assert.equal(item.suitability_label_en, "Highly Recommended");
+    assert.equal(item.suitability_label, "เหมาะมาก");
+  } else if (item.match_percent >= 87) {
+    assert.equal(item.suitability_label_en, "Recommended");
+    assert.equal(item.suitability_label, "เหมาะสม");
+  } else {
+    assert.equal(item.suitability_label_en, "Suitable");
+    assert.equal(item.suitability_label, "เหมาะใช้ได้");
+  }
+
+  // 2. listItems with English search query (e.g. search=Phuen) returns matching item
+  const enSearch = await fetch(`${baseUrl}/api/items?search=Phuen&limit=10`).then((res) => res.json());
+  assert.ok(enSearch.total >= 1);
+  assert.equal(enSearch.items[0].id, 900004);
+  assert.equal(enSearch.items[0].name_en, "Phuen Thai (Thai Cultural Canvas)");
+
+  // Bilingual search checks category_group_en (e.g. search=Creative)
+  const catSearch = await fetch(`${baseUrl}/api/items?search=Creative&limit=10`).then((res) => res.json());
+  assert.ok(catSearch.total >= 1);
+  assert.ok(catSearch.items.some((it) => it.id === 900004));
+
+  // Bilingual search checks description_en (e.g. search=Canvas)
+  const descSearch = await fetch(`${baseUrl}/api/items?search=Canvas&limit=10`).then((res) => res.json());
+  assert.ok(descSearch.total >= 1);
+  assert.ok(descSearch.items.some((it) => it.id === 900004));
+
+  // Thai search still works alongside bilingual search
+  const thSearch = await fetch(`${baseUrl}/api/items?search=ผืนไท&limit=10`).then((res) => res.json());
+  assert.equal(thSearch.total, 1);
+  assert.equal(thSearch.items[0].id, 900004);
 });

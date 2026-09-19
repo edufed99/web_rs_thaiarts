@@ -9,14 +9,17 @@
 export interface ContextOut {
   id: number;
   name: string;
+  name_en?: string | null;
   group: string;
   description: string;
+  description_en?: string | null;
   active_item_count: number;
 }
 
 export interface KeywordOut {
   id: number;
   name: string;
+  name_en?: string | null;
   taxonomy_path: string;
 }
 
@@ -29,9 +32,13 @@ export interface UserState {
 export interface ItemOut {
   id: number;
   name: string;
+  name_en?: string | null;
   description: string;
+  description_en?: string | null;
   category_group: string;
+  category_group_en?: string | null;
   performance_type: string;
+  performance_type_en?: string | null;
   performers_count: number | null;
   duration_minutes: number | null;
   price_text: string;
@@ -49,6 +56,7 @@ export interface ItemOut {
    */
   match_percent: number | null;
   suitability_label: string | null;
+  suitability_label_en?: string | null;
 }
 
 export interface ScoresOut {
@@ -66,6 +74,7 @@ export interface RecommendationResultOut {
   explanation: string;
   match_percent: number;
   suitability_label: string;
+  suitability_label_en?: string | null;
 }
 
 export interface RecommendationRequestIn {

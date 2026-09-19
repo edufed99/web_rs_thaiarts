@@ -24,6 +24,7 @@ import {
   uploadItemVideo,
 } from "@/lib/api";
 import { getCurrentUser, isAdmin } from "@/lib/auth";
+import { useTranslation } from "@/contexts/LanguageContext";
 import type {
   ContextOut,
   ItemOut,
@@ -84,6 +85,7 @@ const USER_PAGE_SIZE = 5;
 const ITEM_PAGE_SIZE = 5;
 
 export default function AdminItemsListPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const [ready, setReady] = useState(false);
   const [items, setItems] = useState<ItemOut[]>([]);
@@ -905,24 +907,24 @@ export default function AdminItemsListPage() {
       <section className="page-hero admin-hero">
         <div>
           <p className="eyebrow">Data & Knowledge Base Management</p>
-          <h1>บริหารจัดการฐานข้อมูลชุดการแสดง</h1>
+          <h1>{t("admin.heroTitle")}</h1>
           <p className="muted">
-            เพิ่ม แก้ไข ลบ และตรวจคุณภาพข้อมูล catalog จากหน้า admin โดยไม่ต้องเปิด PostgreSQL โดยตรง
+            {t("admin.heroSubtitle")}
           </p>
         </div>
         <div className="actions" style={{ marginTop: 0 }}>
-          <Link className="secondary" href="/admin">ดูสถิติการใช้งาน</Link>
-          <Link className="primary" href="/admin/items/new">เพิ่มการแสดงใหม่</Link>
+          <Link className="secondary" href="/admin">{t("admin.analytics")}</Link>
+          <Link className="primary" href="/admin/items/new">{t("admin.addNewItem")}</Link>
         </div>
       </section>
 
-      <nav className="admin-mode-tabs" aria-label="เมนูผู้ดูแลระบบ">
-        <Link href="/dashboard">Dashboard / สถิติการใช้งาน</Link>
-        <Link href="/admin/analytics">วิเคราะห์ข้อมูล</Link>
-        <Link className="active" href="/admin/items">บริหารจัดการฐานข้อมูล</Link>
+      <nav className="admin-mode-tabs" aria-label={t("admin.title")}>
+        <Link href="/dashboard">{t("admin.dashboard")}</Link>
+        <Link href="/admin/analytics">{t("admin.analytics")}</Link>
+        <Link className="active" href="/admin/items">{t("admin.itemManagement")}</Link>
       </nav>
 
-      <nav className="admin-data-subtabs" aria-label="ประเภทข้อมูลที่ต้องการจัดการ" role="tablist">
+      <nav className="admin-data-subtabs" aria-label="Data tabs" role="tablist">
         <button
           type="button"
           role="tab"
@@ -930,7 +932,7 @@ export default function AdminItemsListPage() {
           className={activeDataTab === "items" ? "active" : undefined}
           onClick={() => selectDataTab("items")}
         >
-          ชุดการแสดง
+          {t("admin.itemsTab")}
         </button>
         <button
           type="button"
@@ -939,7 +941,7 @@ export default function AdminItemsListPage() {
           className={activeDataTab === "users" ? "active" : undefined}
           onClick={() => selectDataTab("users")}
         >
-          ข้อมูลผู้ใช้
+          {t("admin.usersTab")}
         </button>
         <button
           type="button"
@@ -948,7 +950,7 @@ export default function AdminItemsListPage() {
           className={activeDataTab === "publication" ? "active" : undefined}
           onClick={() => selectDataTab("publication")}
         >
-          Artifact Publication
+          {t("admin.publicationTab")}
         </button>
       </nav>
 
@@ -1002,15 +1004,15 @@ export default function AdminItemsListPage() {
         <>
       <section className="admin-command-bar">
         <label>
-          <span>ค้นหา catalog</span>
+          <span>{t("admin.searchCatalog")}</span>
           <input
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="ชื่อการแสดง คำอธิบาย keyword"
+            placeholder={t("admin.searchCatalogPlaceholder")}
           />
         </label>
-        <span>{loading ? "กำลังโหลด..." : `${items.length}/${total} รายการ`}</span>
+        <span>{loading ? t("common.loading") : `${items.length}/${total} รายการ`}</span>
       </section>
 
       <section id="catalog-management-table" className="admin-workspace">
@@ -1018,22 +1020,22 @@ export default function AdminItemsListPage() {
           <div className="panel-head compact-head">
             <div>
               <p className="eyebrow">Catalog Table</p>
-              <h2>ตารางจัดการชุดการแสดง</h2>
+              <h2>{t("admin.tableManagementTitle")}</h2>
             </div>
             <button type="button" className="secondary" onClick={() => setReloadKey((key) => key + 1)}>
-              รีเฟรช
+              {t("admin.refreshData")}
             </button>
           </div>
           <div className="management-table-wrap">
             <table className="management-table admin-crud-table">
               <thead>
                 <tr>
-                  <th>ชุดการแสดง</th>
-                  <th>หมวดหมู่</th>
-                  <th>บริบท</th>
-                  <th>Keyword</th>
-                  <th>สถานะ</th>
-                  <th>จัดการ</th>
+                  <th>{t("admin.tablePerformances")}</th>
+                  <th>{t("admin.tableCategory")}</th>
+                  <th>{t("admin.tableContext")}</th>
+                  <th>{t("admin.tableKeywords")}</th>
+                  <th>{t("admin.tableStatus")}</th>
+                  <th>{t("admin.tableActions")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -1049,7 +1051,7 @@ export default function AdminItemsListPage() {
                     <td><span className="status-pill active">{item.suitability_label || "Active"}</span></td>
                     <td>
                       <div className="row-actions">
-                        <button type="button" disabled={saving} onClick={() => beginEdit(item)}>แก้ไข</button>
+                        <button type="button" disabled={saving} onClick={() => beginEdit(item)}>{t("common.edit")}</button>
                         <button
                           type="button"
                           className={`danger ${deletingItemId === item.id ? "is-pending" : ""}`}
@@ -1058,8 +1060,8 @@ export default function AdminItemsListPage() {
                           onClick={() => handleDelete(item)}
                         >
                           {deletingItemId === item.id ? (
-                            <><span className="row-action-spinner" aria-hidden="true" /> กำลังลบ...</>
-                          ) : "ลบ"}
+                            <><span className="row-action-spinner" aria-hidden="true" /> {t("common.delete")}...</>
+                          ) : t("common.delete")}
                         </button>
                       </div>
                     </td>
@@ -1067,7 +1069,7 @@ export default function AdminItemsListPage() {
                 ))}
                 {items.length === 0 ? (
                   <tr>
-                    <td colSpan={6}>ไม่พบรายการที่ตรงกับเงื่อนไข</td>
+                    <td colSpan={6}>{t("admin.noResultsFound")}</td>
                   </tr>
                 ) : null}
               </tbody>

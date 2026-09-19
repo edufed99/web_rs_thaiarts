@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import React, { useEffect, useState } from "react";
 
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { useTranslation } from "@/contexts/LanguageContext";
 import {
   AUTH_CHANGED_EVENT,
   STORAGE_KEY,
@@ -14,6 +16,7 @@ import {
 import type { UserOut } from "@/lib/types";
 
 export function FrontendNav() {
+  const { t } = useTranslation();
   const router = useRouter();
   const [user, setUser] = useState<UserOut | null | undefined>(undefined);
 
@@ -40,11 +43,12 @@ export function FrontendNav() {
   const readableUserName = user ? getReadableUserName(user) : "";
 
   return (
-    <div className="topbar-nav" aria-label="เมนูบัญชีผู้ใช้ด้านบน">
+    <div className="topbar-nav" aria-label={t("nav.profile")}>
+      <LanguageSwitcher variant="admin" />
       {user === undefined ? null : user ? (
-        <nav className="utility-nav" aria-label="เมนูบัญชีผู้ใช้">
+        <nav className="utility-nav" aria-label={t("nav.profile")}>
           <span
-            title={user.is_admin ? "ผู้ดูแลระบบ" : user.username}
+            title={user.is_admin ? "Admin" : user.username}
             className="user-chip"
           >
             {user.is_admin ? "Admin · " : ""}
@@ -59,13 +63,13 @@ export function FrontendNav() {
               router.refresh();
             }}
           >
-            ออกจากระบบ
+            {t("nav.logout")}
           </button>
         </nav>
       ) : (
-        <nav className="utility-nav" aria-label="เข้าสู่ระบบ">
-          <Link href="/login">เข้าสู่ระบบ</Link>
-          <Link className="button-link" href="/signup">สมัครสมาชิก</Link>
+        <nav className="utility-nav" aria-label={t("nav.login")}>
+          <Link href="/login">{t("nav.login")}</Link>
+          <Link className="button-link" href="/signup">{t("nav.signup")}</Link>
         </nav>
       )}
     </div>

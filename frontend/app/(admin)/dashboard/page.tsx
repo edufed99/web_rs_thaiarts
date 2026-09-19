@@ -20,6 +20,7 @@ import {
 } from "recharts";
 
 import { PerformanceCardMedia, resolvedImageUrl } from "@/components/PerformanceCardMedia";
+import { useTranslation } from "@/contexts/LanguageContext";
 import {
   ApiClientError,
   downloadDashboardReport,
@@ -74,6 +75,7 @@ const CHART_PALETTE = [
 ];
 
 export default function DashboardPage() {
+  const { t } = useTranslation();
   const router = useRouter();
   const [ready, setReady] = useState(false);
   const [data, setData] = useState<DashboardOut | null>(null);
@@ -190,34 +192,34 @@ export default function DashboardPage() {
     <div className="dashboard-page dashboard-page--phase3">
       <section className="dashboard-hero researcher-hero">
         <div>
-          <p className="eyebrow">สถิติการใช้งานระบบ</p>
-          <h1>ศูนย์บริหารข้อมูลและติดตามประสิทธิภาพ AI</h1>
+          <p className="eyebrow">{t("admin.analytics")}</p>
+          <h1>{t("admin.dashboardHeroTitle")}</h1>
           <p>
-            รวมสถิติการใช้งาน คุณภาพคำแนะนำ และพฤติกรรมผู้ใช้จาก Postgres — อัปเดต {formatRelative(data.generated_at)}
+            {t("admin.dashboardHeroSubtitle")} — อัปเดต {formatRelative(data.generated_at)}
           </p>
         </div>
         <div className="dashboard-actions">
           <RangeSelect value={range} onChange={setRange} />
-          <Link className="secondary" href="/admin/items">จัดการ catalog</Link>
+          <Link className="secondary" href="/admin/items">{t("admin.manageCatalog")}</Link>
           <button
             type="button"
             className="primary"
             disabled={exporting}
             onClick={handleExportReport}
           >
-            {exporting ? "กำลังสร้าง Excel..." : "ส่งออกรายงาน"}
+            {exporting ? t("admin.exportingReport") : t("admin.exportReport")}
           </button>
           <button type="button" className="primary" onClick={() => setReloadKey((k) => k + 1)}>
-            รีเฟรชข้อมูล
+            {t("admin.refreshData")}
           </button>
           {exportError ? <span className="dashboard-export-error" role="alert">{exportError}</span> : null}
         </div>
       </section>
 
-      <nav className="admin-mode-tabs" aria-label="เมนูผู้ดูแลระบบ">
-        <Link className="active" href="/admin">สถิติการใช้งาน</Link>
-        <Link href="/admin/analytics">วิเคราะห์ข้อมูล</Link>
-        <Link href="/admin/items">บริหารจัดการฐานข้อมูล</Link>
+      <nav className="admin-mode-tabs" aria-label={t("admin.title")}>
+        <Link className="active" href="/admin">{t("admin.dashboard")}</Link>
+        <Link href="/admin/analytics">{t("admin.analytics")}</Link>
+        <Link href="/admin/items">{t("admin.itemManagement")}</Link>
       </nav>
 
       <KPISection kpis={data.kpis} generatedAt={data.generated_at} />
@@ -356,36 +358,37 @@ function DashboardSection({
 // ---------------------------------------------------------------------------
 
 function KPISection({ kpis, generatedAt }: { kpis: DashboardOut["kpis"]; generatedAt: string }) {
-  const tiles: Array<{ key: keyof typeof kpis; tile: typeof kpis.members }> = [
-    { key: "members", tile: kpis.members },
-    { key: "performances", tile: kpis.performances },
-    { key: "indices", tile: kpis.indices },
-    { key: "points", tile: kpis.points },
-    { key: "active_users", tile: kpis.active_users },
-    { key: "sessions", tile: kpis.sessions },
+  const { t } = useTranslation();
+  const tiles: Array<{ key: keyof typeof kpis; tile: typeof kpis.members; label: string }> = [
+    { key: "members", tile: kpis.members, label: t("admin.totalMembers") },
+    { key: "performances", tile: kpis.performances, label: t("admin.totalItems") },
+    { key: "indices", tile: kpis.indices, label: kpis.indices.label },
+    { key: "points", tile: kpis.points, label: t("admin.totalInteractions") },
+    { key: "active_users", tile: kpis.active_users, label: kpis.active_users.label },
+    { key: "sessions", tile: kpis.sessions, label: kpis.sessions.label },
   ];
   return (
     <section className="dashboard-section" data-section="kpis" id="overview-metrics">
       <div className="research-section-head">
         <div>
-          <h2>ภาพรวมตัวชี้วัด</h2>
+          <h2>{t("admin.overviewMetrics")}</h2>
           <p className="muted">อัปเดตล่าสุด {formatRelative(generatedAt)}</p>
         </div>
         <span>ค่าจาก /metrics/dashboard</span>
       </div>
       <div className="dashboard-kpi-grid dashboard-kpi-grid-6" role="list">
-        {tiles.map(({ key, tile }) => (
-          <KpiTileCard key={key} tile={tile} />
+        {tiles.map(({ key, tile, label }) => (
+          <KpiTileCard key={key} tile={tile} displayLabel={label} />
         ))}
       </div>
     </section>
   );
 }
 
-function KpiTileCard({ tile }: { tile: DashboardOut["kpis"]["members"] }) {
+function KpiTileCard({ tile, displayLabel }: { tile: DashboardOut["kpis"]["members"]; displayLabel?: string }) {
   return (
     <article className={`dashboard-kpi-card kpi-card-v2 tone-${tile.tone}`} role="listitem">
-      <span>{tile.label}</span>
+      <span>{displayLabel || tile.label}</span>
       <strong>{tile.value || "—"}</strong>
       <small>
         {tile.delta_pct != null ? (

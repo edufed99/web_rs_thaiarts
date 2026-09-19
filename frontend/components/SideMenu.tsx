@@ -4,35 +4,38 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import React from "react";
 
+import { useTranslation } from "@/contexts/LanguageContext";
 import { logout } from "@/lib/auth";
-
-const ADMIN_NAV = [
-  { href: "/admin", icon: "⌂", label: "หน้าหลัก / สถิติ" },
-  { href: "/admin/analytics", icon: "AI", label: "วิเคราะห์ข้อมูล" },
-  { href: "/admin/items", icon: "DB", label: "บริหารฐานข้อมูล" },
-  { href: "/admin/email-settings", icon: "✉", label: "ตั้งค่าอีเมล OAuth" },
-] as const;
 
 /** Navigation reserved for administrators and research operations only. */
 export function SideMenu() {
+  const { t } = useTranslation();
   const pathname = usePathname();
   const router = useRouter();
+
+  const adminNav = [
+    { href: "/admin", icon: "⌂", label: t("admin.dashboard") },
+    { href: "/admin/analytics", icon: "AI", label: t("admin.analytics") },
+    { href: "/admin/items", icon: "DB", label: t("admin.itemManagement") },
+    { href: "/admin/email-settings", icon: "✉", label: t("admin.emailSettings") },
+  ];
+
   return (
-    <aside className="side-menu admin-side-menu" aria-label="เมนูเครื่องมือวิจัยสำหรับผู้ดูแลระบบ">
-      <Link className="side-brand" href="/admin" aria-label="กลับหน้าหลักผู้ดูแลระบบ">
+    <aside className="side-menu admin-side-menu" aria-label={t("admin.title")}>
+      <Link className="side-brand" href="/admin" aria-label={t("admin.title")}>
         <span className="side-brand-mark">TP</span>
         <span className="side-brand-copy">
-          <b>ระบบแนะนำ<br />ชุดการแสดง</b>
+          <b>{t("nav.brand")}</b>
           <small>ADMIN CONSOLE</small>
         </span>
       </Link>
 
       <div className="side-menu-title">
-        <span>Research tools</span>
+        <span>{t("admin.researchTools")}</span>
         <i aria-hidden="true" />
       </div>
-      <nav className="side-menu-links admin-research-links" aria-label="Research tools">
-        {ADMIN_NAV.map((item) => (
+      <nav className="side-menu-links admin-research-links" aria-label={t("admin.researchTools")}>
+        {adminNav.map((item) => (
           <SideNavLink
             key={item.href}
             href={item.href}
@@ -48,28 +51,28 @@ export function SideMenu() {
       </nav>
 
       <div className="side-menu-title" style={{ marginTop: "0.5rem" }}>
-        <span>Public pages</span>
+        <span>{t("admin.publicPages")}</span>
         <i aria-hidden="true" />
       </div>
-      <nav className="side-menu-links admin-research-links" aria-label="Public pages">
+      <nav className="side-menu-links admin-research-links" aria-label={t("admin.publicPages")}>
         <SideNavLink
           href="/"
           icon="🌐"
-          label="หน้าเว็บไซต์ทั่วไป"
+          label={t("admin.publicPages")}
           active={false}
         />
         <SideNavLink
           href="/profile"
           icon="👤"
-          label="โปรไฟล์ผู้ใช้ของฉัน"
+          label={t("admin.myProfile")}
           active={pathname.startsWith("/profile")}
         />
       </nav>
 
-      <div className="admin-side-status" aria-label="สถานะระบบ">
+      <div className="admin-side-status" aria-label={t("admin.systemReady")}>
         <span aria-hidden="true" />
         <div>
-          <strong>ระบบพร้อมใช้งาน</strong>
+          <strong>{t("admin.systemReady")}</strong>
           <small>Admin workspace</small>
         </div>
       </div>
@@ -85,7 +88,7 @@ export function SideMenu() {
         }}
       >
         <span>↪</span>
-        <b>ออกจากระบบ</b>
+        <b>{t("nav.logout")}</b>
       </button>
     </aside>
   );

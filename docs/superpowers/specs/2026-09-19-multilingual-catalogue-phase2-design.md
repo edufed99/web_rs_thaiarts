@@ -255,7 +255,36 @@ export function getLocalizedKeyword(keyword: KeywordOut, locale: "th" | "en") {
 
 ---
 
-## 7. Admin Management Portal
+## 7. Recommendation Journey Preservation & Localization (`/recommend` & `/results`)
+
+### 7.1 Core Invariant: Zero Algorithmic Drift
+As requested by the user, **all recommendation mechanisms, calculations, filters, and menus must function with 100% parity** between Thai and English:
+1. **Underlying IDs Preserved**:
+   - The selection of an occasion in `ContextPicker` binds strictly to `context.id` (numeric stable ID).
+   - The selection of cultural keywords in `KeywordPicker` (whether typed or selected via the Taxonomy Modal) binds strictly to `keyword.id` (numeric ID).
+   - Form submission passes `context_id` and `keyword_ids` as numeric IDs to `/results` and `POST /recommendations`.
+2. **Scoring Logic Untouched**:
+   - The Hybrid Eligibility Gate, CBF (Content-Based Filtering via multilingual E5 embeddings), CF (ItemKNN), and WeightedSum calculation remain 100% identical.
+   - Backend Private Model Service continues receiving candidate artifact item IDs.
+
+### 7.2 UI Localization for `/recommend` & `/results`
+- **Member Sidebar Navigation** (`MemberShell.tsx` / `MemberNav.tsx`):
+  - Localize all menu tabs: User Profile, Favorites, Rating History, Recently Viewed, Recommended from Favorites, Discover New Performances.
+- **Form Controls & Headings** (`frontend/app/(public)/recommend/page.tsx`):
+  - "Configure Your Recommendations", "Adjust with Occasions and Attributes"
+  - "Performance Occasion" dropdown (`ContextPicker` shows `name_en || name`)
+  - "Top-K Results" (number input)
+  - "Keywords & Attributes" (`KeywordPicker` matches English & Thai terms, displays localized chips)
+  - "Select from Categories" button & Taxonomy Modal (hierarchy displayed in English when locale is `en`)
+  - "Calculate Personalized Recommendations" submit button.
+- **Results Page & Result Cards** (`/results`, `RecommendationCard.tsx`, `ProfileRecommendationCard.tsx`):
+  - Result card items rendered via `getLocalizedItem(result.item, locale)`.
+  - Matched keywords rendered with `k.name_en || k.name`.
+  - Explanation strings and suitability badges localized (`"Highly Recommended"`, `"Recommended"`, `"Suitable"`).
+
+---
+
+## 8. Admin Management Portal
 
 ### 7.1 Admin Form (`frontend/components/AdminItemFormDraftStep.tsx` & `AdminItemFormHelpers.ts`)
 - Add fields to `DraftFields`:

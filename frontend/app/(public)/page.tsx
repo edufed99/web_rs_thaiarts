@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import React, { useEffect, useMemo, useState } from "react";
 
 import PopularPerformanceCard from "@/components/PopularPerformanceCard";
+import { useTranslation } from "@/contexts/LanguageContext";
 import {
   AUTH_CHANGED_EVENT,
   getCurrentUser,
@@ -22,35 +23,7 @@ import { getUserKey } from "@/lib/user";
 import { rankPopularItems, rankTopRatedItems } from "@/lib/popularityRanking";
 import type { ContextOut, EngagementOut, ItemOut, LegacyStatsOut, UserOut } from "@/lib/types";
 
-// ---------------------------------------------------------------------------
-// Static marketing copy — kept verbatim because the user wants images and
-// these "framing" strings to remain frozen until manually updated.
-// ---------------------------------------------------------------------------
-
-// 3-step "how it works" — pure marketing copy.
-const HOW_STEPS = [
-  {
-    n: "1",
-    icon: "♡",
-    title: "เลือกบริบทและความสนใจ",
-    desc: "ระบุโอกาส งบประมาณ จำนวนผู้แสดง และรูปแบบที่ต้องการ",
-  },
-  {
-    n: "2",
-    icon: "AI",
-    title: "AI วิเคราะห์ข้อมูล",
-    desc: "ระบบวิเคราะห์ความเหมาะสมจากฐานข้อมูลชุดการแสดงและบริบทงาน",
-  },
-  {
-    n: "3",
-    icon: "♧",
-    title: "ค้นพบชุดการแสดงที่เหมาะสม",
-    desc: "รับคำแนะนำที่ตรงกับความต้องการ พร้อมรายละเอียดครบถ้วน",
-  },
-] as const;
-
-// Hardcoded image paths. The user has not yet replaced /img/home/* with
-// real uploads, so we keep using the marketing assets paired by index.
+// Hardcoded image paths. We keep using the marketing assets paired by index.
 const POPULAR_IMAGES = [
   "/img/home/popular-1.png",
   "/img/home/popular-2.png",
@@ -75,6 +48,7 @@ const CATEGORY_IMAGE_BY_NAME: Record<string, string> = {
   "รำฉุยฉาย": "/img/home/category-chui-chai.jpg",
   "ระบำโบราณคดี": "/img/home/category-archaeology.jpg",
 };
+
 // ---------------------------------------------------------------------------
 // Live data shape populated by the page's single useEffect.
 // ---------------------------------------------------------------------------
@@ -105,25 +79,18 @@ const EMPTY_LIVE: LiveData = {
 
 export default function HomePage() {
   const router = useRouter();
+  const { t, locale } = useTranslation();
   const [user, setUser] = useState<UserOut | null>(null);
   const [live, setLive] = useState<LiveData>(EMPTY_LIVE);
   const [liveReady, setLiveReady] = useState(false);
   const [heroSearch, setHeroSearch] = useState("");
 
-  // Client-side search submit — avoids a full HTML form post so the home
-  // → /items navigation reuses Next.js's preloaded chunks (catalogue grid
-  // / skeletons / Suspense boundary) instead of tearing the document down
-  // and re-running the boot pipeline from scratch. Anonymous callers get
-  // the same fast path; getItems() will skip the user_key param when no
-  // member is logged in (see lib/api.ts).
   const onHeroSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const q = heroSearch.trim();
     router.push(q ? `/items?q=${encodeURIComponent(q)}` : "/items");
   };
 
-  // Auth state — ref counts on login/logout so the CTA banner can hide for
-  // returning users. Mirrors the pattern from member pages.
   useEffect(() => {
     function syncAuth() {
       const currentUser = getCurrentUser();
@@ -141,20 +108,11 @@ export default function HomePage() {
     };
   }, [router]);
 
-  // Live data — three endpoints fired in parallel, then a 4th call for the
-  // batch legacy stats (so the popular card can show real ratings) and a
-  // 5th call for live engagement (likes + saves + positive ratings). The
-  // page stays usable even if any one of them fails — we render graceful
-  // placeholders rather than blowing the page up.
   useEffect(() => {
     let cancelled = false;
     setLiveReady(false);
 
     Promise.allSettled([
-      // Send the anon user_key so the catalog endpoint can apply live
-      // personalization. We ask for 200 items so the category bucket
-      // counts are accurate — the homepage renders the top 6 categories
-      // by item count, which would be wrong if we capped at 50.
       getItems({ limit: 200, userKey: getUserKey() || undefined }),
       getContexts(),
       getMetrics(),
@@ -178,20 +136,16 @@ export default function HomePage() {
           ? { item_count: metricsRes.value.item_count, context_count: metricsRes.value.context_count }
           : null;
 
-      // Stage 2 — fetch all-time engagement (popular ranking), monthly
-      // engagement (top-rated ranking, so it matches /top-rated), and legacy
-      // stats (rating summary shown on cards). All three are batch endpoints
-      // and are kicked off in parallel.
       const ids = items.map((item) => item.id);
-      const engagementP = getItemEngagementBatch(ids).catch((e: unknown) => {
-        if (cancelled) return { engagements: [], source: "disabled" as const };
-        return { engagements: [], source: "disabled" as const };
-      });
-      const engagementMonthP = getItemEngagementBatch(ids, { range: "30d" }).catch((e: unknown) => {
-        if (cancelled) return { engagements: [], source: "disabled" as const };
-        return { engagements: [], source: "disabled" as const };
-      });
-      const legacyP = getItemLegacyStatsBatch(ids).catch((e: unknown) => new Map());
+      const engagementP = getItemEngagementBatch(ids).catch(() => ({
+        engagements: [],
+        source: "disabled" as const,
+      }));
+      const engagementMonthP = getItemEngagementBatch(ids, { range: "30d" }).catch(() => ({
+        engagements: [],
+        source: "disabled" as const,
+      }));
+      const legacyP = getItemLegacyStatsBatch(ids).catch(() => new Map());
 
       Promise.all([engagementP, engagementMonthP, legacyP]).then(([engRes, engMonthRes, legacyMap]) => {
         if (cancelled) return;
@@ -218,13 +172,6 @@ export default function HomePage() {
     };
   }, []);
 
-  // -------------------------- Derived data -----------------------------
-
-  // Popular cards: top 4 by live engagement_score desc.
-  //
-  // "Engagement" = likes + saves + positive (rating ≥ 4) ratings. Only
-  // items with engagement > 0 qualify; tie-breakers are avg_rating desc,
-  // total review count desc, match_percent desc, then id desc.
   const popularTop4 = useMemo(() => {
     return rankPopularItems(live.items, live.engagement, live.legacy, 4);
   }, [live.items, live.engagement, live.legacy]);
@@ -238,17 +185,10 @@ export default function HomePage() {
     return m > 0 ? m : 1;
   }, [popularTop4, live.engagement]);
 
-  // Top Rated cards: top 4 by avg_rating desc among items that received a
-  // rating in the last 30 days, so the homepage preview matches the first 4
-  // rows of the monthly section on /top-rated.
   const topRatedTop4 = useMemo(() => {
     return rankTopRatedItems(live.items, live.legacy, 4, live.engagementMonth);
   }, [live.items, live.legacy, live.engagementMonth]);
 
-  // Category tiles: top 6 distinct `category_group` values by item count.
-  // Item.category_group is the live field; the static homepage currently
-  // hardcodes region-themed labels that don't map 1:1, so we render whatever
-  // the corpus actually contains.
   const categoryTop6 = useMemo(() => {
     const buckets = new Map<string, { count: number; sample_id: number }>();
     for (const item of live.items) {
@@ -263,27 +203,42 @@ export default function HomePage() {
       .slice(0, 6);
   }, [live.items]);
 
-  // Preview the same ordered sub-contexts shown on /occasions.
   const occasionPreview = useMemo(
     () => buildOccasionSummaries(live.contexts).slice(0, 5),
     [live.contexts],
   );
 
-  const itemCount = live.metrics?.item_count ?? live.items.length;
-  const totalItemsLabel = itemCount > 0 ? new Intl.NumberFormat("th-TH").format(itemCount) : "—";
+  const howSteps = useMemo(
+    () => [
+      {
+        n: "1",
+        icon: "♡",
+        title: t("home.howStep1Title"),
+        desc: t("home.howStep1Desc"),
+      },
+      {
+        n: "2",
+        icon: "AI",
+        title: t("home.howStep2Title"),
+        desc: t("home.howStep2Desc"),
+      },
+      {
+        n: "3",
+        icon: "♧",
+        title: t("home.howStep3Title"),
+        desc: t("home.howStep3Desc"),
+      },
+    ],
+    [t],
+  );
 
   return (
     <div className="home home-mockup">
       <section className="home-hero">
         <div className="home-hero-text">
-          <h1>
-            ค้นหาชุดการแสดงที่ใช่
-            <br />
-            สำหรับทุกโอกาส
-          </h1>
+          <h1>{t("home.heroTitle")}</h1>
           <p className="home-hero-sub">
-            สำรวจนาฏศิลป์ไทยกว่า {totalItemsLabel !== "—" ? `${totalItemsLabel} ชุด` : "100 ชุด"}
-            พร้อมข้อมูลผู้แสดง ระยะเวลา และราคา
+            {t("home.heroSubtitle")}
           </p>
           <form className="home-search" role="search" onSubmit={onHeroSearchSubmit}>
             <span className="home-search-icon" aria-hidden="true">⌕</span>
@@ -292,10 +247,10 @@ export default function HomePage() {
               name="q"
               value={heroSearch}
               onChange={(e) => setHeroSearch(e.target.value)}
-              placeholder="ค้นหาชื่อชุดการแสดง หรือโอกาสที่ต้องการ..."
-              aria-label="ค้นหาชุดการแสดง"
+              placeholder={t("home.heroSearchPlaceholder")}
+              aria-label={t("common.search")}
             />
-            <button type="submit" aria-label="ค้นหา">⌕</button>
+            <button type="submit" aria-label={t("common.search")}>⌕</button>
           </form>
         </div>
         <div className="home-hero-art" aria-hidden="true">
@@ -309,20 +264,20 @@ export default function HomePage() {
             <img src="/img/home/cta-loy-krathong.png" alt="" />
           </div>
           <div className="home-cta-text">
-            <h2>รับคำแนะนำที่ตรงกับความต้องการของคุณ</h2>
-            <p>สมัครสมาชิกฟรี เพื่อรับคำแนะนำเฉพาะคุณ และเข้าถึงชุดการแสดงพิเศษก่อนใคร</p>
-            <Link href="/signup" className="site-button primary">สมัครสมาชิกฟรี</Link>
-            <small>ไม่มีค่าใช้จ่าย • ยกเลิกได้ทุกเมื่อ</small>
+            <h2>{t("home.ctaTitle")}</h2>
+            <p>{t("home.ctaSubtitle")}</p>
+            <Link href="/signup" className="site-button primary">{t("home.ctaButton")}</Link>
+            <small>{t("home.ctaNote")}</small>
           </div>
         </section>
       )}
 
       <section className="home-section">
-        <SectionHead title="ชุดการแสดงยอดนิยม" href="/popular" />
+        <SectionHead title={t("home.popularTitle")} href="/popular" viewAllText={t("common.viewAll")} />
         {!liveReady ? (
           <SkeletonGrid count={4} />
         ) : popularTop4.length === 0 ? (
-          <EmptyState text={live.error ? "ไม่สามารถโหลดข้อมูลจากเซิร์ฟเวอร์" : "ยังไม่มีชุดการแสดงในระบบ"} />
+          <EmptyState text={live.error ? t("home.serverError") : t("home.noItems")} />
         ) : (
           <div className="home-card-grid" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
             {popularTop4.map((item, idx) => (
@@ -333,9 +288,6 @@ export default function HomePage() {
                   engagement={live.engagement.get(item.id)}
                   engagementMax={maxPopularScore}
                 />
-                {/* Images are hardcoded — overlay the marketing thumbnail on
-                    top of the component's media area so the live name/price
-                    show while the photo stays put. */}
                 <img
                   src={POPULAR_IMAGES[idx] ?? POPULAR_IMAGES[0]}
                   alt=""
@@ -349,11 +301,11 @@ export default function HomePage() {
       </section>
 
       <section className="home-section">
-        <SectionHead title="ชุดการแสดงที่ได้รับคะแนนสูง" href="/top-rated" />
+        <SectionHead title={t("home.topRatedTitle")} href="/top-rated" viewAllText={t("common.viewAll")} />
         {!liveReady ? (
           <SkeletonGrid count={4} />
         ) : topRatedTop4.length === 0 ? (
-          <EmptyState text={live.error ? "ไม่สามารถโหลดข้อมูลจากเซิร์ฟเวอร์" : "ยังไม่มีชุดการแสดงที่ได้รับคะแนน"} />
+          <EmptyState text={live.error ? t("home.serverError") : t("home.noRatedItems")} />
         ) : (
           <div className="home-card-grid" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
             {topRatedTop4.map((item) => (
@@ -364,11 +316,11 @@ export default function HomePage() {
       </section>
 
       <section className="home-section">
-        <SectionHead title="สำรวจตามหมวดหมู่" href="/categories" />
+        <SectionHead title={t("home.exploreCategories")} href="/categories" viewAllText={t("common.viewAll")} />
         {!liveReady ? (
           <SkeletonGrid count={6} variant="square" />
         ) : categoryTop6.length === 0 ? (
-          <EmptyState text="ยังไม่มีข้อมูลหมวดหมู่" />
+          <EmptyState text={t("home.noCategories")} />
         ) : (
           <div className="home-tile-grid">
             {categoryTop6.map((cat, idx) => (
@@ -383,7 +335,7 @@ export default function HomePage() {
                   aria-hidden="true"
                 />
                 <strong>{cat.name}</strong>
-                <small>{formatCount(cat.count)} รายการในหมวดนี้</small>
+                <small>{formatCount(cat.count, locale)} {t("home.itemsInCat")}</small>
               </Link>
             ))}
           </div>
@@ -391,11 +343,11 @@ export default function HomePage() {
       </section>
 
       <section className="home-section">
-        <SectionHead title="เลือกตามโอกาสสำคัญ" href="/occasions" />
+        <SectionHead title={t("home.occasionsTitle")} href="/occasions" viewAllText={t("common.viewAll")} />
         {!liveReady ? (
           <SkeletonGrid count={5} variant="square" />
         ) : occasionPreview.length === 0 ? (
-          <EmptyState text="ยังไม่มีข้อมูลโอกาส" />
+          <EmptyState text={t("home.noOccasions")} />
         ) : (
           <div className="home-occasion-grid">
             {occasionPreview.map((occ, idx) => (
@@ -411,7 +363,7 @@ export default function HomePage() {
                 />
                 <span className="home-occasion-icon" aria-hidden="true">{chipIcon(occ.groupLabel)}</span>
                 <h3>{occ.context.name}</h3>
-                <p>{formatCount(occ.context.active_item_count)} ชุดการแสดงตามโอกาสนี้</p>
+                <p>{formatCount(occ.context.active_item_count, locale)} {t("home.itemsInOccasion")}</p>
               </Link>
             ))}
           </div>
@@ -419,9 +371,9 @@ export default function HomePage() {
       </section>
 
       <section className="home-section">
-        <SectionHead title="ระบบแนะนำทำงานอย่างไร" />
+        <SectionHead title={t("home.systemHighlights")} />
         <ol className="home-how">
-          {HOW_STEPS.map((step) => (
+          {howSteps.map((step) => (
             <HowStep
               key={step.n}
               n={step.n}
@@ -432,7 +384,6 @@ export default function HomePage() {
           ))}
         </ol>
       </section>
-
     </div>
   );
 }
@@ -441,11 +392,11 @@ export default function HomePage() {
 // Local presentation helpers (kept inline — small + page-specific)
 // ---------------------------------------------------------------------------
 
-function SectionHead({ title, href }: { title: string; href?: string }) {
+function SectionHead({ title, href, viewAllText }: { title: string; href?: string; viewAllText?: string }) {
   return (
     <div className="home-section-head">
       <h2><span aria-hidden="true">❖</span>{title}</h2>
-      {href ? <Link href={href}>ดูทั้งหมด ›</Link> : null}
+      {href ? <Link href={href}>{viewAllText ?? "ดูทั้งหมด"} ›</Link> : null}
     </div>
   );
 }
@@ -483,18 +434,15 @@ function EmptyState({ text }: { text: string }) {
   );
 }
 
-// Tiny intl formatter — th-TH locale adds thousands separators.
-function formatCount(n: number): string {
+function formatCount(n: number, locale: string = "th"): string {
   if (!Number.isFinite(n) || n <= 0) return "0";
-  return new Intl.NumberFormat("th-TH").format(n);
+  return new Intl.NumberFormat(locale === "en" ? "en-US" : "th-TH").format(n);
 }
 
 function categoryImageFor(name: string, idx: number): string {
   return CATEGORY_IMAGE_BY_NAME[name] ?? CATEGORY_IMAGES[idx % CATEGORY_IMAGES.length];
 }
 
-// Same icon mapping the original page used — keeps the visual rhythm of
-// the chip badges consistent with the rest of the public pages.
 function chipIcon(label: string): string {
   if (label.includes("เทศกาล")) return "✣";
   if (label.includes("เผยแพร่")) return "❋";

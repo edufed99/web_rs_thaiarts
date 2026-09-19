@@ -1802,9 +1802,9 @@ button:disabled {
 }
 
 .catalog-filter-bar {
-  display: grid;
-  grid-template-columns: minmax(220px, 1.35fr) minmax(140px, 0.78fr) minmax(150px, 0.82fr) minmax(170px, 0.95fr) auto;
-  gap: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
   align-items: center;
   padding: 10px;
   border: 1px solid #d8e0f4;
@@ -1812,8 +1812,17 @@ button:disabled {
   background: #fbfcff;
 }
 
-.catalog-filter-bar input,
+.catalog-filter-bar input[type="search"] {
+  flex: 1 1 200px;
+  min-height: 40px;
+  border-color: #ccd7eb;
+  color: #17233c;
+  background: #fff;
+}
+
 .catalog-filter-bar select {
+  flex: 0 1 auto;
+  min-width: 130px;
   min-height: 40px;
   border-color: #ccd7eb;
   color: #17233c;
@@ -1822,7 +1831,68 @@ button:disabled {
 
 .catalog-filter-bar button {
   min-height: 40px;
-  padding: 8px 14px;
+  padding: 8px 16px;
+}
+
+.catalog-active-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 0.875rem;
+}
+
+.catalog-active-filters .active-filter-title {
+  color: var(--muted, #64748b);
+  font-weight: 600;
+}
+
+.catalog-active-filters .filter-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 9999px;
+  color: #3730a3;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.catalog-active-filters .filter-badge button {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 2px;
+  font-size: 1rem;
+  line-height: 1;
+  opacity: 0.7;
+}
+
+.catalog-active-filters .filter-badge button:hover {
+  opacity: 1;
+}
+
+.catalog-clear-btn {
+  background: none;
+  border: 1px dashed #cbd5e1;
+  border-radius: 9999px;
+  color: #475569;
+  cursor: pointer;
+  padding: 4px 10px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  transition: all 0.15s ease;
+}
+
+.catalog-clear-btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #0f172a;
 }
 
 .catalog-result-count {

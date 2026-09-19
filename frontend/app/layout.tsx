@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import { Noto_Sans_Thai } from "next/font/google";
+import { cookies } from "next/headers";
 import React from "react";
+
+import { LanguageProvider, LOCALE_COOKIE_KEY } from "@/contexts/LanguageContext";
+import type { Locale } from "@/locales";
 
 import "./globals.css";
 
@@ -24,11 +28,19 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const cookieStore = cookies();
+  const cookieLocale = cookieStore.get(LOCALE_COOKIE_KEY)?.value;
+  const initialLocale: Locale = cookieLocale === "en" ? "en" : "th";
+
   // Each route group ((public) / (admin)) renders its own chrome. The root
   // layout just wires up the font + global CSS.
   return (
-    <html lang="th" className={notoThai.variable}>
-      <body className={notoThai.className}>{children}</body>
+    <html lang={initialLocale} className={notoThai.variable}>
+      <body className={notoThai.className}>
+        <LanguageProvider initialLocale={initialLocale}>
+          {children}
+        </LanguageProvider>
+      </body>
     </html>
   );
 }

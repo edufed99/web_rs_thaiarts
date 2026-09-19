@@ -25,7 +25,7 @@ export function SideMenu() {
       <Link className="side-brand" href="/admin" aria-label={t("admin.title")}>
         <span className="side-brand-mark">TP</span>
         <span className="side-brand-copy">
-          <b>{t("nav.brand")}</b>
+          <b>{t("nav.brandSideMenu")}</b>
           <small>ADMIN CONSOLE</small>
         </span>
       </Link>

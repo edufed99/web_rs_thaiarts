@@ -18,7 +18,7 @@ export function SiteFooter() {
         <div className="site-footer-col brand-col">
           <Link href="/" className="site-footer-brand">
             <span className="site-brand-mark" aria-hidden="true">น</span>
-            <strong>{t("nav.brand")}</strong>
+            <strong>{t("footer.brand")}</strong>
           </Link>
           <p className="site-footer-tagline">
             {t("footer.description")}
@@ -61,7 +61,7 @@ export function SiteFooter() {
       </div>
 
       <div className="site-footer-bottom">
-        <small>© 2026 {t("nav.brand")} — {t("footer.copyright")}</small>
+        <small>© 2026 {t("footer.brand")} — {t("footer.copyright")}</small>
       </div>
     </footer>
   );

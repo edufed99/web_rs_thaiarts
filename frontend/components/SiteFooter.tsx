@@ -1,24 +1,29 @@
+"use client";
+
 import Link from "next/link";
 import React from "react";
+
+import { useTranslation } from "@/contexts/LanguageContext";
 
 /**
  * Site-wide footer used by every public page. Four columns mirror the
  * mockup homepage: brand blurb, primary nav, help links, contact info.
  */
 export function SiteFooter() {
+  const { t } = useTranslation();
+
   return (
     <footer className="site-footer" role="contentinfo">
       <div className="site-footer-inner">
         <div className="site-footer-col brand-col">
           <Link href="/" className="site-footer-brand">
             <span className="site-brand-mark" aria-hidden="true">น</span>
-            <strong>นาฏศิลป์ไทย</strong>
+            <strong>{t("nav.brand")}</strong>
           </Link>
           <p className="site-footer-tagline">
-            แหล่งรวบรวมชุดการแสดงนาฏศิลป์ไทยชุดใหญ่ในงานพิธี เรียนรู้ประวัติศาสตร์
-            ค้นหาชุดที่เหมาะกับทุกโอกาส ผ่านอัลกอริทึมแนะนำและฐานข้อมูลที่พัฒนาโดยคนไทย
+            {t("footer.description")}
           </p>
-          <div className="site-footer-social" aria-label="ช่องทางโซเชียล">
+          <div className="site-footer-social" aria-label="Social media">
             <a href="#" aria-label="Facebook">f</a>
             <a href="#" aria-label="YouTube">▶</a>
             <a href="#" aria-label="Instagram">◎</a>
@@ -27,28 +32,27 @@ export function SiteFooter() {
         </div>
 
         <div className="site-footer-col">
-          <h3>เมนูหลัก</h3>
+          <h3>{t("footer.quickLinks")}</h3>
           <ul>
-            <li><Link href="/">หน้าแรก</Link></li>
-            <li><Link href="/items">ค้นหาชุดการแสดง</Link></li>
-            <li><Link href="/recommend">รับคำแนะนำเฉพาะบุคคล</Link></li>
-            <li><Link href="/profile">ข้อมูลผู้ใช้</Link></li>
-            <li><Link href="/login">เข้าสู่ระบบ</Link></li>
+            <li><Link href="/">{t("nav.home")}</Link></li>
+            <li><Link href="/items">{t("nav.catalog")}</Link></li>
+            <li><Link href="/categories">{t("nav.categories")}</Link></li>
+            <li><Link href="/profile">{t("nav.profile")}</Link></li>
+            <li><Link href="/login">{t("nav.login")}</Link></li>
           </ul>
         </div>
 
         <div className="site-footer-col">
-          <h3>ช่วยเหลือ</h3>
+          <h3>{t("footer.help")}</h3>
           <ul>
-            <li>วิธีใช้งานระบบ</li>
-            <li><Link href="/about">ติดต่อผู้พัฒนาระบบ</Link></li>
-            <li><Link href="/privacy">นโยบายความเป็นส่วนตัว</Link></li>
-            <li><Link href="/terms">ข้อกำหนดการใช้งาน</Link></li>
+            <li><Link href="/about">{t("footer.aboutDeveloper")}</Link></li>
+            <li><Link href="/privacy">{t("footer.privacy")}</Link></li>
+            <li><Link href="/terms">{t("footer.terms")}</Link></li>
           </ul>
         </div>
 
         <div className="site-footer-col">
-          <h3>ติดต่อเรา</h3>
+          <h3>{t("footer.contact")}</h3>
           <ul className="contact">
             <li>✉ <a href="mailto:dpatt148@gmail.com">dpatt148@gmail.com</a></li>
             <li>📍 Faculty of Arts Education, Bunditpatanasilpa Institute of Fine Arts, Ministry of Culture</li>
@@ -57,7 +61,7 @@ export function SiteFooter() {
       </div>
 
       <div className="site-footer-bottom">
-        <small>© 2026 นาฏศิลป์ไทย — สงวนลิขสิทธิ์ทั้งหมด</small>
+        <small>© 2026 {t("nav.brand")} — {t("footer.copyright")}</small>
       </div>
     </footer>
   );

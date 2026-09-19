@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import React, { useEffect, useState } from "react";
 
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { useTranslation } from "@/contexts/LanguageContext";
 import {
   AUTH_CHANGED_EVENT,
   STORAGE_KEY,
@@ -25,14 +27,6 @@ interface NavItem {
   memberOnly?: boolean;
 }
 
-const PRIMARY_NAV: NavItem[] = [
-  { href: "/", label: "หน้าแรก" },
-  { href: "/items", label: "ค้นหาชุดการแสดง" },
-  { href: "/categories", label: "หมวดหมู่" },
-  { href: "/about", label: "เกี่ยวกับเรา" },
-  { href: "/profile", label: "ข้อมูลผู้ใช้", authOnly: true },
-];
-
 /**
  * Top navigation used by every public page.
  *
@@ -41,10 +35,19 @@ const PRIMARY_NAV: NavItem[] = [
  * The hamburger button on mobile collapses the same items into a drawer.
  */
 export function SiteHeader() {
+  const { t } = useTranslation();
   const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState<UserOut | null | undefined>(undefined);
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const primaryNav: NavItem[] = [
+    { href: "/", label: t("nav.home") },
+    { href: "/items", label: t("nav.catalog") },
+    { href: "/categories", label: t("nav.categories") },
+    { href: "/about", label: t("nav.about") },
+    { href: "/profile", label: t("nav.profile"), authOnly: true },
+  ];
 
   useEffect(() => {
     function refresh() {
@@ -74,17 +77,17 @@ export function SiteHeader() {
   return (
     <header className="site-header" role="banner">
       <div className="site-header-inner">
-        <Link href="/" className="site-brand" aria-label="หน้าแรก Thai Performing Arts Recommendation System">
+        <Link href="/" className="site-brand" aria-label={`${t("nav.home")} - ${t("nav.brand")}`}>
           <span className="site-brand-logo-frame" aria-hidden="true">
             <span className="site-brand-logo-copy">
-              Thai Performing Arts
+              {t("nav.brand")}
               <span>Recommendation System</span>
             </span>
           </span>
         </Link>
 
-        <nav className="site-nav" aria-label="เมนูหลัก">
-          {PRIMARY_NAV.map((item) => {
+        <nav className="site-nav" aria-label={t("nav.menu")}>
+          {primaryNav.map((item) => {
             const visible =
               (!item.adminOnly || admin) &&
               (!item.authOnly || Boolean(user)) &&
@@ -107,22 +110,23 @@ export function SiteHeader() {
         </nav>
 
         <div className="site-actions">
+          <LanguageSwitcher variant="header" />
           {user === undefined ? null : user ? (
             <>
               {admin ? (
                 <Link
                   href="/admin"
                   className="site-button primary site-admin-btn"
-                  title="ไปยังระบบจัดการผู้ดูแลระบบ (Admin Console)"
+                  title={t("nav.adminDashboard")}
                 >
-                  ⚙ Admin Console
+                  ⚙ {t("nav.adminDashboard")}
                 </Link>
               ) : null}
               <Link
                 href="/profile"
                 className="site-user-chip site-user-chip-link"
-                title={user.is_admin ? "ไปยังข้อมูลโปรไฟล์ Admin" : "ไปยังข้อมูลผู้ใช้"}
-                aria-label={`เปิดข้อมูลผู้ใช้ ${readable}`}
+                title={user.is_admin ? `Admin · ${readable}` : t("nav.profile")}
+                aria-label={`${t("nav.profile")} ${readable}`}
               >
                 {user.is_admin ? "Admin · " : ""}
                 {readable}
@@ -137,20 +141,20 @@ export function SiteHeader() {
                   router.refresh();
                 }}
               >
-                ออกจากระบบ
+                {t("nav.logout")}
               </button>
             </>
           ) : (
             <>
-              <Link href="/login" className="site-button ghost">เข้าสู่ระบบ</Link>
-              <Link href="/signup" className="site-button primary">สมัครสมาชิก</Link>
+              <Link href="/login" className="site-button ghost">{t("nav.login")}</Link>
+              <Link href="/signup" className="site-button primary">{t("nav.signup")}</Link>
             </>
           )}
           <button
             type="button"
             className="site-hamburger"
             aria-expanded={drawerOpen}
-            aria-label="เปิดเมนู"
+            aria-label={t("nav.menu")}
             onClick={() => setDrawerOpen((v) => !v)}
           >
             <span aria-hidden="true">{drawerOpen ? "×" : "≡"}</span>
@@ -159,17 +163,20 @@ export function SiteHeader() {
       </div>
 
       {drawerOpen ? (
-        <div className="site-drawer" role="dialog" aria-label="เมนูมือถือ">
+        <div className="site-drawer" role="dialog" aria-label={t("nav.menu")}>
+          <div style={{ padding: "0.5rem 1rem" }}>
+            <LanguageSwitcher variant="mobile" />
+          </div>
           {admin ? (
             <Link
               href="/admin"
               className="site-drawer-link"
               style={{ fontWeight: 700, color: "var(--gold-600, #c89536)" }}
             >
-              ⚙ Admin Console
+              ⚙ {t("nav.adminDashboard")}
             </Link>
           ) : null}
-          {PRIMARY_NAV.map((item) => {
+          {primaryNav.map((item) => {
             const visible =
               (!item.adminOnly || admin) &&
               (!item.authOnly || Boolean(user)) &&
@@ -183,8 +190,8 @@ export function SiteHeader() {
           })}
           {!user ? (
             <div className="site-drawer-actions">
-              <Link href="/login" className="site-button ghost block">เข้าสู่ระบบ</Link>
-              <Link href="/signup" className="site-button primary block">สมัครสมาชิก</Link>
+              <Link href="/login" className="site-button ghost block">{t("nav.login")}</Link>
+              <Link href="/signup" className="site-button primary block">{t("nav.signup")}</Link>
             </div>
           ) : null}
         </div>

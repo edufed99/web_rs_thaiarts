@@ -5264,7 +5264,8 @@ button.danger:disabled,
   .site-header-inner { grid-template-columns: auto auto; gap: var(--space-3); }
   .site-nav,
   .site-actions > .site-button,
-  .site-actions > .site-user-chip { display: none; }
+  .site-actions > .site-user-chip,
+  .site-actions > .lang-switcher-pill { display: none; }
   .site-hamburger { display: inline-grid; place-items: center; }
   .site-drawer { display: flex; }
 
@@ -8535,7 +8536,8 @@ p.profile-card-status {
 
   .site-nav,
   .site-actions > .site-button,
-  .site-actions > .site-user-chip {
+  .site-actions > .site-user-chip,
+  .site-actions > .lang-switcher-pill {
     display: none;
   }
 

@@ -3,9 +3,12 @@
 import Link from "next/link";
 import React, { useEffect, useState } from "react";
 
+import { useTranslation } from "@/contexts/LanguageContext";
+
 const CONSENT_STORAGE_KEY = "recsys_research_consent_v1";
 
 export function ConsentBanner() {
+  const { t } = useTranslation();
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -28,12 +31,21 @@ export function ConsentBanner() {
     setVisible(false);
   }
 
+  function handleReject() {
+    try {
+      localStorage.setItem(CONSENT_STORAGE_KEY, "rejected");
+    } catch {
+      // ignore
+    }
+    setVisible(false);
+  }
+
   if (!visible) return null;
 
   return (
     <aside
       role="region"
-      aria-label="การขอความยินยอมเพื่อการวิจัยและการใช้งานคุกกี้"
+      aria-label={t("consent.message")}
       style={{
         position: "fixed",
         bottom: "1rem",
@@ -59,21 +71,37 @@ export function ConsentBanner() {
     >
       <div style={{ flex: 1, minWidth: "260px" }}>
         <strong style={{ display: "block", marginBottom: "0.2rem", color: "#e8c37d" }}>
-          🛡️ การขอความยินยอมและการคุ้มครองข้อมูลส่วนบุคคล (PDPA)
+          🛡️ {t("consent.title")}
         </strong>
         <span>
-          ระบบนี้มีการเก็บรวบรวมข้อมูลการให้คะแนนและปฏิสัมพันธ์การใช้งานเพื่อการศึกษาวิจัยและพัฒนาระบบแนะนำการแสดงนาฏศิลป์ไทย
-          ตาม{" "}
+          {t("consent.message")}{" "}
           <Link
             href="/privacy"
             style={{ color: "#f3d38c", textDecoration: "underline", fontWeight: 700 }}
           >
-            นโยบายความเป็นส่วนตัว
+            {t("footer.privacy")}
           </Link>
         </span>
       </div>
 
       <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+        <button
+          type="button"
+          onClick={handleReject}
+          style={{
+            backgroundColor: "transparent",
+            color: "#f0ede6",
+            border: "1px solid rgba(255, 255, 255, 0.2)",
+            borderRadius: "8px",
+            padding: "0.55rem 1.1rem",
+            fontWeight: 600,
+            cursor: "pointer",
+            fontSize: "0.875rem",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {t("consent.reject")}
+        </button>
         <button
           type="button"
           onClick={handleAccept}
@@ -89,7 +117,7 @@ export function ConsentBanner() {
             whiteSpace: "nowrap",
           }}
         >
-          ยินยอมและดำเนินการต่อ
+          {t("consent.accept")}
         </button>
       </div>
     </aside>

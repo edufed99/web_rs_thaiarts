@@ -8,12 +8,12 @@ import { CatalogItemCard } from "@/components/CatalogItemCard";
 import { ErrorState } from "@/components/ErrorState";
 import { ItemActionBar } from "@/components/ItemActionBar";
 import { LoadingState } from "@/components/LoadingState";
-import { MemberShell } from "@/components/MemberShell";
 import { MemberRatingSummary } from "@/components/MemberStats";
 import {
   PerformanceCardMedia,
   resolvedImageUrl,
 } from "@/components/PerformanceCardMedia";
+import { useTranslation } from "@/contexts/LanguageContext";
 
 import {
   ApiClientError,
@@ -28,6 +28,7 @@ import { useAuthHeaders } from "@/lib/useAuthHeaders";
 import { getUserKey } from "@/lib/user";
 
 function ItemDetailContent() {
+  const { t } = useTranslation();
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
   const itemId = Number(params?.id);
@@ -130,7 +131,7 @@ function ItemDetailContent() {
   }, []);
 
   if (!validId) {
-    return <ErrorState message="Item id ไม่ถูกต้อง" code="invalid_item_id" />;
+    return <ErrorState message={t("itemDetail.invalidId")} code="invalid_item_id" />;
   }
   if (error) {
     return (
@@ -142,7 +143,7 @@ function ItemDetailContent() {
     );
   }
   if (!item) {
-    return <LoadingState message="กำลังโหลดรายละเอียด..." />;
+    return <LoadingState message={t("itemDetail.loading")} />;
   }
 
   const legacyCount = legacyStats?.count ?? 0;
@@ -151,14 +152,14 @@ function ItemDetailContent() {
   const activeStars = hasLegacy ? Math.round(legacyAvg) : 0;
 
   return (
-    <MemberShell showInterestCard={false}>
-      <p style={{ margin: 0 }}>
+    <div className="container" style={{ padding: "var(--space-6) 0" }}>
+      <p style={{ margin: "0 0 var(--space-4) 0" }}>
         <Link href="/items" className="secondary" style={{ minHeight: "34px", fontSize: "0.9rem" }}>
-          ← กลับไปแคตตาล็อก
+          ← {t("itemDetail.backToCatalog")}
         </Link>
       </p>
 
-      <article className="item-detail" aria-label={`รายละเอียด ${item.name}`}>
+      <article className="item-detail" aria-label={`${t("itemDetail.eyebrow")} ${item.name}`}>
         <section className="item-detail-hero">
           <div className="hero-media">
             <PerformanceCardMedia
@@ -170,7 +171,7 @@ function ItemDetailContent() {
             />
           </div>
           <div className="hero-body">
-            <p className="eyebrow" style={{ margin: 0 }}>Performance detail</p>
+            <p className="eyebrow" style={{ margin: 0 }}>{t("itemDetail.eyebrow")}</p>
             <h1>{item.name}</h1>
             {item.category_group || item.performance_type ? (
               <p className="meta-line" style={{ margin: 0 }}>
@@ -198,7 +199,7 @@ function ItemDetailContent() {
                 }}
                 title="Display-only match percent"
               >
-                {item.suitability_label ?? "เหมาะสม"} · {item.match_percent ?? 90}%
+                {item.suitability_label ?? t("itemDetail.matchLabelDefault")} · {item.match_percent ?? 90}%
               </span>
               {hasLegacy ? (
                 <span style={{ fontSize: 13, color: "var(--muted)" }}>
@@ -207,7 +208,7 @@ function ItemDetailContent() {
                       <span key={i}>{i < activeStars ? "★" : "☆"}</span>
                     ))}
                   </span>{" "}
-                  {legacyAvg.toFixed(1)}/5 · {legacyCount} ครั้ง
+                  {legacyAvg.toFixed(1)}/5 · {legacyCount} {t("itemDetail.timesUnit")}
                 </span>
               ) : null}
             </div>
@@ -216,12 +217,12 @@ function ItemDetailContent() {
 
             <div className="item-detail-meta">
               {item.performers_count != null ? (
-                <span>👥 ผู้แสดง {item.performers_count} คน</span>
+                <span>👥 {t("itemDetail.performers")} {item.performers_count} {t("items.people")}</span>
               ) : null}
               {item.duration_minutes != null ? (
-                <span>⏱ ระยะเวลา {item.duration_minutes} นาที</span>
+                <span>⏱ {t("itemDetail.duration")} {item.duration_minutes} {t("items.minutes")}</span>
               ) : null}
-              {item.price_text ? <span>฿ ค่าตัว {item.price_text}</span> : null}
+              {item.price_text ? <span>฿ {t("itemDetail.cost")} {item.price_text}</span> : null}
             </div>
 
             {item.contexts.length > 0 ? (
@@ -253,7 +254,7 @@ function ItemDetailContent() {
           <div className="left">
             {item.keywords.length > 0 ? (
               <section className="item-detail-sidecard">
-                <h3>คำสำคัญของรายการ</h3>
+                <h3>{t("itemDetail.itemKeywordsTitle")}</h3>
                 <div className="item-detail-keywords">
                   {item.keywords.map((k) => (
                     <span
@@ -279,8 +280,8 @@ function ItemDetailContent() {
             {similar.length > 0 ? (
               <section className="member-section">
                 <div className="member-section-head">
-                  <h2><span className="glyph" aria-hidden="true">↪</span> ชุดการแสดงที่คล้ายกัน</h2>
-                  <Link href="/recommend" className="head-action">ปรับแต่งคำแนะนำ ✚</Link>
+                  <h2><span className="glyph" aria-hidden="true">↪</span> {t("itemDetail.similarTitle")}</h2>
+                  <Link href="/recommend" className="head-action">{t("itemDetail.customizeRec")} ✚</Link>
                 </div>
                 <div className="similar-strip">
                   {similar.map((it) => (
@@ -298,26 +299,26 @@ function ItemDetailContent() {
 
           <div className="right">
             <section className="item-detail-sidecard">
-              <h3>เกี่ยวกับรายการนี้</h3>
+              <h3>{t("itemDetail.aboutTitle")}</h3>
               <p>
-                หมวด: <strong>{item.category_group || "ไม่ระบุ"}</strong>
+                {t("itemDetail.category")}: <strong>{item.category_group || t("itemDetail.unspecified")}</strong>
               </p>
               <p>
-                ประเภท: <strong>{item.performance_type || "ไม่ระบุ"}</strong>
+                {t("itemDetail.type")}: <strong>{item.performance_type || t("itemDetail.unspecified")}</strong>
               </p>
               {item.performers_count != null ? (
                 <p>
-                  จำนวนผู้แสดง: <strong>{item.performers_count} คน</strong>
+                  {t("itemDetail.performers")}: <strong>{item.performers_count} {t("items.people")}</strong>
                 </p>
               ) : null}
               {item.duration_minutes != null ? (
                 <p>
-                  ระยะเวลา: <strong>{item.duration_minutes} นาที</strong>
+                  {t("itemDetail.duration")}: <strong>{item.duration_minutes} {t("items.minutes")}</strong>
                 </p>
               ) : null}
               {item.price_text ? (
                 <p>
-                  ค่าตัว: <strong>{item.price_text}</strong>
+                  {t("itemDetail.cost")}: <strong>{item.price_text}</strong>
                 </p>
               ) : null}
             </section>
@@ -325,10 +326,9 @@ function ItemDetailContent() {
             <MemberRatingSummary ratingSummary={ratingSummary} />
 
             <section className="item-detail-sidecard">
-              <h3>ค้นหาชุดการแสดงที่เหมาะกับคุณ</h3>
+              <h3>{t("itemDetail.findSuitTitle")}</h3>
               <p>
-                ระบบจะนำประวัติการกดถูกใจ บันทึก และให้คะแนนของคุณ
-                มาช่วยค้นหารายการที่ตรงกับความสนใจมากขึ้น
+                {t("itemDetail.findSuitDesc")}
               </p>
               <Link
                 href="/recommend"
@@ -345,13 +345,13 @@ function ItemDetailContent() {
                   justifySelf: "start",
                 }}
               >
-                ดูคำแนะนำสำหรับคุณ →
+                {t("itemDetail.seeYourRec")} →
               </Link>
             </section>
           </div>
         </div>
       </article>
-    </MemberShell>
+    </div>
   );
 }
 

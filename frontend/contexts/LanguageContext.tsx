@@ -6,9 +6,10 @@ import {
   type TranslationDictionary,
   getDictionary,
   translate,
+  LOCALE_COOKIE_KEY,
 } from "@/locales";
 
-export const LOCALE_COOKIE_KEY = "NEXT_LOCALE";
+export { LOCALE_COOKIE_KEY };
 const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
 
 interface LanguageContextValue {

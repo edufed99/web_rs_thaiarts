@@ -2,6 +2,7 @@ import { en } from "./en";
 import { th, type TranslationDictionary } from "./th";
 
 export type Locale = "th" | "en";
+export const LOCALE_COOKIE_KEY = "NEXT_LOCALE";
 export { en, th, type TranslationDictionary };
 
 export function getDictionary(locale: Locale): TranslationDictionary {

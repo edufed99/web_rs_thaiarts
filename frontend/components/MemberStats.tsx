@@ -2,6 +2,7 @@
 
 import React from "react";
 
+import { useTranslation } from "@/contexts/LanguageContext";
 import type { RatingSummaryOut, UserSummaryOut } from "@/lib/types";
 
 interface MemberStatsProps {
@@ -55,14 +56,15 @@ export function MemberStats({ summary }: MemberStatsProps) {
 
 /** Mini distribution chart backed by the member's current rating rows. */
 export function MemberRatingSummary({ ratingSummary }: { ratingSummary: RatingSummaryOut | null }) {
+  const { t } = useTranslation();
   const buckets = ratingSummary?.distribution ?? [5, 4, 3, 2, 1].map((stars) => ({ stars, count: 0 }));
   const total = ratingSummary?.total ?? 0;
   const headline = ratingSummary?.average ?? 0;
-  const totalText = `${total} ครั้ง`;
+  const totalText = `${total} ${t("itemDetail.timesUnit")}`;
   const activeStars = Math.round(headline);
   return (
-    <section className="member-rating-summary" aria-label="สรุปการให้คะแนนของฉัน">
-      <h3>สรุปการให้คะแนนของฉัน</h3>
+    <section className="member-rating-summary" aria-label={t("itemDetail.ratingSummaryTitle")}>
+      <h3>{t("itemDetail.ratingSummaryTitle")}</h3>
       <div className="member-rating-headline">
         <strong>{headline.toFixed(1)}</strong>
         <span>/ 5.0</span>
@@ -79,7 +81,7 @@ export function MemberRatingSummary({ ratingSummary }: { ratingSummary: RatingSu
           const pct = total ? Math.round((count / total) * 100) : 0;
           return (
             <div className="member-rating-bar" key={stars}>
-              <span>{stars} ดาว</span>
+              <span>{stars} {t("itemDetail.starsLabel")}</span>
               <span className="track">
                 <span style={{ width: `${pct}%` }} />
               </span>
@@ -89,8 +91,8 @@ export function MemberRatingSummary({ ratingSummary }: { ratingSummary: RatingSu
         })}
       </div>
       <p style={{ margin: 0, fontSize: 12, color: "var(--muted)" }}>
-        คะแนนเฉลี่ยจากการให้ดาว {totalText}
-        {total === 0 ? " (ยังไม่มีคะแนนจากคุณ)" : ""}
+        {t("itemDetail.avgFromRatings")} {totalText}
+        {total === 0 ? ` ${t("itemDetail.noRatingsYet")}` : ""}
       </p>
     </section>
   );

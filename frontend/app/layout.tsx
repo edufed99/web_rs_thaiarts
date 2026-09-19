@@ -3,8 +3,8 @@ import { Noto_Sans_Thai } from "next/font/google";
 import { cookies } from "next/headers";
 import React from "react";
 
-import { LanguageProvider, LOCALE_COOKIE_KEY } from "@/contexts/LanguageContext";
-import type { Locale } from "@/locales";
+import { LanguageProvider } from "@/contexts/LanguageContext";
+import { type Locale, LOCALE_COOKIE_KEY } from "@/locales";
 
 import "./globals.css";
 

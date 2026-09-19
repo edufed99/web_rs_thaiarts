@@ -3,6 +3,7 @@
 import Link from "next/link";
 import React, { useEffect, useState } from "react";
 
+import { useTranslation } from "@/contexts/LanguageContext";
 import { getItemLegacyStats } from "@/lib/api";
 import { resolvedImageUrl, PerformanceCardMedia } from "@/components/PerformanceCardMedia";
 import type { EngagementOut, ItemOut, LegacyStatsOut } from "@/lib/types";
@@ -31,6 +32,7 @@ export default function PopularPerformanceCard({
   engagement,
   engagementMax,
 }: Props) {
+  const { t, locale } = useTranslation();
   const [stats, setStats] = useState<LegacyStatsOut | null>(null);
   const [statsFailed, setStatsFailed] = useState(false);
 
@@ -55,41 +57,38 @@ export default function PopularPerformanceCard({
       ? `${item.description.slice(0, 96).trimEnd()}...`
       : item.description;
 
-  const priceText =
-    item.price_text && /บาท/.test(item.price_text)
-      ? item.price_text
-      : item.price_text
-        ? `${item.price_text} บาท`
-        : "";
+  const rawPrice = item.price_text ? item.price_text.replace(/\s*บาท\s*$/i, "").trim() : "";
+  const priceText = rawPrice
+    ? `${rawPrice} ${t("items.cardBaht")}`
+    : "";
 
   const score = engagement?.engagement_score ?? 0;
   const max = engagementMax && engagementMax > 0 ? engagementMax : Math.max(score, 1);
   const percent = Math.min(100, Math.max(1, Math.round((score / max) * 100)));
   const parts: string[] = [];
   if (engagement) {
-    if (engagement.like_count > 0) parts.push(`ถูกใจ ${engagement.like_count}`);
-    if (engagement.save_count > 0) parts.push(`บันทึก ${engagement.save_count}`);
-    if (engagement.rating_count > 0) parts.push(`รีวิวบวก ${engagement.rating_count}`);
+    if (engagement.like_count > 0) parts.push(`${t("items.cardLikes")} ${engagement.like_count}`);
+    if (engagement.save_count > 0) parts.push(`${t("items.cardSaves")} ${engagement.save_count}`);
+    if (engagement.rating_count > 0) parts.push(`${t("items.cardPositiveReviews")} ${engagement.rating_count}`);
   }
-  const detailText = parts.length > 0 ? parts.join(" • ") : "มีการตอบรับจากผู้ใช้";
 
   const renderBadge = () => {
     const badgeText =
       variant === "seasonal"
-        ? (topContexts[0] ?? "ช่วงเวลาแนะนำ")
-        : "คะแนนสูง";
+        ? (topContexts[0] ?? t("items.cardSeasonalDefault"))
+        : t("items.cardHighRating");
     return <span className="popular-badge">{badgeText}</span>;
   };
 
   const renderRating = () => {
     if (statsFailed) {
-      return <span className="muted">ไม่สามารถโหลดสถิติ</span>;
+      return <span className="muted">{t("items.cardStatsFailed")}</span>;
     }
     if (stats === null) {
-      return <span className="muted">กำลังโหลดสถิติ...</span>;
+      return <span className="muted">{t("items.cardLoadingStats")}</span>;
     }
     if (stats.count === 0) {
-      return <span className="muted">ยังไม่มีรีวิว</span>;
+      return <span className="muted">{t("items.cardNoReviews")}</span>;
     }
     const rating = stats.avg_rating;
     const clamped = Math.max(0, Math.min(5, rating));
@@ -98,7 +97,7 @@ export default function PopularPerformanceCard({
       <div className="popular-rating">
         <span
           className="popular-stars"
-          aria-label={`คะแนน ${rating.toFixed(1)} จาก 5`}
+          aria-label={`${t("items.cardRatingUnit")} ${rating.toFixed(1)} ${t("items.cardFrom5")}`}
         >
           <span className="popular-stars-bg" aria-hidden="true">★★★★★</span>
           <span
@@ -108,7 +107,7 @@ export default function PopularPerformanceCard({
           >★★★★★</span>
         </span>
         <strong>{rating.toFixed(1)}</strong>
-        <span className="muted">({stats.count} รีวิว)</span>
+        <span className="muted">({stats.count} {t("items.cardReviews")})</span>
       </div>
     );
   };
@@ -129,7 +128,8 @@ export default function PopularPerformanceCard({
         {variant === "popular" ? (
           <div className="popular-rating">
             <span className="popular-badge popular-badge--engagement">
-              <span aria-hidden="true">🔥</span> ความนิยม <strong>{percent}%</strong>
+              <span aria-hidden="true">🔥</span> {t("items.cardPopularity")}{" "}
+              <strong>{percent}%</strong>
             </span>
           </div>
         ) : (
@@ -138,23 +138,23 @@ export default function PopularPerformanceCard({
         {description ? <p className="popular-card-desc">{description}</p> : null}
         <div className="popular-card-meta">
           {item.performers_count ? (
-            <span className="popular-meta-row" title="จำนวนผู้แสดง">
+            <span className="popular-meta-row" title={t("items.filterPerformers")}>
               <span className="popular-meta-icon" aria-hidden="true">👥</span>
-              <span className="popular-meta-label">ผู้แสดง :</span>
-              <span className="popular-meta-value">{item.performers_count} คน</span>
+              <span className="popular-meta-label">{t("items.cardPerformers")}</span>
+              <span className="popular-meta-value">{item.performers_count} {t("items.people")}</span>
             </span>
           ) : null}
           {item.duration_minutes ? (
-            <span className="popular-meta-row" title="ระยะเวลาการแสดง">
+            <span className="popular-meta-row" title={t("items.filterDuration")}>
               <span className="popular-meta-icon" aria-hidden="true">⏱</span>
-              <span className="popular-meta-label">ระยะการแสดง :</span>
-              <span className="popular-meta-value">{item.duration_minutes} นาที</span>
+              <span className="popular-meta-label">{t("items.cardDuration")}</span>
+              <span className="popular-meta-value">{item.duration_minutes} {t("items.minutes")}</span>
             </span>
           ) : null}
           {priceText ? (
-            <span className="popular-meta-row" title="ราคา">
+            <span className="popular-meta-row" title={t("items.cardPrice")}>
               <span className="popular-meta-icon" aria-hidden="true">💰</span>
-              <span className="popular-meta-label">ราคา :</span>
+              <span className="popular-meta-label">{t("items.cardPrice")}</span>
               <span className="popular-meta-value">{priceText}</span>
             </span>
           ) : null}

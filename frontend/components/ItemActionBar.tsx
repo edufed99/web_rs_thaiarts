@@ -12,6 +12,7 @@ import {
   postSave,
   putRating,
 } from "@/lib/api";
+import { useTranslation } from "@/contexts/LanguageContext";
 import { getCurrentUser } from "@/lib/auth";
 import { notifyMemberActivityChanged } from "@/lib/memberEvents";
 import type { ItemActionOut, UserState } from "@/lib/types";
@@ -44,6 +45,7 @@ export function ItemActionBar({
   contextId,
   requestId,
 }: ItemActionBarProps) {
+  const { t } = useTranslation();
   const router = useRouter();
   const [liked, setLiked] = useState<boolean>(userState.liked);
   const [saved, setSaved] = useState<boolean>(userState.saved);
@@ -177,7 +179,7 @@ export function ItemActionBar({
       <div className="item-action-buttons">
         <button
           type="button"
-          aria-label={liked ? "เลิกถูกใจ" : "ถูกใจ"}
+          aria-label={liked ? t("actions.unlike") : t("actions.like")}
           aria-pressed={liked}
           onClick={toggleLike}
           disabled={disabled}
@@ -196,12 +198,12 @@ export function ItemActionBar({
           }}
         >
           <span style={{ fontSize: "1.1rem" }}>{liked ? "♥" : "♡"}</span>
-          <span>{liked ? "ถูกใจแล้ว" : "ถูกใจ"}</span>
+          <span>{liked ? t("actions.liked") : t("actions.like")}</span>
         </button>
 
         <button
           type="button"
-          aria-label={saved ? "เลิกบันทึก" : "บันทึก"}
+          aria-label={saved ? t("actions.unsave") : t("actions.save")}
           aria-pressed={saved}
           onClick={toggleSave}
           disabled={disabled}
@@ -220,14 +222,14 @@ export function ItemActionBar({
           }}
         >
           <span style={{ fontSize: "1.1rem" }}>{saved ? "🔖" : "📑"}</span>
-          <span>{saved ? "บันทึกแล้ว" : "บันทึก"}</span>
+          <span>{saved ? t("actions.saved") : t("actions.save")}</span>
         </button>
       </div>
 
       <div
         className="item-rating-row"
         role="radiogroup"
-        aria-label="ให้คะแนน 1 ถึง 5 ดาว"
+        aria-label={t("actions.rateTitle")}
       >
         {[1, 2, 3, 4, 5].map((v) => {
           const active = rating >= v;
@@ -237,7 +239,7 @@ export function ItemActionBar({
               type="button"
               role="radio"
               aria-checked={rating === v}
-              aria-label={`ให้ ${v} ดาว`}
+              aria-label={t("actions.rateStars").replace("{v}", String(v))}
               onClick={() => setStar(v)}
               disabled={disabled}
               style={{

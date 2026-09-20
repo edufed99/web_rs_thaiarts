@@ -16,6 +16,17 @@ const GROUP_ORDER = [
   "โอกาสอื่น ๆ",
 ];
 
+export const GROUP_LABELS_EN: Record<string, string> = {
+  "งานเทศกาล": "Festivals & Seasonal Celebrations",
+  "งานเผยแพร่วัฒนธรรม": "Cultural Exhibitions & Diplomacy",
+  "งานมงคล": "Auspicious & Blessing Ceremonies",
+  "งานรัฐพิธี": "State & Public Ceremonies",
+  "งานราชพิธี": "Royal & Regal Ceremonies",
+  "งานวันสำคัญทางศาสนา": "Buddhist Religious Observances",
+  "งานอวมงคล": "Memorial & Funeral Ceremonies",
+  "โอกาสอื่น ๆ": "Other Occasions",
+};
+
 export function getContextGroupName(context: ContextOut): string {
   const name = context.name.trim();
   const explicit = context.group.trim();

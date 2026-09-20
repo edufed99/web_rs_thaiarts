@@ -10,7 +10,7 @@ import { ErrorState } from "@/components/ErrorState";
 import { LoadingState } from "@/components/LoadingState";
 import { useTranslation } from "@/contexts/LanguageContext";
 import { ApiClientError, getContexts, getItems } from "@/lib/api";
-import { getContextGroupName, groupContexts } from "@/lib/contextGroups";
+import { getContextGroupName, groupContexts, GROUP_LABELS_EN } from "@/lib/contextGroups";
 import type { ContextOut, ItemListOut, ItemOut, UserState } from "@/lib/types";
 import { useAuthHeaders } from "@/lib/useAuthHeaders";
 import { getUserKey } from "@/lib/user";
@@ -22,7 +22,7 @@ const ITEMS_PAGE_SIZE = 12;
 function ItemsContent() {
   const router = useRouter();
   const params = useSearchParams();
-  const { t } = useTranslation();
+  const { locale, t } = useTranslation();
 
   const searchInput = params.get("q") ?? "";
   const contextIdStr = params.get("context");
@@ -197,13 +197,46 @@ function ItemsContent() {
     () => (contextId != null ? contexts.find((c) => c.id === contextId) ?? null : null),
     [contextId, contexts],
   );
+  const selectedContextName = useMemo(() => {
+    if (!selectedContext) return undefined;
+    return locale === "en" && selectedContext.name_en ? selectedContext.name_en : selectedContext.name;
+  }, [selectedContext, locale]);
+
   const contextGroups = useMemo(() => groupContexts(contexts), [contexts]);
   const categoryOptions = useMemo(() => {
     if (!data) return [];
-    return Array.from(
-      new Set(data.items.map((item) => item.category_group).filter(Boolean)),
-    ).sort((a, b) => a.localeCompare(b, "th"));
-  }, [data]);
+    const map = new Map<string, { value: string; label: string }>();
+    for (const item of data.items) {
+      const g = item.category_group;
+      if (!g) continue;
+      if (!map.has(g)) {
+        const label = locale === "en" && item.category_group_en ? item.category_group_en : g;
+        map.set(g, { value: g, label });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) =>
+      a.label.localeCompare(b.label, locale === "en" ? "en" : "th"),
+    );
+  }, [data, locale]);
+
+  const displayCategory = useMemo(() => {
+    if (!categoryInput) return "";
+    if (locale === "en" && data) {
+      const matched = data.items.find(
+        (it) => it.category_group === categoryInput || it.category_group_en === categoryInput,
+      );
+      if (matched?.category_group_en) return matched.category_group_en;
+    }
+    return categoryInput;
+  }, [categoryInput, data, locale]);
+
+  const displayOccasion = useMemo(() => {
+    if (!occasionInput) return "";
+    if (locale === "en" && GROUP_LABELS_EN[occasionInput]) {
+      return GROUP_LABELS_EN[occasionInput];
+    }
+    return occasionInput;
+  }, [occasionInput, locale]);
 
   const filteredItems = useMemo(() => {
     if (!data) return [];
@@ -217,7 +250,11 @@ function ItemsContent() {
         )
       : byContext;
     const byCategory = categoryInput
-      ? byOccasion.filter((item) => item.category_group === categoryInput)
+      ? byOccasion.filter(
+          (item) =>
+            item.category_group === categoryInput ||
+            (item.category_group_en != null && item.category_group_en === categoryInput),
+        )
       : byOccasion;
     const byDuration = durationInput
       ? byCategory.filter((item) => {
@@ -239,8 +276,8 @@ function ItemsContent() {
           return true;
         })
       : byDuration;
-    return sortCatalogItems(byPerformers, sortInput);
-  }, [data, searchInput, contextId, occasionInput, categoryInput, durationInput, performersInput, sortInput]);
+    return sortCatalogItems(byPerformers, sortInput, locale);
+  }, [data, searchInput, contextId, occasionInput, categoryInput, durationInput, performersInput, sortInput, locale]);
 
   const paginationResetKey = `${searchInput}|${contextId ?? ""}|${occasionInput}|${categoryInput}|${durationInput}|${performersInput}|${sortInput}`;
   const {
@@ -282,29 +319,29 @@ function ItemsContent() {
         <div className="catalog-title-block">
           <div className="catalog-title-row">
             <span className="catalog-title-icon" aria-hidden="true">⌕</span>
-            <h1>{pageTitle(searchInput, selectedContext?.name, occasionInput, categoryInput, t)}</h1>
+            <h1>{pageTitle(searchInput, selectedContextName, displayOccasion, displayCategory, t)}</h1>
           </div>
           <p className="catalog-result-count">
             {categoryInput && !searchInput && !selectedContext ? (
               <>
-                {t("items.allInCategory")} <span>{categoryInput}</span>
+                {t("items.allInCategory")} <span>{displayCategory}</span>
               </>
             ) : searchInput ? (
               <>
                 {t("items.searchQuery")} <span>"{searchInput}"</span>
-                {selectedContext ? <> {t("items.inOccasion")} <span>{selectedContext.name}</span></> : null}
-                {occasionInput ? <> {t("items.inOccasionGroup")} <span>{occasionInput}</span></> : null}
-                {categoryInput ? <> {t("items.categoryLabel")} <span>{categoryInput}</span></> : null}
+                {selectedContext ? <> {t("items.inOccasion")} <span>{selectedContextName}</span></> : null}
+                {occasionInput ? <> {t("items.inOccasionGroup")} <span>{displayOccasion}</span></> : null}
+                {categoryInput ? <> {t("items.categoryLabel")} <span>{displayCategory}</span></> : null}
               </>
             ) : selectedContext ? (
               <>
-                {t("items.itemsForOccasion")} <span>{selectedContext.name}</span>
-                {categoryInput ? <> {t("items.categoryLabel")} <span>{categoryInput}</span></> : null}
+                {t("items.itemsForOccasion")} <span>{selectedContextName}</span>
+                {categoryInput ? <> {t("items.categoryLabel")} <span>{displayCategory}</span></> : null}
               </>
             ) : occasionInput ? (
               <>
-                {t("items.itemsInOccasionGroup")} <span>{occasionInput}</span>
-                {categoryInput ? <> {t("items.categoryLabel")} <span>{categoryInput}</span></> : null}
+                {t("items.itemsInOccasionGroup")} <span>{displayOccasion}</span>
+                {categoryInput ? <> {t("items.categoryLabel")} <span>{displayCategory}</span></> : null}
               </>
             ) : (
               t("items.exploreAllSubtitle")
@@ -322,9 +359,9 @@ function ItemsContent() {
           />
           <select value={categoryInput} onChange={onCategoryChange} aria-label={t("items.filterCategory")}>
             <option value="">{t("items.allCategories")}</option>
-            {categoryOptions.map((category) => (
-              <option key={category} value={category}>
-                {category}
+            {categoryOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
               </option>
             ))}
           </select>
@@ -334,16 +371,19 @@ function ItemsContent() {
             aria-label={t("items.filterOccasion")}
           >
             <option value="">{t("items.allOccasions")}</option>
-            {contextGroups.map((group) => (
-              <optgroup key={group.label} label={group.label}>
-                <option value={`group:${group.label}`}>{group.label} ({t("common.all")})</option>
-                {group.contexts.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
+            {contextGroups.map((group) => {
+              const groupLabelDisplay = locale === "en" ? (GROUP_LABELS_EN[group.label] ?? group.label) : group.label;
+              return (
+                <optgroup key={group.label} label={groupLabelDisplay}>
+                  <option value={`group:${group.label}`}>{groupLabelDisplay} ({t("common.all")})</option>
+                  {group.contexts.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {locale === "en" && c.name_en ? c.name_en : c.name}
+                    </option>
+                  ))}
+                </optgroup>
+              );
+            })}
           </select>
           <select value={durationInput} onChange={onDurationChange} aria-label={t("items.filterDuration")}>
             <option value="">{t("items.allDurations")}</option>
@@ -395,10 +435,10 @@ function ItemsContent() {
             ) : null}
             {categoryInput ? (
               <span className="filter-badge">
-                {t("items.filterBadgeCategory")}: {categoryInput}
+                {t("items.filterBadgeCategory")}: {displayCategory}
                 <button
                   type="button"
-                  aria-label={`Remove category filter ${categoryInput}`}
+                  aria-label={`Remove category filter ${displayCategory}`}
                   onClick={() =>
                     updateUrl({
                       q: searchInput,
@@ -417,10 +457,10 @@ function ItemsContent() {
             ) : null}
             {selectedContext ? (
               <span className="filter-badge">
-                {t("items.filterBadgeOccasion")}: {selectedContext.name}
+                {t("items.filterBadgeOccasion")}: {selectedContextName}
                 <button
                   type="button"
-                  aria-label={`Remove occasion filter ${selectedContext.name}`}
+                  aria-label={`Remove occasion filter ${selectedContextName}`}
                   onClick={() =>
                     updateUrl({
                       q: searchInput,
@@ -438,10 +478,10 @@ function ItemsContent() {
               </span>
             ) : occasionInput ? (
               <span className="filter-badge">
-                {t("items.filterBadgeOccasion")}: {occasionInput}
+                {t("items.filterBadgeOccasion")}: {displayOccasion}
                 <button
                   type="button"
-                  aria-label={`Remove occasion filter ${occasionInput}`}
+                  aria-label={`Remove occasion filter ${displayOccasion}`}
                   onClick={() =>
                     updateUrl({
                       q: searchInput,
@@ -563,21 +603,24 @@ function ItemsContent() {
   );
 }
 
-function sortCatalogItems(items: ItemOut[], sort: string): ItemOut[] {
+function sortCatalogItems(items: ItemOut[], sort: string, locale: "th" | "en" = "th"): ItemOut[] {
   const next = [...items];
+  const lang = locale === "en" ? "en" : "th";
+  const getItemName = (it: ItemOut) => (locale === "en" && it.name_en ? it.name_en : it.name);
+
   if (sort === "name-desc") {
-    return next.sort((a, b) => b.name.localeCompare(a.name, "th"));
+    return next.sort((a, b) => getItemName(b).localeCompare(getItemName(a), lang));
   }
   if (sort === "newest") {
-    return next.sort((a, b) => b.id - a.id || a.name.localeCompare(b.name, "th"));
+    return next.sort((a, b) => b.id - a.id || getItemName(a).localeCompare(getItemName(b), lang));
   }
   if (sort === "popular") {
-    return next.sort((a, b) => (b.match_percent ?? 0) - (a.match_percent ?? 0) || a.name.localeCompare(b.name, "th"));
+    return next.sort((a, b) => (b.match_percent ?? 0) - (a.match_percent ?? 0) || getItemName(a).localeCompare(getItemName(b), lang));
   }
   if (sort === "recommended") {
-    return next.sort((a, b) => (b.match_percent ?? 0) - (a.match_percent ?? 0) || a.name.localeCompare(b.name, "th"));
+    return next.sort((a, b) => (b.match_percent ?? 0) - (a.match_percent ?? 0) || getItemName(a).localeCompare(getItemName(b), lang));
   }
-  return next.sort((a, b) => a.name.localeCompare(b.name, "th"));
+  return next.sort((a, b) => getItemName(a).localeCompare(getItemName(b), lang));
 }
 
 function pageTitle(

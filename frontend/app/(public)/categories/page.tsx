@@ -6,6 +6,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingState } from "@/components/LoadingState";
+import { useTranslation } from "@/contexts/LanguageContext";
 import { ApiClientError, getItems } from "@/lib/api";
 import type { ItemOut } from "@/lib/types";
 
@@ -31,11 +32,14 @@ const CATEGORY_IMAGE_BY_NAME: Record<string, string> = {
 
 interface CategorySummary {
   name: string;
+  thaiName: string;
+  displayName: string;
   count: number;
   sampleType: string;
 }
 
 export default function CategoriesPage() {
+  const { locale, t } = useTranslation();
   const [items, setItems] = useState<ItemOut[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | undefined>(undefined);
@@ -66,7 +70,7 @@ export default function CategoriesPage() {
     };
   }, [reloadKey]);
 
-  const categories = useMemo(() => buildCategorySummaries(items ?? []), [items]);
+  const categories = useMemo(() => buildCategorySummaries(items ?? [], locale), [items, locale]);
   const totalItems = useMemo(
     () => categories.reduce((sum, category) => sum + category.count, 0),
     [categories],
@@ -77,44 +81,50 @@ export default function CategoriesPage() {
   }
 
   return (
-    <section className="categories-page section-stack" aria-label="หมวดหมู่ทั้งหมด">
+    <section className="categories-page section-stack" aria-label={t("categories.title")}>
       <div className="catalog-search-panel categories-head-panel">
         <div className="catalog-title-block">
           <div className="catalog-title-row">
             <span className="catalog-title-icon" aria-hidden="true">◇</span>
-            <h1>หมวดหมู่ทั้งหมด</h1>
+            <h1>{t("categories.title")}</h1>
           </div>
           <p className="catalog-result-count">
-            {items
-              ? <>พบ <span>{formatCount(categories.length)}</span> หมวดหมู่ จาก <span>{formatCount(totalItems)}</span> รายการ</>
-              : "กำลังรวบรวมหมวดหมู่จากฐานข้อมูล"}
+            {items ? (
+              locale === "en" ? (
+                <>Found <span>{formatCount(categories.length, "en")}</span> categories across <span>{formatCount(totalItems, "en")}</span> performances</>
+              ) : (
+                <>พบ <span>{formatCount(categories.length, "th")}</span> หมวดหมู่ จาก <span>{formatCount(totalItems, "th")}</span> รายการ</>
+              )
+            ) : (
+              t("categories.gathering")
+            )}
           </p>
         </div>
       </div>
 
       {!items ? (
-        <LoadingState message="กำลังโหลดหมวดหมู่..." />
+        <LoadingState message={t("categories.loading")} />
       ) : categories.length === 0 ? (
         <EmptyState
-          title="ยังไม่มีหมวดหมู่ในระบบ"
-          message="เมื่อมีรายการชุดการแสดง หมวดหมู่จะแสดงที่หน้านี้"
+          title={t("categories.emptyTitle")}
+          message={t("categories.emptyMessage")}
         />
       ) : (
-        <div className="categories-grid" aria-label="รายการหมวดหมู่ทั้งหมด">
+        <div className="categories-grid" aria-label={t("categories.gridLabel")}>
           {categories.map((category, idx) => (
             <Link
-              key={category.name}
-              href={`/items?category=${encodeURIComponent(category.name)}`}
+              key={category.thaiName}
+              href={`/items?category=${encodeURIComponent(category.thaiName)}`}
               className="category-card"
             >
               <img
-                src={categoryImageFor(category.name, idx)}
+                src={categoryImageFor(category.thaiName, idx)}
                 alt=""
                 aria-hidden="true"
               />
               <span className="category-card-body">
-                <strong>{category.name}</strong>
-                <small>{formatCount(category.count)} รายการในหมวดนี้</small>
+                <strong>{category.displayName}</strong>
+                <small>{formatCount(category.count, locale)} {t("categories.itemsInCat")}</small>
                 {category.sampleType ? <em>{category.sampleType}</em> : null}
               </span>
             </Link>
@@ -125,34 +135,53 @@ export default function CategoriesPage() {
   );
 }
 
-function buildCategorySummaries(items: ItemOut[]): CategorySummary[] {
-  const buckets = new Map<string, { count: number; sampleType: string }>();
+function buildCategorySummaries(items: ItemOut[], locale: "th" | "en"): CategorySummary[] {
+  const isEn = locale === "en";
+  const buckets = new Map<string, {
+    thaiName: string;
+    enName: string;
+    count: number;
+    sampleType: string;
+  }>();
+
   for (const item of items) {
-    const name = (item.category_group || "").trim() || "อื่นๆ";
-    const existing = buckets.get(name);
+    const thaiName = (item.category_group || "").trim() || "อื่นๆ";
+    const enName = (item.category_group_en || "").trim() || "Other";
+    const existing = buckets.get(thaiName);
+    const sampleType = isEn && item.performance_type_en ? item.performance_type_en : (item.performance_type || "");
+
     if (existing) {
       existing.count += 1;
-      if (!existing.sampleType && item.performance_type) {
-        existing.sampleType = item.performance_type;
+      if (!existing.sampleType && sampleType) {
+        existing.sampleType = sampleType;
       }
     } else {
-      buckets.set(name, {
+      buckets.set(thaiName, {
+        thaiName,
+        enName,
         count: 1,
-        sampleType: item.performance_type || "",
+        sampleType,
       });
     }
   }
 
-  return Array.from(buckets.entries())
-    .map(([name, info]) => ({ name, count: info.count, sampleType: info.sampleType }))
-    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "th"));
+  return Array.from(buckets.values())
+    .map((info) => ({
+      name: info.thaiName,
+      thaiName: info.thaiName,
+      displayName: isEn && info.enName ? info.enName : info.thaiName,
+      count: info.count,
+      sampleType: info.sampleType,
+    }))
+    .sort((a, b) => b.count - a.count || a.displayName.localeCompare(b.displayName, isEn ? "en" : "th"));
 }
 
-function formatCount(n: number): string {
+function formatCount(n: number, locale: "th" | "en" = "th"): string {
   if (!Number.isFinite(n) || n <= 0) return "0";
-  return new Intl.NumberFormat("th-TH").format(n);
+  return new Intl.NumberFormat(locale === "en" ? "en-US" : "th-TH").format(n);
 }
 
 function categoryImageFor(name: string, idx: number): string {
   return CATEGORY_IMAGE_BY_NAME[name] ?? CATEGORY_IMAGES[idx % CATEGORY_IMAGES.length];
 }
+

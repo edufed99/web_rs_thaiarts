@@ -23,12 +23,13 @@ import {
   getSimilarItems,
   postView,
 } from "@/lib/api";
+import { getLocalizedItem } from "@/lib/localization";
 import type { ItemOut, LegacyStatsOut, RatingSummaryOut, UserState } from "@/lib/types";
 import { useAuthHeaders } from "@/lib/useAuthHeaders";
 import { getUserKey } from "@/lib/user";
 
 function ItemDetailContent() {
-  const { t } = useTranslation();
+  const { locale, t } = useTranslation();
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
   const itemId = Number(params?.id);
@@ -146,6 +147,7 @@ function ItemDetailContent() {
     return <LoadingState message={t("itemDetail.loading")} />;
   }
 
+  const localized = getLocalizedItem(item, locale);
   const legacyCount = legacyStats?.count ?? 0;
   const legacyAvg = legacyStats?.avg_rating ?? 0;
   const hasLegacy = legacyStats?.source === "postgres" && legacyCount > 0;
@@ -159,23 +161,23 @@ function ItemDetailContent() {
         </Link>
       </p>
 
-      <article className="item-detail" aria-label={`${t("itemDetail.eyebrow")} ${item.name}`}>
+      <article className="item-detail" aria-label={`${t("itemDetail.eyebrow")} ${localized.displayName}`}>
         <section className="item-detail-hero">
           <div className="hero-media">
             <PerformanceCardMedia
               className="perf-media-hero"
               imageUrl={resolvedImageUrl(item.image_url)}
-              categoryGroup={item.category_group}
-              title={item.name}
+              categoryGroup={localized.displayCategoryGroup}
+              title={localized.displayName}
               variant="hero"
             />
           </div>
           <div className="hero-body">
             <p className="eyebrow" style={{ margin: 0 }}>{t("itemDetail.eyebrow")}</p>
-            <h1>{item.name}</h1>
-            {item.category_group || item.performance_type ? (
+            <h1>{localized.displayName}</h1>
+            {localized.displayCategoryGroup || localized.displayPerformanceType ? (
               <p className="meta-line" style={{ margin: 0 }}>
-                {[item.category_group, item.performance_type].filter(Boolean).join(" · ")}
+                {[localized.displayCategoryGroup, localized.displayPerformanceType].filter(Boolean).join(" · ")}
               </p>
             ) : null}
 
@@ -199,7 +201,7 @@ function ItemDetailContent() {
                 }}
                 title="Display-only match percent"
               >
-                {item.suitability_label ?? t("itemDetail.matchLabelDefault")} · {item.match_percent ?? 90}%
+                {localized.displaySuitability} · {item.match_percent ?? 90}%
               </span>
               {hasLegacy ? (
                 <span style={{ fontSize: 13, color: "var(--muted)" }}>
@@ -213,7 +215,7 @@ function ItemDetailContent() {
               ) : null}
             </div>
 
-            <p className="item-detail-description">{item.description}</p>
+            <p className="item-detail-description">{localized.displayDescription}</p>
 
             <div className="item-detail-meta">
               {item.performers_count != null ? (
@@ -233,7 +235,7 @@ function ItemDetailContent() {
                     href={`/items?context=${c.id}`}
                     style={{ textDecoration: "none" }}
                   >
-                    {c.name}
+                    {locale === "en" && c.name_en ? c.name_en : c.name}
                   </Link>
                 ))}
               </div>
@@ -270,7 +272,7 @@ function ItemDetailContent() {
                         fontWeight: 700,
                       }}
                     >
-                      {k.name}
+                      {locale === "en" && k.name_en ? k.name_en : k.name}
                     </span>
                   ))}
                 </div>
@@ -301,10 +303,10 @@ function ItemDetailContent() {
             <section className="item-detail-sidecard">
               <h3>{t("itemDetail.aboutTitle")}</h3>
               <p>
-                {t("itemDetail.category")}: <strong>{item.category_group || t("itemDetail.unspecified")}</strong>
+                {t("itemDetail.category")}: <strong>{localized.displayCategoryGroup || t("itemDetail.unspecified")}</strong>
               </p>
               <p>
-                {t("itemDetail.type")}: <strong>{item.performance_type || t("itemDetail.unspecified")}</strong>
+                {t("itemDetail.type")}: <strong>{localized.displayPerformanceType || t("itemDetail.unspecified")}</strong>
               </p>
               {item.performers_count != null ? (
                 <p>
@@ -356,8 +358,9 @@ function ItemDetailContent() {
 }
 
 export default function ItemDetailPage() {
+  const { t } = useTranslation();
   return (
-    <Suspense fallback={<LoadingState message="กำลังเตรียมหน้ารายละเอียด..." />}>
+    <Suspense fallback={<LoadingState message={t("itemDetail.preparing")} />}>
       <ItemDetailContent />
     </Suspense>
   );

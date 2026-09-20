@@ -5,6 +5,8 @@ import Link from "next/link";
 
 import { ItemActionBar } from "@/components/ItemActionBar";
 import { PerformanceCardMedia, resolvedImageUrl } from "@/components/PerformanceCardMedia";
+import { useTranslation } from "@/contexts/LanguageContext";
+import { getLocalizedItem } from "@/lib/localization";
 import type { ItemOut, UserState as UserStateType } from "@/lib/types";
 
 export interface CatalogItemCardProps {
@@ -30,12 +32,15 @@ export function CatalogItemCard({
   variant = "standard",
   onUserStateChange,
 }: CatalogItemCardProps) {
+  const { locale } = useTranslation();
+  const localized = getLocalizedItem(item, locale);
   const compact = variant === "compact";
   const effectiveDescriptionLimit = descriptionLimit ?? (compact ? 110 : 180);
+  const rawDescription = localized.displayDescription;
   const description =
-    item.description && item.description.length > effectiveDescriptionLimit
-      ? `${item.description.slice(0, effectiveDescriptionLimit).trimEnd()}…`
-      : item.description;
+    rawDescription && rawDescription.length > effectiveDescriptionLimit
+      ? `${rawDescription.slice(0, effectiveDescriptionLimit).trimEnd()}…`
+      : rawDescription;
   const visibleContexts =
     contextId != null
       ? item.contexts.filter((context) => context.id === contextId)
@@ -53,8 +58,8 @@ export function CatalogItemCard({
       <PerformanceCardMedia
         className="item-card-media"
         imageUrl={resolvedImageUrl(item.image_url)}
-        categoryGroup={item.category_group}
-        title={item.name}
+        categoryGroup={localized.displayCategoryGroup}
+        title={localized.displayName}
         variant="card"
       />
       <div className="item-card-body" style={{ display: "grid", gap: "0.55rem", flex: 1 }}>
@@ -68,13 +73,13 @@ export function CatalogItemCard({
       >
         <h3 style={{ fontSize: "1.05rem" }}>
           {rank ? `#${rank} ` : null}
-          <Link href={`/items/${item.id}`}>{item.name}</Link>
+          <Link href={`/items/${item.id}`}>{localized.displayName}</Link>
         </h3>
       </header>
 
-      {item.category_group || item.performance_type ? (
+      {localized.displayCategoryGroup || localized.displayPerformanceType ? (
         <p className="meta-line" style={{ margin: 0 }}>
-          {[item.category_group, item.performance_type].filter(Boolean).join(" · ")}
+          {[localized.displayCategoryGroup, localized.displayPerformanceType].filter(Boolean).join(" · ")}
         </p>
       ) : null}
 
@@ -86,7 +91,7 @@ export function CatalogItemCard({
         <div className="pill-row">
           {visibleContexts.map((c) => (
             <span key={c.id} className="context-pill">
-              {c.name}
+              {c.name_en && locale === "en" ? c.name_en : c.name}
             </span>
           ))}
         </div>

@@ -58,9 +58,13 @@ export class AdminItemError extends Error {
 const DRAFT_TTL_SECONDS = 30 * 60;
 interface ItemDraftPayload {
   name: string;
+  name_en?: string | null;
   description: string;
+  description_en?: string | null;
   category_group: string;
+  category_group_en?: string | null;
   performance_type: string;
+  performance_type_en?: string | null;
   performers_count: number | null;
   duration_minutes: number | null;
   price_text: string;
@@ -162,9 +166,13 @@ export async function itemFacets(): Promise<{
 // fallow-ignore-next-line complexity -- Grounding, context resolution, and draft persistence are one workflow.
 export async function createItemDraft(input: {
   name: string;
+  name_en?: string | null;
   description?: string;
+  description_en?: string | null;
   category_group?: string;
+  category_group_en?: string | null;
   performance_type?: string;
+  performance_type_en?: string | null;
   performers_count?: number | null;
   duration_minutes?: number | null;
   price_text?: string;
@@ -209,9 +217,13 @@ export async function createItemDraft(input: {
   );
   const draftId = saveDraft({
     name,
+    name_en: input.name_en?.trim() || null,
     description: (input.description ?? "").trim(),
+    description_en: input.description_en?.trim() || null,
     category_group: (input.category_group ?? "").trim(),
+    category_group_en: input.category_group_en?.trim() || null,
     performance_type: (input.performance_type ?? "").trim(),
+    performance_type_en: input.performance_type_en?.trim() || null,
     performers_count: input.performers_count ?? null,
     duration_minutes: input.duration_minutes ?? null,
     price_text: (input.price_text ?? "").trim(),
@@ -299,9 +311,13 @@ export async function commitItemDraft(
     const saved = await repo.save({
       artifactItemId: artifactId,
       name: payload.name,
+      nameEn: payload.name_en ?? null,
       description: payload.description,
+      descriptionEn: payload.description_en ?? null,
       categoryGroup: payload.category_group,
+      categoryGroupEn: payload.category_group_en ?? null,
       performanceType: payload.performance_type,
+      performanceTypeEn: payload.performance_type_en ?? null,
       performersCount: payload.performers_count,
       durationMinutes: payload.duration_minutes,
       priceText: payload.price_text,
@@ -419,9 +435,29 @@ export async function updateAdminItem(
 // fallow-ignore-next-line complexity -- Each scalar maps to the legacy ItemUpdate contract field-for-field.
 function applyScalarFields(item: CatalogueItem, body: Record<string, unknown>): void {
   if (typeof body.name === "string") item.name = body.name.trim();
+  if (typeof body.name_en === "string") {
+    item.nameEn = body.name_en.trim() || null;
+  } else if (body.name_en === null) {
+    item.nameEn = null;
+  }
   if (typeof body.description === "string") item.description = body.description.trim();
+  if (typeof body.description_en === "string") {
+    item.descriptionEn = body.description_en.trim() || null;
+  } else if (body.description_en === null) {
+    item.descriptionEn = null;
+  }
   if (typeof body.category_group === "string") item.categoryGroup = body.category_group.trim();
+  if (typeof body.category_group_en === "string") {
+    item.categoryGroupEn = body.category_group_en.trim() || null;
+  } else if (body.category_group_en === null) {
+    item.categoryGroupEn = null;
+  }
   if (typeof body.performance_type === "string") item.performanceType = body.performance_type.trim();
+  if (typeof body.performance_type_en === "string") {
+    item.performanceTypeEn = body.performance_type_en.trim() || null;
+  } else if (body.performance_type_en === null) {
+    item.performanceTypeEn = null;
+  }
   if (body.performers_count !== undefined && body.performers_count !== null) {
     const value = Number(body.performers_count);
     if (!Number.isSafeInteger(value)) throw new AdminItemError(422, "validation_error", "Invalid performers_count.");

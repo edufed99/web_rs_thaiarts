@@ -103,6 +103,7 @@ async function seedCatalogue() {
   const client = new Client({ connectionString: databaseUrl.toString() });
   await client.connect();
   try {
+    await client.query("TRUNCATE TABLE accounts_userprofile, user_sessions, users RESTART IDENTITY CASCADE;");
     await client.query(
       `INSERT INTO contexts (id, name, group_name, description)
        VALUES (51, 'งานบวช', 'งานมงคล', 'บริบททดสอบ'), (52, 'งานศพ', 'พิธีกรรม', 'บริบททดสอบ')`,
@@ -449,7 +450,11 @@ test("admin edits are immediately visible in browsing and preserve the artifact 
     headers: mutationHeaders(adminCookie),
     body: JSON.stringify({
       name: "ลิเกรองเปลี่ยนชื่อ",
+      name_en: "Renamed Secondary Likay",
       description: "คำอธิบายที่แก้ไขโดยผู้ดูแลระบบ",
+      description_en: "Updated description by admin",
+      category_group_en: "Likay Folk Drama",
+      performance_type_en: "Folk Performance",
       context_names: ["งานบวช"],
       keyword_ids: [62, 63],
       new_keyword_names: ["คำใหม่"],
@@ -459,6 +464,10 @@ test("admin edits are immediately visible in browsing and preserve the artifact 
   const updated = await update.json();
   assert.equal(updated.item.id, editableItemId);
   assert.equal(updated.item.name, "ลิเกรองเปลี่ยนชื่อ");
+  assert.equal(updated.item.name_en, "Renamed Secondary Likay");
+  assert.equal(updated.item.description_en, "Updated description by admin");
+  assert.equal(updated.item.category_group_en, "Likay Folk Drama");
+  assert.equal(updated.item.performance_type_en, "Folk Performance");
   assert.ok(updated.item.keywords.some((keyword) => keyword.name === "คำใหม่"));
   assert.ok(updated.item.keywords.some((keyword) => keyword.name === "โขน"));
 
@@ -468,6 +477,7 @@ test("admin edits are immediately visible in browsing and preserve the artifact 
   const browsed = await browse.json();
   assert.equal(browsed.id, editableItemId);
   assert.equal(browsed.name, "ลิเกรองเปลี่ยนชื่อ");
+  assert.equal(browsed.name_en, "Renamed Secondary Likay");
 
   // The artifact item identifier never changed.
   const client = new Client({ connectionString: databaseUrl.toString() });
@@ -596,9 +606,13 @@ test("administrators can ground a draft and commit a new catalogue item", async 
     headers: mutationHeaders(adminCookie),
     body: JSON.stringify({
       name: "ชุดการแสดงใหม่ทดสอบ",
+      name_en: "New Test Performance",
       description: "การแสดงที่สวมชฎาและร้องลิเก",
+      description_en: "A performance featuring Chada and Likay",
       category_group: "ระบำ",
+      category_group_en: "Rabam Dance",
       performance_type: "การแสดง",
+      performance_type_en: "Performance",
       context_names: ["งานบวช"],
       keyword_names: ["ลิเก"],
     }),
@@ -617,6 +631,10 @@ test("administrators can ground a draft and commit a new catalogue item", async 
   assert.equal(commit.status, 200);
   const committed = await commit.json();
   assert.equal(committed.item.name, "ชุดการแสดงใหม่ทดสอบ");
+  assert.equal(committed.item.name_en, "New Test Performance");
+  assert.equal(committed.item.description_en, "A performance featuring Chada and Likay");
+  assert.equal(committed.item.category_group_en, "Rabam Dance");
+  assert.equal(committed.item.performance_type_en, "Performance");
   assert.ok(committed.item.keywords.some((keyword) => keyword.name === "ชฎา"));
   assert.ok(committed.item.keywords.some((keyword) => keyword.name === "ลิเก"));
   const newArtifactId = committed.item.id;
@@ -625,7 +643,9 @@ test("administrators can ground a draft and commit a new catalogue item", async 
   // Browsing sees it immediately.
   const browse = await fetch(`${baseUrl}/api/items/${newArtifactId}`);
   assert.equal(browse.status, 200);
-  assert.equal((await browse.json()).name, "ชุดการแสดงใหม่ทดสอบ");
+  const browsed = await browse.json();
+  assert.equal(browsed.name, "ชุดการแสดงใหม่ทดสอบ");
+  assert.equal(browsed.name_en, "New Test Performance");
 
   // New content stays unavailable to scoring until publication.
   const status = await fetch(`${baseUrl}/api/admin/publication`, {

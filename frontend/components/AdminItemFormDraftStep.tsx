@@ -11,6 +11,7 @@ import type { ContextOut, ItemOut } from "@/lib/types";
 import { ErrorBlock, Field, inputStyle } from "./AdminItemFormShared";
 import type { UseCoverImageReturn } from "./useCoverImage";
 import { canSave, type DraftFields } from "./AdminItemFormHelpers";
+import { useTranslation } from "@/contexts/LanguageContext";
 export interface AdminItemFormDraftStepProps {
   fields: DraftFields;
   setFields: React.Dispatch<React.SetStateAction<DraftFields>>;
@@ -31,6 +32,7 @@ export function AdminItemFormDraftStep({
   handleSave,
   cover,
 }: AdminItemFormDraftStepProps) {
+  const { dict } = useTranslation();
   // Cover image preview + upload (issue #38). The picked file stays
   // in the parent's draft-field state; the hook reads/writes it through
   // ``setFields`` so the save flow is unchanged.
@@ -251,12 +253,33 @@ export function AdminItemFormDraftStep({
         )}
       </Field>
 
+      <Field label={dict.admin.nameEnLabel}>
+        <input
+          maxLength={255}
+          placeholder="e.g. Fon Leb, Khon Performance"
+          value={fields.name_en}
+          onChange={(e) => update("name_en", e.target.value)}
+          style={inputStyle}
+        />
+      </Field>
+
       <Field label="คำอธิบาย">
         <textarea
           rows={4}
           maxLength={2000}
           value={fields.description}
           onChange={(e) => update("description", e.target.value)}
+          style={{ ...inputStyle, fontFamily: "inherit", resize: "vertical" }}
+        />
+      </Field>
+
+      <Field label={dict.admin.descEnLabel}>
+        <textarea
+          rows={3}
+          maxLength={2000}
+          placeholder="e.g. A traditional Thai dance performance depicting..."
+          value={fields.description_en}
+          onChange={(e) => update("description_en", e.target.value)}
           style={{ ...inputStyle, fontFamily: "inherit", resize: "vertical" }}
         />
       </Field>
@@ -313,6 +336,27 @@ export function AdminItemFormDraftStep({
               <option key={value} value={value}>{value}</option>
             ))}
           </select>
+        </Field>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+        <Field label={dict.admin.performanceTypeEnLabel}>
+          <input
+            maxLength={255}
+            placeholder="e.g. Dance, Drama, Music"
+            value={fields.performance_type_en}
+            onChange={(e) => update("performance_type_en", e.target.value)}
+            style={inputStyle}
+          />
+        </Field>
+        <Field label={dict.admin.categoryEnLabel}>
+          <input
+            maxLength={255}
+            placeholder="e.g. Folk Dance, Court Dance"
+            value={fields.category_group_en}
+            onChange={(e) => update("category_group_en", e.target.value)}
+            style={inputStyle}
+          />
         </Field>
       </div>
 

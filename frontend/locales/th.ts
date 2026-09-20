@@ -220,6 +220,10 @@ export const th = {
     heroSubtitle: "เพิ่ม แก้ไข ลบ และตรวจคุณภาพข้อมูล catalog จากหน้า admin โดยไม่ต้องเปิด PostgreSQL โดยตรง",
     dashboardHeroTitle: "ศูนย์บริหารข้อมูลและติดตามประสิทธิภาพ AI",
     dashboardHeroSubtitle: "รวมสถิติการใช้งาน คุณภาพคำแนะนำ และพฤติกรรมผู้ใช้จาก Postgres",
+    nameEnLabel: "ชื่อการแสดง (ภาษาอังกฤษ)",
+    descEnLabel: "รายละเอียด (ภาษาอังกฤษ)",
+    categoryEnLabel: "หมวดหมู่ (ภาษาอังกฤษ)",
+    performanceTypeEnLabel: "ประเภทการแสดง (ภาษาอังกฤษ)",
   },
   footer: {
     brand: "นาฏศิลป์ไทย",

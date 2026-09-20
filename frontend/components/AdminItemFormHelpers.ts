@@ -5,9 +5,13 @@
 import type { ItemDraft } from "@/lib/types";
 export interface DraftFields {
   name: string;
+  name_en: string;
   description: string;
+  description_en: string;
   category_group: string;
+  category_group_en: string;
   performance_type: string;
+  performance_type_en: string;
   performers_count: string;
   duration_minutes: string;
   price_text: string;
@@ -22,9 +26,13 @@ export interface DraftFields {
 }
 export const EMPTY_FIELDS: DraftFields = {
   name: "",
+  name_en: "",
   description: "",
+  description_en: "",
   category_group: "",
+  category_group_en: "",
   performance_type: "",
+  performance_type_en: "",
   performers_count: "",
   duration_minutes: "",
   price_text: "",
@@ -52,9 +60,13 @@ export function parseCount(raw: string): number | null {
 export function buildDraftBody(fields: DraftFields): ItemDraft {
   return {
     name: fields.name.trim(),
+    name_en: fields.name_en.trim() || undefined,
     description: fields.description.trim(),
+    description_en: fields.description_en.trim() || undefined,
     category_group: fields.category_group.trim(),
+    category_group_en: fields.category_group_en.trim() || undefined,
     performance_type: fields.performance_type.trim(),
+    performance_type_en: fields.performance_type_en.trim() || undefined,
     performers_count: parseCount(fields.performers_count),
     duration_minutes: parseCount(fields.duration_minutes),
     price_text: fields.price_text.trim(),

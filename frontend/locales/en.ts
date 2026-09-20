@@ -222,6 +222,10 @@ export const en: TranslationDictionary = {
     heroSubtitle: "Add, edit, delete, and validate catalog data from the admin panel without accessing PostgreSQL directly",
     dashboardHeroTitle: "AI Performance & Operations Dashboard",
     dashboardHeroSubtitle: "Aggregated usage metrics, recommendation quality, and user behavior from Postgres",
+    nameEnLabel: "Performance Name (English)",
+    descEnLabel: "Description (English)",
+    categoryEnLabel: "Category (English)",
+    performanceTypeEnLabel: "Performance Type (English)",
   },
   footer: {
     brand: "Thai Performing Arts",

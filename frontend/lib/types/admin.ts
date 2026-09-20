@@ -65,9 +65,13 @@ export interface KeywordProposal {
 
 export interface ItemDraft {
   name: string;
+  name_en?: string | null;
   description?: string;
+  description_en?: string | null;
   category_group?: string;
+  category_group_en?: string | null;
   performance_type?: string;
+  performance_type_en?: string | null;
   performers_count?: number | null;
   duration_minutes?: number | null;
   price_text?: string;
@@ -84,9 +88,13 @@ export interface ItemDraftOut {
 
 export interface ItemCreate {
   name: string;
+  name_en?: string | null;
   description?: string;
+  description_en?: string | null;
   category_group?: string;
+  category_group_en?: string | null;
   performance_type?: string;
+  performance_type_en?: string | null;
   performers_count?: number | null;
   duration_minutes?: number | null;
   price_text?: string;
@@ -113,9 +121,13 @@ export interface ItemReassignOut {
 
 export interface ItemUpdate {
   name?: string;
+  name_en?: string | null;
   description?: string;
+  description_en?: string | null;
   category_group?: string;
+  category_group_en?: string | null;
   performance_type?: string;
+  performance_type_en?: string | null;
   performers_count?: number | null;
   duration_minutes?: number | null;
   price_text?: string;

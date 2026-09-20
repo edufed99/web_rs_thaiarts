@@ -9,7 +9,7 @@ import {
   resolvedImageUrl,
 } from "@/components/PerformanceCardMedia";
 import { useTranslation } from "@/contexts/LanguageContext";
-import { getLocalizedItem } from "@/lib/localization";
+import { getLocalizedItem, translateExplanationToEn } from "@/lib/localization";
 import type {
   RecommendationResultOut,
   UserState as UserStateType,
@@ -21,7 +21,7 @@ import { recommendationScoreOutOf100 } from "@/lib/recommendationScore";
 function suitabilityColor(label: string): string {
   if (label === "เหมาะมาก" || label === "Highly Recommended") return "#e8f5e9"; // green-50
   if (label === "เหมาะสม" || label === "Recommended") return "#e3f2fd"; // blue-50
-  return "#f5f5f5"; // grey-100 (เหมาะใช้ได้ / Acceptable)
+  return "#f5f5f5"; // grey-100 (เหมาะใช้ได้ / Suitable / Acceptable)
 }
 
 function suitabilityBorder(label: string): string {
@@ -44,13 +44,17 @@ export function RecommendationCard({
   result,
   userKey,
   contextId,
+  contextName,
   requestId,
   onUserStateChange,
 }: RecommendationCardProps) {
   const { locale, t } = useTranslation();
   const { rank, item, scores, matched_keywords } = result;
   const localizedItem = getLocalizedItem(item, locale);
-  const explanation = result.explanation;
+  const explanation =
+    locale === "en"
+      ? (result.explanation_en || translateExplanationToEn(result.explanation, contextName, item))
+      : result.explanation;
   const recommendationScore = recommendationScoreOutOf100(scores.hybrid);
 
   const suitability =

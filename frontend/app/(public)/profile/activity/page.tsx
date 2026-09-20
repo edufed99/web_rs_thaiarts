@@ -7,6 +7,7 @@ import { ErrorState } from "@/components/ErrorState";
 import { LoadingState } from "@/components/LoadingState";
 import { MemberHero } from "@/components/MemberHero";
 import { MemberHistoryTable } from "@/components/MemberHistoryTable";
+import { useTranslation } from "@/contexts/LanguageContext";
 import { getMeHistory } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
 import type { HistoryListOut } from "@/lib/types";
@@ -15,6 +16,7 @@ import { getUserKey } from "@/lib/user";
 
 export default function MemberActivityPage() {
   const router = useRouter();
+  const { t } = useTranslation();
   const authHeaders = useAuthHeaders();
   const [activity, setActivity] = useState<HistoryListOut | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -44,15 +46,15 @@ export default function MemberActivityPage() {
   if (error) {
     return <ErrorState message={error} onRetry={() => setReloadKey((value) => value + 1)} />;
   }
-  if (!activity) return <LoadingState message="กำลังโหลดกิจกรรมทั้งหมด..." />;
+  if (!activity) return <LoadingState message={t("activity.loading")} />;
 
   return (
     <div className="section-stack">
       <MemberHero
-        title="กิจกรรมทั้งหมด"
-        subtitle="ประวัติการถูกใจ บันทึก และให้คะแนนชุดการแสดงของคุณ เรียงจากล่าสุด"
+        title={t("activity.title")}
+        subtitle={t("activity.subtitle")}
       />
-      <section className="member-section" aria-label="กิจกรรมทั้งหมด">
+      <section className="member-section" aria-label={t("activity.title")}>
         <MemberHistoryTable entries={activity.items} />
       </section>
     </div>

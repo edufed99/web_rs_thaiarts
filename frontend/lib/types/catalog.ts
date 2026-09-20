@@ -72,6 +72,7 @@ export interface RecommendationResultOut {
   is_context_valid: boolean;
   matched_keywords: string[];
   explanation: string;
+  explanation_en?: string | null;
   match_percent: number;
   suitability_label: string;
   suitability_label_en?: string | null;

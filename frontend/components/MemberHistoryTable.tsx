@@ -3,6 +3,7 @@
 import Link from "next/link";
 import React from "react";
 
+import { useTranslation } from "@/contexts/LanguageContext";
 import type { HistoryEntryOut } from "@/lib/types";
 
 interface MemberHistoryTableProps {
@@ -19,92 +20,104 @@ interface MemberHistoryTableProps {
  * columns (ชุดการแสดง, ปฏิสัมพันธ์ผู้ใช้, วันที่, คะแนน, ดู).
  */
 export function MemberHistoryTable({ entries, hasMore }: MemberHistoryTableProps) {
+  const { t, locale } = useTranslation();
+
   if (entries.length === 0) {
     return (
       <div className="member-history-empty">
-        ยังไม่มีประวัติการรับชม — เมื่อกดถูกใจ บันทึก หรือให้คะแนนรายการ ระบบจะบันทึกไว้ในตารางนี้
+        {t("historyTable.empty")}
       </div>
     );
   }
 
   return (
     <>
-      <table className="member-history-table" aria-label="ประวัติการรับชมและให้คะแนน">
+      <table className="member-history-table" aria-label={t("historyTable.tableAria")}>
         <thead>
           <tr>
-            <th>ชุดการแสดง</th>
-            <th>ปฏิสัมพันธ์ผู้ใช้</th>
-            <th>วันที่</th>
-            <th>คะแนน</th>
-            <th>ดู</th>
+            <th>{t("historyTable.colPerformance")}</th>
+            <th>{t("historyTable.colInteraction")}</th>
+            <th>{t("historyTable.colDate")}</th>
+            <th>{t("historyTable.colRating")}</th>
+            <th>{t("historyTable.colView")}</th>
           </tr>
         </thead>
         <tbody>
-          {entries.map((entry) => (
-            <tr key={entry.log_id}>
-              <td>
-                <Link href={`/items/${entry.item_id}`} className="item-name">
-                  {entry.item_name}
-                </Link>
-              </td>
-              <td>
-                {entry.context_name ? (
-                  <span className="context-pill-mini">{entry.context_name}</span>
-                ) : (
-                  <span className="context-pill-mini" style={{ opacity: 0.55 }}>
-                    {labelForAction(entry.action_type)}
+          {entries.map((entry) => {
+            const displayName = locale === "en" && entry.item_name_en ? entry.item_name_en : entry.item_name;
+            return (
+              <tr key={entry.log_id}>
+                <td>
+                  <Link href={`/items/${entry.item_id}`} className="item-name">
+                    {displayName}
+                  </Link>
+                </td>
+                <td>
+                  {entry.context_name ? (
+                    <span className="context-pill-mini">{entry.context_name}</span>
+                  ) : (
+                    <span className="context-pill-mini" style={{ opacity: 0.55 }}>
+                      {labelForAction(entry.action_type, t)}
+                    </span>
+                  )}
+                </td>
+                <td style={{ color: "var(--muted)", whiteSpace: "nowrap" }}>
+                  {formatLocalizedDate(entry.created_at, locale)}
+                </td>
+                <td>
+                  <span
+                    className="stars"
+                    aria-label={
+                      entry.rating
+                        ? t("historyTable.starsCount").replace("{rating}", String(entry.rating))
+                        : t("historyTable.noRating")
+                    }
+                  >
+                    {entry.rating
+                      ? Array.from({ length: 5 }, (_, i) => (
+                          <span key={i} className={i < entry.rating! ? "" : "off"}>
+                            {i < entry.rating! ? "★" : "☆"}
+                          </span>
+                        ))
+                      : <span className="off">—</span>}
                   </span>
-                )}
-              </td>
-              <td style={{ color: "var(--muted)", whiteSpace: "nowrap" }}>
-                {formatThaiDate(entry.created_at)}
-              </td>
-              <td>
-                <span className="stars" aria-label={entry.rating ? `${entry.rating} ดาว` : "ไม่มีคะแนน"}>
-                  {entry.rating
-                    ? Array.from({ length: 5 }, (_, i) => (
-                        <span key={i} className={i < entry.rating! ? "" : "off"}>
-                          {i < entry.rating! ? "★" : "☆"}
-                        </span>
-                      ))
-                    : <span className="off">—</span>}
-                </span>
-              </td>
-              <td>
-                <Link
-                  href={`/items/${entry.item_id}`}
-                  className="row-action"
-                  aria-label={`ดู ${entry.item_name}`}
-                  title={`ดู ${entry.item_name}`}
-                >
-                  ◌
-                </Link>
-              </td>
-            </tr>
-          ))}
+                </td>
+                <td>
+                  <Link
+                    href={`/items/${entry.item_id}`}
+                    className="row-action"
+                    aria-label={t("historyTable.viewPerformance").replace("{name}", displayName)}
+                    title={t("historyTable.viewPerformance").replace("{name}", displayName)}
+                  >
+                    ◌
+                  </Link>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
       {hasMore ? (
         <p style={{ textAlign: "right", color: "var(--muted)", fontSize: 12, margin: 0 }}>
-          แสดง {entries.length} รายการล่าสุด — ประวัติก่อนหน้าถูกตัดให้สั้นลงเพื่อความเร็ว
+          {t("historyTable.hasMore").replace("{count}", String(entries.length))}
         </p>
       ) : null}
     </>
   );
 }
 
-function labelForAction(action: string): string {
-  if (action === "like") return "ถูกใจ";
-  if (action === "unlike") return "ยกเลิกถูกใจ";
-  if (action === "save") return "บันทึก";
-  if (action === "unsave") return "ยกเลิกบันทึก";
-  if (action === "rate") return "ให้คะแนน";
+function labelForAction(action: string, t: (key: string) => string): string {
+  if (action === "like") return t("historyTable.actionLike");
+  if (action === "unlike") return t("historyTable.actionUnlike");
+  if (action === "save") return t("historyTable.actionSave");
+  if (action === "unsave") return t("historyTable.actionUnsave");
+  if (action === "rate") return t("historyTable.actionRate");
   return action;
 }
 
-function formatThaiDate(iso: string): string {
+function formatLocalizedDate(iso: string, locale: string): string {
   try {
-    return new Intl.DateTimeFormat("th-TH", {
+    return new Intl.DateTimeFormat(locale === "en" ? "en-US" : "th-TH", {
       day: "numeric",
       month: "short",
       year: "numeric",

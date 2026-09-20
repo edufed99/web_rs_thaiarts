@@ -52,11 +52,16 @@ function clearStoredAuth(): void {
   } catch {}
 }
 
-export function getReadableUserName(user: Pick<UserOut, "username" | "display_name">): string {
+export function getReadableUserName(user: Pick<UserOut, "username" | "display_name">, locale?: string): string {
   let name = (user.display_name || "").trim();
   if (name.startsWith("must_reset|")) name = name.slice("must_reset|".length).trim();
   if (name.startsWith("legacy:")) name = name.slice("legacy:".length).trim();
-  return name || user.username;
+  const finalName = name || user.username;
+  if (locale === "en") {
+    const m = finalName.match(/^บุคคล(\d+)$/);
+    if (m) return `Member ${m[1]}`;
+  }
+  return finalName;
 }
 
 export function userNeedsPasswordReset(user: Pick<UserOut, "username" | "display_name">): boolean {

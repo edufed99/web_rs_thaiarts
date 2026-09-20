@@ -2,6 +2,7 @@
 
 import React from "react";
 
+import { useTranslation } from "@/contexts/LanguageContext";
 import type { ContextOut } from "@/lib/types";
 
 interface MemberHeroProps {
@@ -27,6 +28,7 @@ export function MemberHero({
   contexts,
   activeContextId,
 }: MemberHeroProps) {
+  const { locale } = useTranslation();
   const chips = (contexts ?? []).slice(0, 6);
   return (
     <section className="member-hero" aria-label={title}>
@@ -35,9 +37,10 @@ export function MemberHero({
         {subtitle ? <p>{subtitle}</p> : null}
       </div>
       {chips.length > 0 ? (
-        <div className="hero-chips" aria-label="ตัวกรองบริบทด่วน">
+        <div className="hero-chips" aria-label={locale === "en" ? "Quick context filters" : "ตัวกรองบริบทด่วน"}>
           {chips.map((ctx) => {
             const active = activeContextId === ctx.id;
+            const displayName = locale === "en" && ctx.name_en ? ctx.name_en : ctx.name;
             return (
               <a
                 key={ctx.id}
@@ -49,7 +52,7 @@ export function MemberHero({
                 className={active ? "hero-chip active" : "hero-chip"}
               >
                 <span aria-hidden="true">●</span>
-                {ctx.name}
+                {displayName}
               </a>
             );
           })}

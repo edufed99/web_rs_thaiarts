@@ -33,7 +33,7 @@ export function MemberSidebar({
   const { locale, t } = useTranslation();
   const pathname = usePathname();
   const [currentHash, setCurrentHash] = useState("");
-  const name = user ? getReadableUserName(user) : (locale === "en" ? "Member" : "สมาชิก");
+  const name = user ? getReadableUserName(user, locale) : (locale === "en" ? "Member" : "สมาชิก");
   const initial = (name || (locale === "en" ? "M" : "น")).trim().charAt(0);
   const isAuthed = Boolean(user);
 

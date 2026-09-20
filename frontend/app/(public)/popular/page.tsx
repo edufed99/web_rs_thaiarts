@@ -4,11 +4,13 @@ import Link from "next/link";
 import React, { useEffect, useMemo, useState } from "react";
 
 import { PerformanceCardMedia, resolvedImageUrl } from "@/components/PerformanceCardMedia";
+import { useTranslation } from "@/contexts/LanguageContext";
 import {
   getItemEngagementBatch,
   getItemLegacyStatsBatch,
   getItems,
 } from "@/lib/api";
+import { getLocalizedItem } from "@/lib/localization";
 import type { EngagementOut, ItemOut, LegacyStatsOut } from "@/lib/types";
 import { getUserKey } from "@/lib/user";
 import { rankPopularItems, toEngagementMap } from "@/lib/popularityRanking";
@@ -30,6 +32,7 @@ const EMPTY: PopularData = {
 };
 
 export default function PopularPage() {
+  const { t, locale } = useTranslation();
   const [data, setData] = useState<PopularData>(EMPTY);
   const [ready, setReady] = useState(false);
 
@@ -62,7 +65,7 @@ export default function PopularPage() {
         if (cancelled) return;
         setData({
           ...EMPTY,
-          error: e instanceof Error ? e.message : "ไม่สามารถโหลดข้อมูลยอดนิยม",
+          error: e instanceof Error ? e.message : (locale === "en" ? "Failed to load popularity rankings" : "ไม่สามารถโหลดข้อมูลยอดนิยม"),
         });
         setReady(true);
       });
@@ -70,7 +73,7 @@ export default function PopularPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [locale]);
 
   const weeklyTop10 = useMemo(
     () => rankPopularItems(data.items, data.week, data.legacy, 10),
@@ -85,31 +88,35 @@ export default function PopularPage() {
     <main className="popular-page">
       <header className="popular-page-head">
         <div>
-          <p>อันดับยอดนิยม</p>
-          <h1>ชุดการแสดงยอดนิยม</h1>
+          <p>{t("popular.eyebrow")}</p>
+          <h1>{t("popular.title")}</h1>
         </div>
-        <Link href="/" className="popular-page-back">กลับหน้าแรก</Link>
+        <Link href="/" className="popular-page-back">{t("popular.backHome")}</Link>
       </header>
 
       {!ready ? (
-        <div className="popular-page-loading">กำลังโหลดอันดับยอดนิยม...</div>
+        <div className="popular-page-loading">{t("popular.loading")}</div>
       ) : data.error ? (
         <div className="home-empty"><p>{data.error}</p></div>
       ) : (
         <div className="popular-page-grid">
           <PopularTopTen
-            title="ชุดการแสดงยอดนิยมประจำสัปดาห์"
-            subtitle="จัดอันดับจากการตอบรับของผู้ใช้ใน 7 วันที่ผ่านมา"
+            title={t("popular.weeklyTitle")}
+            subtitle={t("popular.weeklySubtitle")}
             items={weeklyTop10}
             engagement={data.week}
             legacy={data.legacy}
+            locale={locale}
+            t={t}
           />
           <PopularTopTen
-            title="ชุดการแสดงยอดนิยมประจำเดือน"
-            subtitle="จัดอันดับจากการตอบรับของผู้ใช้ใน 30 วันที่ผ่านมา"
+            title={t("popular.monthlyTitle")}
+            subtitle={t("popular.monthlySubtitle")}
             items={monthlyTop10}
             engagement={data.month}
             legacy={data.legacy}
+            locale={locale}
+            t={t}
           />
         </div>
       )}
@@ -123,12 +130,16 @@ function PopularTopTen({
   items,
   engagement,
   legacy,
+  locale,
+  t,
 }: {
   title: string;
   subtitle: string;
   items: ItemOut[];
   engagement: Map<number, EngagementOut>;
   legacy: Map<number, LegacyStatsOut>;
+  locale: string;
+  t: (key: string) => string;
 }) {
   const maxScore = useMemo(() => {
     let m = 0;
@@ -146,7 +157,7 @@ function PopularTopTen({
         <p>{subtitle}</p>
       </header>
       {items.length === 0 ? (
-        <div className="popular-topten-empty">ยังไม่มีข้อมูลความนิยมในช่วงนี้</div>
+        <div className="popular-topten-empty">{t("popular.empty")}</div>
       ) : (
         <ol>
           {items.map((item, idx) => (
@@ -156,6 +167,8 @@ function PopularTopTen({
               item={item}
               engagement={engagement.get(item.id)}
               maxScore={maxScore}
+              locale={locale}
+              t={t}
             />
           ))}
         </ol>
@@ -169,12 +182,17 @@ function PopularRankRow({
   item,
   engagement,
   maxScore,
+  locale,
+  t,
 }: {
   rank: number;
   item: ItemOut;
   engagement?: EngagementOut;
   maxScore: number;
+  locale: string;
+  t: (key: string) => string;
 }) {
+  const localized = getLocalizedItem(item, locale as "en" | "th");
   const score = engagement?.engagement_score ?? 0;
   const percent = Math.min(100, Math.max(1, Math.round((score / (maxScore || 1)) * 100)));
 
@@ -184,47 +202,57 @@ function PopularRankRow({
       <div className="popular-rank-thumb" aria-hidden="true">
         <PerformanceCardMedia
           imageUrl={resolvedImageUrl(item.image_url)}
-          categoryGroup={item.category_group}
-          title={item.name}
+          categoryGroup={localized.displayCategoryGroup}
+          title={localized.displayName}
           variant="card"
         />
       </div>
       <div className="popular-rank-info">
         <strong className="popular-rank-name">
-          <Link href={`/items/${item.id}`}>{item.name}</Link>
+          <Link href={`/items/${item.id}`}>{localized.displayName}</Link>
         </strong>
-        <span>{compactItemMeta(item)}</span>
+        <span>{compactItemMeta(item, locale)}</span>
         <div className="popular-rank-engagement-line">
           <span className="popular-rank-pct-badge">
-            <span aria-hidden="true">🔥</span> ความนิยม <strong>{percent}%</strong>
+            <span aria-hidden="true">🔥</span> {t("popular.popularityBadge")} <strong>{percent}%</strong>
           </span>
-          <span className="popular-rank-detail-summary">{engagementSummary(engagement)}</span>
+          <span className="popular-rank-detail-summary">{engagementSummary(engagement, locale, t)}</span>
         </div>
       </div>
     </li>
   );
 }
 
-function compactItemMeta(item: ItemOut): string {
+function compactItemMeta(item: ItemOut, locale: string): string {
   const parts: string[] = [];
-  if (item.performers_count) parts.push(`ผู้แสดง ${item.performers_count} คน`);
-  if (item.duration_minutes) parts.push(`${item.duration_minutes} นาที`);
+  if (item.performers_count) {
+    parts.push(locale === "en" ? `${item.performers_count} performers` : `ผู้แสดง ${item.performers_count} คน`);
+  }
+  if (item.duration_minutes) {
+    parts.push(locale === "en" ? `${item.duration_minutes} mins` : `${item.duration_minutes} นาที`);
+  }
   if (item.price_text) {
     parts.push(/บาท/.test(item.price_text) ? item.price_text : `${item.price_text} บาท`);
   }
   return parts.join(" • ");
 }
 
-function engagementSummary(row?: EngagementOut): string {
-  if (!row || row.engagement_score <= 0) return "ยังไม่มีการตอบรับในช่วงนี้";
+function engagementSummary(row: EngagementOut | undefined, locale: string, t: (key: string) => string): string {
+  if (!row || row.engagement_score <= 0) return t("popular.noEngagement");
   const parts: string[] = [];
-  if (row.like_count > 0) parts.push(`ถูกใจ ${formatCount(row.like_count)}`);
-  if (row.save_count > 0) parts.push(`บันทึก ${formatCount(row.save_count)}`);
-  if (row.rating_count > 0) parts.push(`รีวิวเชิงบวก ${formatCount(row.rating_count)}`);
-  return parts.length > 0 ? parts.join(" • ") : "มีการตอบรับจากผู้ใช้";
+  if (row.like_count > 0) {
+    parts.push(locale === "en" ? `Likes ${formatCount(row.like_count, locale)}` : `ถูกใจ ${formatCount(row.like_count, locale)}`);
+  }
+  if (row.save_count > 0) {
+    parts.push(locale === "en" ? `Saved ${formatCount(row.save_count, locale)}` : `บันทึก ${formatCount(row.save_count, locale)}`);
+  }
+  if (row.rating_count > 0) {
+    parts.push(locale === "en" ? `Positive reviews ${formatCount(row.rating_count, locale)}` : `รีวิวเชิงบวก ${formatCount(row.rating_count, locale)}`);
+  }
+  return parts.length > 0 ? parts.join(" • ") : t("popular.hasEngagement");
 }
 
-function formatCount(n: number): string {
+function formatCount(n: number, locale: string = "th"): string {
   if (!Number.isFinite(n) || n <= 0) return "0";
-  return new Intl.NumberFormat("th-TH").format(n);
+  return new Intl.NumberFormat(locale === "en" ? "en-US" : "th-TH").format(n);
 }

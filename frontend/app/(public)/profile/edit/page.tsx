@@ -6,6 +6,7 @@ import React, { useEffect, useState } from "react";
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingState } from "@/components/LoadingState";
 import { MemberHero } from "@/components/MemberHero";
+import { useTranslation } from "@/contexts/LanguageContext";
 import {
   ApiClientError,
   deleteMemberAvatar,
@@ -20,6 +21,7 @@ import type { MemberProfileOut } from "@/lib/types";
 
 export default function EditMemberProfilePage() {
   const router = useRouter();
+  const { t, locale } = useTranslation();
   const [profile, setProfile] = useState<MemberProfileOut | null>(null);
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -49,11 +51,11 @@ export default function EditMemberProfilePage() {
         setProfile(data);
         setUsername(data.username);
         setEmail(data.email);
-        setDisplayName(getReadableUserName(data));
+        setDisplayName(getReadableUserName(data, locale));
         setBio(data.bio);
       })
       .catch((reason: unknown) => setError(errorMessage(reason)));
-  }, [router]);
+  }, [router, locale]);
 
   async function saveProfile(event: React.FormEvent) {
     event.preventDefault();
@@ -74,7 +76,7 @@ export default function EditMemberProfilePage() {
       setProfile(updated);
       const current = getCurrentUser();
       if (current) updateStoredUser({ ...current, display_name: updated.display_name });
-      setMessage("บันทึกข้อมูลส่วนตัวเรียบร้อยแล้ว");
+      setMessage(locale === "en" ? "Profile updated successfully" : "บันทึกข้อมูลส่วนตัวเรียบร้อยแล้ว");
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
@@ -87,12 +89,12 @@ export default function EditMemberProfilePage() {
     setError(null);
     if (!file) return;
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-      setError("รองรับเฉพาะไฟล์ JPEG, PNG หรือ WebP");
+      setError(locale === "en" ? "Only JPEG, PNG, or WebP files are supported" : "รองรับเฉพาะไฟล์ JPEG, PNG หรือ WebP");
       event.target.value = "";
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      setError("รูปโปรไฟล์ต้องมีขนาดไม่เกิน 5 MB");
+      setError(locale === "en" ? "Avatar image must be smaller than 5 MB" : "รูปโปรไฟล์ต้องมีขนาดไม่เกิน 5 MB");
       event.target.value = "";
       return;
     }
@@ -111,7 +113,7 @@ export default function EditMemberProfilePage() {
       setAvatarFile(null);
       if (avatarPreview?.startsWith("blob:")) URL.revokeObjectURL(avatarPreview);
       setAvatarPreview(null);
-      setMessage("ลบรูปโปรไฟล์เรียบร้อยแล้ว");
+      setMessage(locale === "en" ? "Profile avatar removed successfully" : "ลบรูปโปรไฟล์เรียบร้อยแล้ว");
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
@@ -130,27 +132,27 @@ export default function EditMemberProfilePage() {
     const emailChanged = nextEmail !== profile.email;
     const passwordChanged = Boolean(newPassword || confirmPassword);
     if (nextUsername.length < 3) {
-      setError("ชื่อผู้ใช้ต้องมีอย่างน้อย 3 ตัวอักษร");
+      setError(locale === "en" ? "Username must be at least 3 characters" : "ชื่อผู้ใช้ต้องมีอย่างน้อย 3 ตัวอักษร");
       return;
     }
     if (!nextEmail || !nextEmail.includes("@")) {
-      setError("กรุณากรอกอีเมลให้ถูกต้อง");
+      setError(locale === "en" ? "Please provide a valid email address" : "กรุณากรอกอีเมลให้ถูกต้อง");
       return;
     }
     if (!usernameChanged && !emailChanged && !passwordChanged) {
-      setError("ยังไม่มีการเปลี่ยนแปลงชื่อผู้ใช้ อีเมล หรือรหัสผ่าน");
+      setError(locale === "en" ? "No changes to username, email, or password" : "ยังไม่มีการเปลี่ยนแปลงชื่อผู้ใช้ อีเมล หรือรหัสผ่าน");
       return;
     }
     if (!currentPassword) {
-      setError("กรุณากรอกรหัสผ่านปัจจุบันเพื่อยืนยันการเปลี่ยนแปลง");
+      setError(locale === "en" ? "Please enter your current password to confirm changes" : "กรุณากรอกรหัสผ่านปัจจุบันเพื่อยืนยันการเปลี่ยนแปลง");
       return;
     }
     if (passwordChanged && (!newPassword || !confirmPassword)) {
-      setError("กรุณากรอกรหัสผ่านใหม่และยืนยันรหัสผ่านให้ครบ");
+      setError(locale === "en" ? "Please enter and confirm your new password" : "กรุณากรอกรหัสผ่านใหม่และยืนยันรหัสผ่านให้ครบ");
       return;
     }
     if (passwordChanged && newPassword !== confirmPassword) {
-      setError("รหัสผ่านใหม่และการยืนยันไม่ตรงกัน");
+      setError(locale === "en" ? "New password and confirmation do not match" : "รหัสผ่านใหม่และการยืนยันไม่ตรงกัน");
       return;
     }
     setSavingPassword(true);
@@ -172,15 +174,27 @@ export default function EditMemberProfilePage() {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      setMessage(
-        (usernameChanged || emailChanged) && passwordChanged
-          ? "เปลี่ยนข้อมูลบัญชีและรหัสผ่านเรียบร้อยแล้ว"
-          : usernameChanged
-            ? "เปลี่ยนชื่อผู้ใช้เรียบร้อยแล้ว"
-            : emailChanged
-              ? "เปลี่ยนอีเมลเรียบร้อยแล้ว"
-            : "เปลี่ยนรหัสผ่านเรียบร้อยแล้ว",
-      );
+      if (locale === "en") {
+        setMessage(
+          (usernameChanged || emailChanged) && passwordChanged
+            ? "Account information and password updated successfully"
+            : usernameChanged
+              ? "Username updated successfully"
+              : emailChanged
+                ? "Email updated successfully"
+                : "Password updated successfully",
+        );
+      } else {
+        setMessage(
+          (usernameChanged || emailChanged) && passwordChanged
+            ? "เปลี่ยนข้อมูลบัญชีและรหัสผ่านเรียบร้อยแล้ว"
+            : usernameChanged
+              ? "เปลี่ยนชื่อผู้ใช้เรียบร้อยแล้ว"
+              : emailChanged
+                ? "เปลี่ยนอีเมลเรียบร้อยแล้ว"
+              : "เปลี่ยนรหัสผ่านเรียบร้อยแล้ว",
+        );
+      }
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
@@ -189,60 +203,60 @@ export default function EditMemberProfilePage() {
   }
 
   if (error && !profile) return <ErrorState message={error} onRetry={() => window.location.reload()} />;
-  if (!profile) return <LoadingState message="กำลังโหลดข้อมูลส่วนตัว..." />;
+  if (!profile) return <LoadingState message={t("profileEdit.loading")} />;
 
   return (
     <div className="section-stack">
-      <MemberHero title="แก้ไขข้อมูลส่วนตัว" subtitle="จัดการข้อมูลที่แสดงบนแดชบอร์ดของคุณ โดยระดับผู้ใช้ไม่สามารถแก้ไขได้จากหน้านี้" />
+      <MemberHero title={t("profileEdit.title")} subtitle={t("profileEdit.subtitle")} />
 
       {error ? <div role="alert" className="error-panel">{error}</div> : null}
       {message ? <div role="status" className="panel" style={{ background: "#edf7f5" }}>{message}</div> : null}
 
       <form onSubmit={saveProfile} className="form-panel" style={{ maxWidth: 720 }}>
-        <h2 style={{ margin: 0 }}>ข้อมูลโปรไฟล์</h2>
+        <h2 style={{ margin: 0 }}>{t("profileEdit.profileInfoTitle")}</h2>
         <div className="panel" style={{ boxShadow: "none" }}>
-          <p className="muted" style={{ margin: 0 }}>ชื่อผู้ใช้: <strong>{profile.username}</strong></p>
-          <p className="muted" style={{ margin: "0.5rem 0 0" }}>อีเมล: <strong>{profile.email}</strong></p>
+          <p className="muted" style={{ margin: 0 }}>{t("profileEdit.usernameLabel")}: <strong>{profile.username}</strong></p>
+          <p className="muted" style={{ margin: "0.5rem 0 0" }}>{t("profileEdit.emailLabel")}: <strong>{profile.email}</strong></p>
           <p className="muted" style={{ margin: "0.5rem 0 0" }}>
-            ระดับผู้ใช้: <strong>{profile.role === "super_admin" ? "super_admin" : "user"}</strong>
+            {t("profileEdit.roleLabel")}: <strong>{profile.role === "super_admin" ? "super_admin" : "user"}</strong>
           </p>
         </div>
         <label className="field">
-          <span>ชื่อที่แสดง</span>
+          <span>{t("profileEdit.displayNameLabel")}</span>
           <input maxLength={120} value={displayName} onChange={(event) => setDisplayName(event.target.value)} required />
         </label>
         <div className="field">
-          <span>รูปโปรไฟล์</span>
+          <span>{t("profileEdit.avatarLabel")}</span>
           <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
             {(avatarPreview || profile.avatar_url) ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={avatarPreview || resolveImageUrl(profile.avatar_url) || ""}
-                alt="ตัวอย่างรูปโปรไฟล์"
+                alt={t("profileEdit.avatarPreviewAlt")}
                 style={{ width: 88, height: 88, borderRadius: "50%", objectFit: "cover" }}
               />
             ) : <div className="member-avatar" style={{ width: 88, height: 88 }}>{(displayName || profile.username).charAt(0)}</div>}
             <div style={{ display: "grid", gap: "0.5rem" }}>
               <input type="file" accept="image/jpeg,image/png,image/webp" onChange={chooseAvatar} />
-              <small className="muted">JPEG, PNG หรือ WebP ขนาดไม่เกิน 5 MB</small>
-              {profile.avatar_url ? <button type="button" className="secondary" onClick={removeAvatar} disabled={savingProfile}>ลบรูปปัจจุบัน</button> : null}
+              <small className="muted">{t("profileEdit.avatarHint")}</small>
+              {profile.avatar_url ? <button type="button" className="secondary" onClick={removeAvatar} disabled={savingProfile}>{t("profileEdit.removeAvatar")}</button> : null}
             </div>
           </div>
         </div>
         <label className="field">
-          <span>ข้อมูลแนะนำตัว</span>
-          <textarea maxLength={1000} rows={5} value={bio} onChange={(event) => setBio(event.target.value)} placeholder="แนะนำตัวหรือบอกความสนใจด้านนาฏศิลป์ของคุณ" />
+          <span>{t("profileEdit.bioLabel")}</span>
+          <textarea maxLength={1000} rows={5} value={bio} onChange={(event) => setBio(event.target.value)} placeholder={t("profileEdit.bioPlaceholder")} />
         </label>
-        <button type="submit" disabled={savingProfile}>{savingProfile ? "กำลังบันทึก..." : "บันทึกข้อมูลส่วนตัว"}</button>
+        <button type="submit" disabled={savingProfile}>{savingProfile ? t("profileEdit.savingBtn") : t("profileEdit.saveProfileBtn")}</button>
       </form>
 
       <form id="credentials" onSubmit={saveCredentials} className="form-panel" style={{ maxWidth: 720 }}>
-        <h2 style={{ margin: 0 }}>ข้อมูลเข้าสู่ระบบ</h2>
+        <h2 style={{ margin: 0 }}>{t("profileEdit.credentialsTitle")}</h2>
         <p className="muted" style={{ margin: 0 }}>
-          เปลี่ยนชื่อผู้ใช้ อีเมล รหัสผ่าน หรือหลายรายการพร้อมกัน โดยต้องยืนยันด้วยรหัสผ่านปัจจุบัน
+          {t("profileEdit.credentialsDesc")}
         </p>
         <label className="field">
-          <span>ชื่อผู้ใช้</span>
+          <span>{t("profileEdit.usernameLabel")}</span>
           <input
             type="text"
             minLength={3}
@@ -254,7 +268,7 @@ export default function EditMemberProfilePage() {
           />
         </label>
         <label className="field">
-          <span>อีเมล</span>
+          <span>{t("profileEdit.emailLabel")}</span>
           <input
             type="email"
             maxLength={320}
@@ -265,40 +279,40 @@ export default function EditMemberProfilePage() {
           />
         </label>
         <label className="field">
-          <span>รหัสผ่านปัจจุบัน</span>
+          <span>{t("profileEdit.currentPasswordLabel")}</span>
           <input type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} />
         </label>
         <label className="field">
-          <span>รหัสผ่านใหม่ <small className="muted">(เว้นว่างหากไม่ต้องการเปลี่ยน)</small></span>
+          <span>{t("profileEdit.newPasswordLabel")} <small className="muted">{t("profileEdit.newPasswordHint")}</small></span>
           <input type="password" minLength={8} maxLength={128} autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
         </label>
         <label className="field">
-          <span>ยืนยันรหัสผ่านใหม่</span>
+          <span>{t("profileEdit.confirmPasswordLabel")}</span>
           <input type="password" minLength={8} maxLength={128} autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} />
         </label>
-        <button type="submit" disabled={savingPassword}>{savingPassword ? "กำลังบันทึก..." : "บันทึกข้อมูลเข้าสู่ระบบ"}</button>
+        <button type="submit" disabled={savingPassword}>{savingPassword ? t("profileEdit.savingBtn") : t("profileEdit.saveCredentialsBtn")}</button>
       </form>
 
-      <section className="form-panel" style={{ maxWidth: 720 }} aria-label="ความยินยอมในการใช้ข้อมูล">
-        <h2 style={{ margin: 0 }}>ความยินยอมและการคุ้มครองข้อมูลส่วนบุคคล (PDPA)</h2>
+      <section className="form-panel" style={{ maxWidth: 720 }} aria-label={t("profileEdit.pdpaTitle")}>
+        <h2 style={{ margin: 0 }}>{t("profileEdit.pdpaTitle")}</h2>
         <p className="muted" style={{ margin: 0 }}>
-          คุณสามารถจัดการความยินยอมในการให้ระบบเก็บข้อมูลความสนใจและการประเมินเพื่อการศึกษาวิจัยและปรับปรุงระบบแนะนำได้ตลอดเวลา
+          {t("profileEdit.pdpaDesc")}
         </p>
         <div className="panel" style={{ boxShadow: "none" }}>
           <p style={{ margin: "0 0 0.5rem" }}>
-            สถานะความยินยอม:{" "}
+            {t("profileEdit.consentStatus")}{" "}
             <strong>
-              {profile?.consent_accepted ? "✅ ยินยอมแล้ว" : "❌ ไม่ยินยอม / ถอนความยินยอมแล้ว"}
+              {profile?.consent_accepted ? t("profileEdit.consentAccepted") : t("profileEdit.consentWithdrawn")}
             </strong>
           </p>
           {profile?.consent_accepted_at ? (
             <p className="muted" style={{ margin: "0.25rem 0", fontSize: 13 }}>
-              ยินยอมเมื่อ: {formatDate(profile.consent_accepted_at)} (เวอร์ชัน {profile.consent_version || "1.0"})
+              {t("profileEdit.consentedAt").replace("{date}", formatDate(profile.consent_accepted_at, locale)).replace("{version}", profile.consent_version || "1.0")}
             </p>
           ) : null}
           {profile?.consent_withdrawn_at ? (
             <p className="muted" style={{ margin: "0.25rem 0", fontSize: 13, color: "#b33a3a" }}>
-              ถอนความยินยอมเมื่อ: {formatDate(profile.consent_withdrawn_at)}
+              {t("profileEdit.withdrawnAt").replace("{date}", formatDate(profile.consent_withdrawn_at, locale))}
             </p>
           ) : null}
         </div>
@@ -311,7 +325,7 @@ export default function EditMemberProfilePage() {
               onClick={handleWithdrawConsent}
               style={{ color: "#b33a3a", borderColor: "#f0c4c4" }}
             >
-              {savingConsent ? "กำลังบันทึก..." : "ถอนความยินยอม (Withdraw Consent)"}
+              {savingConsent ? t("profileEdit.savingBtn") : t("profileEdit.withdrawBtn")}
             </button>
           ) : (
             <button
@@ -319,7 +333,7 @@ export default function EditMemberProfilePage() {
               disabled={savingConsent}
               onClick={handleAcceptConsent}
             >
-              {savingConsent ? "กำลังบันทึก..." : "ให้ความยินยอมเพื่อการวิจัย"}
+              {savingConsent ? t("profileEdit.savingBtn") : t("profileEdit.acceptBtn")}
             </button>
           )}
         </div>
@@ -334,7 +348,7 @@ export default function EditMemberProfilePage() {
     try {
       const updated = await patchMemberProfile({ withdraw_consent: true });
       setProfile(updated);
-      setMessage("ถอนความยินยอมเรียบร้อยแล้ว");
+      setMessage(locale === "en" ? "Consent withdrawn successfully" : "ถอนความยินยอมเรียบร้อยแล้ว");
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
@@ -349,7 +363,7 @@ export default function EditMemberProfilePage() {
     try {
       const updated = await patchMemberProfile({ accept_consent: true });
       setProfile(updated);
-      setMessage("บันทึกการให้ความยินยอมเรียบร้อยแล้ว");
+      setMessage(locale === "en" ? "Consent granted successfully" : "บันทึกการให้ความยินยอมเรียบร้อยแล้ว");
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
@@ -358,10 +372,10 @@ export default function EditMemberProfilePage() {
   }
 }
 
-function formatDate(value: string | null): string {
+function formatDate(value: string | null, locale: string = "th"): string {
   if (!value) return "—";
   try {
-    return new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+    return new Intl.DateTimeFormat(locale === "en" ? "en-US" : "th-TH", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
   } catch {
     return value;
   }

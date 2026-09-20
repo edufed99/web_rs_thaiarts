@@ -8,6 +8,7 @@ import { CatalogItemCard } from "@/components/CatalogItemCard";
 import { ErrorState } from "@/components/ErrorState";
 import { ItemActionBar } from "@/components/ItemActionBar";
 import { LoadingState } from "@/components/LoadingState";
+import { MemberShell } from "@/components/MemberShell";
 import { MemberRatingSummary } from "@/components/MemberStats";
 import {
   PerformanceCardMedia,
@@ -154,8 +155,8 @@ function ItemDetailContent() {
   const activeStars = hasLegacy ? Math.round(legacyAvg) : 0;
 
   return (
-    <div className="container" style={{ padding: "var(--space-6) 0" }}>
-      <p style={{ margin: "0 0 var(--space-4) 0" }}>
+    <MemberShell showInterestCard={false}>
+      <p style={{ margin: 0 }}>
         <Link href="/items" className="secondary" style={{ minHeight: "34px", fontSize: "0.9rem" }}>
           ← {t("itemDetail.backToCatalog")}
         </Link>
@@ -353,7 +354,7 @@ function ItemDetailContent() {
           </div>
         </div>
       </article>
-    </div>
+    </MemberShell>
   );
 }
 

@@ -29,8 +29,6 @@ function ItemsContent() {
   const contextId = contextIdStr ? Number(contextIdStr) : null;
   const occasionInput = params.get("occasion") ?? "";
   const categoryInput = params.get("category") ?? "";
-  const durationInput = params.get("duration") ?? "";
-  const performersInput = params.get("performers") ?? "";
   const rawSortInput = params.get("sort") ?? "name-asc";
   const sortInput = rawSortInput === "updated" ? "newest" : rawSortInput;
 
@@ -99,8 +97,6 @@ function ItemsContent() {
       context?: number | null;
       occasion?: string;
       category?: string;
-      duration?: string;
-      performers?: string;
       sort?: string;
     }) => {
       const sp = new URLSearchParams();
@@ -109,8 +105,6 @@ function ItemsContent() {
       if (next.context != null && next.context > 0) sp.set("context", String(next.context));
       if (next.occasion) sp.set("occasion", next.occasion);
       if (next.category) sp.set("category", next.category);
-      if (next.duration) sp.set("duration", next.duration);
-      if (next.performers) sp.set("performers", next.performers);
       if (next.sort && next.sort !== "name-asc") sp.set("sort", next.sort);
       const qs = sp.toString();
       router.push(`/items${qs ? `?${qs}` : ""}`);
@@ -125,8 +119,6 @@ function ItemsContent() {
       context: contextId,
       occasion: occasionInput,
       category: categoryInput,
-      duration: durationInput,
-      performers: performersInput,
       sort: sortInput,
     });
   };
@@ -139,8 +131,6 @@ function ItemsContent() {
       context: v && !isGroup ? Number(v) : null,
       occasion: isGroup ? v.slice("group:".length) : "",
       category: categoryInput,
-      duration: durationInput,
-      performers: performersInput,
       sort: sortInput,
     });
   };
@@ -151,32 +141,6 @@ function ItemsContent() {
       context: contextId,
       occasion: occasionInput,
       category: e.target.value,
-      duration: durationInput,
-      performers: performersInput,
-      sort: sortInput,
-    });
-  };
-
-  const onDurationChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    updateUrl({
-      q: searchInput,
-      context: contextId,
-      occasion: occasionInput,
-      category: categoryInput,
-      duration: e.target.value,
-      performers: performersInput,
-      sort: sortInput,
-    });
-  };
-
-  const onPerformersChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    updateUrl({
-      q: searchInput,
-      context: contextId,
-      occasion: occasionInput,
-      category: categoryInput,
-      duration: durationInput,
-      performers: e.target.value,
       sort: sortInput,
     });
   };
@@ -187,8 +151,6 @@ function ItemsContent() {
       context: contextId,
       occasion: occasionInput,
       category: categoryInput,
-      duration: durationInput,
-      performers: performersInput,
       sort: e.target.value,
     });
   };
@@ -256,30 +218,10 @@ function ItemsContent() {
             (item.category_group_en != null && item.category_group_en === categoryInput),
         )
       : byOccasion;
-    const byDuration = durationInput
-      ? byCategory.filter((item) => {
-          const d = item.duration_minutes;
-          if (d == null) return false;
-          if (durationInput === "short") return d < 15;
-          if (durationInput === "medium") return d >= 15 && d <= 30;
-          if (durationInput === "long") return d > 30;
-          return true;
-        })
-      : byCategory;
-    const byPerformers = performersInput
-      ? byDuration.filter((item) => {
-          const p = item.performers_count;
-          if (p == null) return false;
-          if (performersInput === "solo") return p <= 2;
-          if (performersInput === "small") return p >= 3 && p <= 5;
-          if (performersInput === "large") return p >= 6;
-          return true;
-        })
-      : byDuration;
-    return sortCatalogItems(byPerformers, sortInput, locale);
-  }, [data, searchInput, contextId, occasionInput, categoryInput, durationInput, performersInput, sortInput, locale]);
+    return sortCatalogItems(byCategory, sortInput, locale);
+  }, [data, searchInput, contextId, occasionInput, categoryInput, sortInput, locale]);
 
-  const paginationResetKey = `${searchInput}|${contextId ?? ""}|${occasionInput}|${categoryInput}|${durationInput}|${performersInput}|${sortInput}`;
+  const paginationResetKey = `${searchInput}|${contextId ?? ""}|${occasionInput}|${categoryInput}|${sortInput}`;
   const {
     page,
     setPage,
@@ -298,16 +240,6 @@ function ItemsContent() {
       };
     });
   }, []);
-
-  const hasActiveFilters = Boolean(
-    searchInput ||
-      categoryInput ||
-      occasionInput ||
-      contextId != null ||
-      durationInput ||
-      performersInput ||
-      (sortInput && sortInput !== "name-asc"),
-  );
 
   if (error) {
     return <ErrorState message={error} code={errorCode} onRetry={() => setReloadKey((k) => k + 1)} />;
@@ -365,6 +297,11 @@ function ItemsContent() {
               </option>
             ))}
           </select>
+          <select value={sortInput} onChange={onSortChange} aria-label={t("items.sortLabel")}>
+            <option value="name-asc">{t("items.sortNameAsc")}</option>
+            <option value="name-desc">{t("items.sortNameDesc")}</option>
+            <option value="newest">{t("items.sortNewest")}</option>
+          </select>
           <select
             value={occasionInput ? `group:${occasionInput}` : contextId ?? ""}
             onChange={onContextChange}
@@ -385,185 +322,8 @@ function ItemsContent() {
               );
             })}
           </select>
-          <select value={durationInput} onChange={onDurationChange} aria-label={t("items.filterDuration")}>
-            <option value="">{t("items.allDurations")}</option>
-            <option value="short">{t("items.durationShort")}</option>
-            <option value="medium">{t("items.durationMedium")}</option>
-            <option value="long">{t("items.durationLong")}</option>
-          </select>
-          <select value={performersInput} onChange={onPerformersChange} aria-label={t("items.filterPerformers")}>
-            <option value="">{t("items.allPerformers")}</option>
-            <option value="solo">{t("items.performersSolo")}</option>
-            <option value="small">{t("items.performersSmall")}</option>
-            <option value="large">{t("items.performersLarge")}</option>
-          </select>
-          <select value={sortInput} onChange={onSortChange} aria-label={t("items.sortLabel")}>
-            <option value="name-asc">{t("items.sortNameAsc")}</option>
-            <option value="name-desc">{t("items.sortNameDesc")}</option>
-            <option value="newest">{t("items.sortNewest")}</option>
-            <option value="recommended">{t("items.sortRecommended")}</option>
-            <option value="popular">{t("items.sortPopular")}</option>
-          </select>
           <button type="submit">{t("common.search")}</button>
         </form>
-
-        {hasActiveFilters ? (
-          <div className="catalog-active-filters" aria-label={t("items.activeFilters")}>
-            <span className="active-filter-title">{t("items.activeFilters")}</span>
-            {searchInput ? (
-              <span className="filter-badge">
-                {t("items.filterBadgeSearch")}: "{searchInput}"
-                <button
-                  type="button"
-                  aria-label={`Remove search filter ${searchInput}`}
-                  onClick={() => {
-                    setSearchDraft("");
-                    updateUrl({
-                      q: "",
-                      context: contextId,
-                      occasion: occasionInput,
-                      category: categoryInput,
-                      duration: durationInput,
-                      performers: performersInput,
-                      sort: sortInput,
-                    });
-                  }}
-                >
-                  ×
-                </button>
-              </span>
-            ) : null}
-            {categoryInput ? (
-              <span className="filter-badge">
-                {t("items.filterBadgeCategory")}: {displayCategory}
-                <button
-                  type="button"
-                  aria-label={`Remove category filter ${displayCategory}`}
-                  onClick={() =>
-                    updateUrl({
-                      q: searchInput,
-                      context: contextId,
-                      occasion: occasionInput,
-                      category: "",
-                      duration: durationInput,
-                      performers: performersInput,
-                      sort: sortInput,
-                    })
-                  }
-                >
-                  ×
-                </button>
-              </span>
-            ) : null}
-            {selectedContext ? (
-              <span className="filter-badge">
-                {t("items.filterBadgeOccasion")}: {selectedContextName}
-                <button
-                  type="button"
-                  aria-label={`Remove occasion filter ${selectedContextName}`}
-                  onClick={() =>
-                    updateUrl({
-                      q: searchInput,
-                      context: null,
-                      occasion: occasionInput,
-                      category: categoryInput,
-                      duration: durationInput,
-                      performers: performersInput,
-                      sort: sortInput,
-                    })
-                  }
-                >
-                  ×
-                </button>
-              </span>
-            ) : occasionInput ? (
-              <span className="filter-badge">
-                {t("items.filterBadgeOccasion")}: {displayOccasion}
-                <button
-                  type="button"
-                  aria-label={`Remove occasion filter ${displayOccasion}`}
-                  onClick={() =>
-                    updateUrl({
-                      q: searchInput,
-                      context: null,
-                      occasion: "",
-                      category: categoryInput,
-                      duration: durationInput,
-                      performers: performersInput,
-                      sort: sortInput,
-                    })
-                  }
-                >
-                  ×
-                </button>
-              </span>
-            ) : null}
-            {durationInput ? (
-              <span className="filter-badge">
-                {t("items.filterBadgeDuration")}:{" "}
-                {durationInput === "short"
-                  ? t("items.durationShort")
-                  : durationInput === "medium"
-                  ? t("items.durationMedium")
-                  : t("items.durationLong")}
-                <button
-                  type="button"
-                  aria-label={`Remove duration filter ${durationInput}`}
-                  onClick={() =>
-                    updateUrl({
-                      q: searchInput,
-                      context: contextId,
-                      occasion: occasionInput,
-                      category: categoryInput,
-                      duration: "",
-                      performers: performersInput,
-                      sort: sortInput,
-                    })
-                  }
-                >
-                  ×
-                </button>
-              </span>
-            ) : null}
-            {performersInput ? (
-              <span className="filter-badge">
-                {t("items.filterBadgePerformers")}:{" "}
-                {performersInput === "solo"
-                  ? t("items.performersSolo")
-                  : performersInput === "small"
-                  ? t("items.performersSmall")
-                  : t("items.performersLarge")}
-                <button
-                  type="button"
-                  aria-label={`Remove performers filter ${performersInput}`}
-                  onClick={() =>
-                    updateUrl({
-                      q: searchInput,
-                      context: contextId,
-                      occasion: occasionInput,
-                      category: categoryInput,
-                      duration: durationInput,
-                      performers: "",
-                      sort: sortInput,
-                    })
-                  }
-                >
-                  ×
-                </button>
-              </span>
-            ) : null}
-            <button
-              type="button"
-              className="catalog-clear-btn"
-              onClick={() => {
-                setSearchDraft("");
-                router.push("/items");
-              }}
-            >
-              {t("items.clearFilters")}
-            </button>
-          </div>
-        ) : null}
       </div>
 
       {!data ? (

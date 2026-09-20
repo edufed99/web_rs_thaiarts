@@ -16,38 +16,39 @@ interface MemberStatsProps {
  * visually disappear — the empty-state hint lives in the sidebar.
  */
 export function MemberStats({ summary }: MemberStatsProps) {
+  const { t } = useTranslation();
   const liked = summary?.liked_count ?? 0;
   const saved = summary?.saved_count ?? 0;
   const rated = summary?.rated_count ?? 0;
   const recent = summary?.recent_view_count ?? 0;
   return (
-    <section className="member-stats" aria-label="สรุปกิจกรรมของฉัน">
+    <section className="member-stats" aria-label={t("memberStats.ariaLabel")}>
       <div className="member-stat liked">
         <span className="glyph-circle" aria-hidden="true">♥</span>
         <div>
           <strong>{liked}</strong>
-          <span>ถูกใจ</span>
+          <span>{t("memberStats.liked")}</span>
         </div>
       </div>
       <div className="member-stat saved">
         <span className="glyph-circle" aria-hidden="true">⚑</span>
         <div>
           <strong>{saved}</strong>
-          <span>บันทึกไว้</span>
+          <span>{t("memberStats.saved")}</span>
         </div>
       </div>
       <div className="member-stat rated">
         <span className="glyph-circle" aria-hidden="true">★</span>
         <div>
           <strong>{rated}</strong>
-          <span>ให้คะแนนแล้ว</span>
+          <span>{t("memberStats.rated")}</span>
         </div>
       </div>
       <div className="member-stat recent">
         <span className="glyph-circle" aria-hidden="true">◷</span>
         <div>
           <strong>{recent}</strong>
-          <span>ดูล่าสุด</span>
+          <span>{t("memberStats.recent")}</span>
         </div>
       </div>
     </section>

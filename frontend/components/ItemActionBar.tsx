@@ -45,7 +45,7 @@ export function ItemActionBar({
   contextId,
   requestId,
 }: ItemActionBarProps) {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const router = useRouter();
   const [liked, setLiked] = useState<boolean>(userState.liked);
   const [saved, setSaved] = useState<boolean>(userState.saved);
@@ -73,7 +73,7 @@ export function ItemActionBar({
     if (e instanceof ApiClientError && e.status === 401) {
       // Session was lost (expired / revoked / cookie issue). Send the user back
       // to login instead of leaving the action stuck in a broken state.
-      setError("เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่");
+      setError(locale === "en" ? "Session expired. Please sign in again." : "เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่");
       router.push(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
       return;
     }
@@ -171,9 +171,17 @@ export function ItemActionBar({
             fontSize: "0.85rem",
           }}
         >
-          กรุณา<a href="/login" style={{ color: "#1e6fd9", textDecoration: "underline" }}>เข้าสู่ระบบ</a>
-          หรือ<a href="/signup" style={{ color: "#1e6fd9", textDecoration: "underline" }}>สมัครสมาชิก</a>
-          เพื่อกดถูกใจ บันทึก หรือให้คะแนน
+          {locale === "en" ? (
+            <>
+              Please <a href="/login" style={{ color: "#1e6fd9", textDecoration: "underline" }}>sign in</a> or <a href="/signup" style={{ color: "#1e6fd9", textDecoration: "underline" }}>sign up</a> to like, bookmark, or rate.
+            </>
+          ) : (
+            <>
+              กรุณา<a href="/login" style={{ color: "#1e6fd9", textDecoration: "underline" }}>เข้าสู่ระบบ</a>
+              หรือ<a href="/signup" style={{ color: "#1e6fd9", textDecoration: "underline" }}>สมัครสมาชิก</a>
+              เพื่อกดถูกใจ บันทึก หรือให้คะแนน
+            </>
+          )}
         </div>
       ) : null}
       <div className="item-action-buttons">

@@ -78,7 +78,7 @@ try {
   translate = indexMod.translate;
 
   const locMod = loadTsFile(resolve(frontendDir, "lib", "localization.ts"));
-  var { getLocalizedItem, getLocalizedContext, getLocalizedKeyword } = locMod;
+  var { getLocalizedItem, getLocalizedContext, getLocalizedKeyword, translateExplanationToEn } = locMod;
 }
 
 test("dictionaries have identical keys across th and en", () => {
@@ -178,4 +178,32 @@ test("getLocalizedContext and getLocalizedKeyword return localized fields", () =
   assert.strictEqual(enKw.displayName, "Chada (Crown)");
   const thKw = getLocalizedKeyword(keyword, "th");
   assert.strictEqual(thKw.displayName, "ชฎา");
+});
+
+test("getLocalizedContext falls back to CONTEXT_TRANSLATION_MAP when name_en is missing in English mode", () => {
+  const context = {
+    id: 11,
+    name: "งานขึ้นบ้านใหม่",
+    name_en: null,
+    group: "มงคล",
+    description: "",
+    active_item_count: 5,
+  };
+  const enCtx = getLocalizedContext(context, "en");
+  assert.strictEqual(enCtx.displayName, "Housewarming Ceremony");
+});
+
+test("translateExplanationToEn translates recommendation explanations accurately", () => {
+  const raw1 = "แนะนำเพราะตรงกับ “งานขึ้นบ้านใหม่” และคำสำคัญ “สงคราม”.";
+  const en1 = translateExplanationToEn(raw1, "Housewarming Ceremony");
+  assert.strictEqual(en1, 'Recommended because it matches “Housewarming Ceremony” and keyword “สงคราม”.');
+
+  const raw2 = "แนะนำเพราะตรงกับ “งานขึ้นบ้านใหม่” และคำสำคัญ “ผู้แสดงฝ่ายชาย” และคุณเคยกดถูกใจการแสดงกลุ่มนาฏศิลป์อนุรักษ์.";
+  const en2 = translateExplanationToEn(raw2, "Housewarming Ceremony");
+  assert.ok(en2.includes("Recommended because it matches “Housewarming Ceremony”"));
+  assert.ok(en2.includes("you previously liked classical conservative dance performances"));
+
+  const fallbackThai = "ขณะนี้ระบบโมเดลไม่พร้อมใช้งาน จึงแสดงรายการในบริบทนี้เรียงตามความนิยมชั่วคราว";
+  const enFallback = translateExplanationToEn(fallbackThai);
+  assert.ok(enFallback.includes("Model service is currently unavailable"));
 });

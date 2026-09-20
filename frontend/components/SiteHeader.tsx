@@ -35,7 +35,7 @@ interface NavItem {
  * The hamburger button on mobile collapses the same items into a drawer.
  */
 export function SiteHeader() {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState<UserOut | null | undefined>(undefined);
@@ -72,7 +72,7 @@ export function SiteHeader() {
   }, [pathname]);
 
   const admin = Boolean(user?.is_admin) || isAdmin();
-  const readable = user ? getReadableUserName(user) : "";
+  const readable = user ? getReadableUserName(user, locale) : "";
 
   return (
     <header className="site-header" role="banner">

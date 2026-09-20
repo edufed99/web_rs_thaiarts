@@ -2,6 +2,7 @@
 
 import React from "react";
 
+import { useTranslation } from "@/contexts/LanguageContext";
 import { CARD_PAGE_SIZE } from "@/lib/useCardPagination";
 
 interface CardPaginationProps {
@@ -20,11 +21,15 @@ export function CardPagination({
   onPageChange,
   pageSize = CARD_PAGE_SIZE,
   scrollTargetId,
-  ariaLabel = "เปลี่ยนหน้ารายการชุดการแสดง",
-  itemLabel = "รายการ",
+  ariaLabel,
+  itemLabel,
 }: CardPaginationProps) {
+  const { t } = useTranslation();
   const totalPages = Math.ceil(totalItems / pageSize);
   if (totalPages <= 1) return null;
+
+  const resolvedAriaLabel = ariaLabel ?? t("pagination.ariaLabel");
+  const resolvedItemLabel = itemLabel ?? t("pagination.unit");
 
   const start = (currentPage - 1) * pageSize + 1;
   const end = Math.min(currentPage * pageSize, totalItems);
@@ -42,19 +47,25 @@ export function CardPagination({
     }
   }
 
+  const summaryText = t("pagination.summary")
+    .replace("{start}", String(start))
+    .replace("{end}", String(end))
+    .replace("{total}", String(totalItems))
+    .replace("{unit}", resolvedItemLabel);
+
   return (
-    <nav className="card-pagination" aria-label={ariaLabel}>
+    <nav className="card-pagination" aria-label={resolvedAriaLabel}>
       <p className="card-pagination-summary">
-        แสดง {start}–{end} จาก {totalItems} {itemLabel}
+        {summaryText}
       </p>
       <div className="card-pagination-controls">
         <button
           type="button"
           onClick={() => changePage(currentPage - 1)}
           disabled={currentPage === 1}
-          aria-label="หน้าก่อนหน้า"
+          aria-label={t("pagination.prevAria")}
         >
-          ← ก่อนหน้า
+          {t("pagination.prev")}
         </button>
         {pageTokens(currentPage, totalPages).map((token) =>
           typeof token === "number" ? (
@@ -64,7 +75,7 @@ export function CardPagination({
               className={token === currentPage ? "active" : undefined}
               onClick={() => changePage(token)}
               aria-current={token === currentPage ? "page" : undefined}
-              aria-label={`หน้า ${token}`}
+              aria-label={t("pagination.pageAria").replace("{page}", String(token))}
             >
               {token}
             </button>
@@ -76,9 +87,9 @@ export function CardPagination({
           type="button"
           onClick={() => changePage(currentPage + 1)}
           disabled={currentPage === totalPages}
-          aria-label="หน้าถัดไป"
+          aria-label={t("pagination.nextAria")}
         >
-          ถัดไป →
+          {t("pagination.next")}
         </button>
       </div>
     </nav>

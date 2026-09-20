@@ -9,7 +9,7 @@ import {
   resolvedImageUrl,
 } from "@/components/PerformanceCardMedia";
 import { useTranslation } from "@/contexts/LanguageContext";
-import { getLocalizedItem } from "@/lib/localization";
+import { getLocalizedItem, translateExplanationToEn } from "@/lib/localization";
 import type {
   RecommendationResultOut,
   UserState,
@@ -30,6 +30,10 @@ export function ProfileRecommendationCard({
 }: ProfileRecommendationCardProps) {
   const { locale, t } = useTranslation();
   const localizedItem = getLocalizedItem(result.item, locale);
+  const explanation =
+    locale === "en"
+      ? (result.explanation_en || translateExplanationToEn(result.explanation, undefined, result.item))
+      : result.explanation;
   const detailHref = requestId
     ? `/items/${result.item.id}?from_request=${encodeURIComponent(requestId)}`
     : `/items/${result.item.id}`;
@@ -60,7 +64,7 @@ export function ProfileRecommendationCard({
           </Link>
         </h3>
         <p className="muted profile-recommendation-reason">
-          {result.explanation}
+          {explanation}
         </p>
         <div className="profile-card-footer">
           <ItemActionBar

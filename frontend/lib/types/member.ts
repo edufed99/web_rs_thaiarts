@@ -36,6 +36,7 @@ export interface HistoryEntryOut {
   log_id: number;
   item_id: number;
   item_name: string;
+  item_name_en?: string | null;
   context_name: string;
   action_type: string;
   rating: number | null;
@@ -71,6 +72,7 @@ export interface RatedItemsOut {
 export interface RecentViewOut {
   item_id: number;
   item_name: string;
+  item_name_en?: string | null;
   viewed_at: string;
 }
 

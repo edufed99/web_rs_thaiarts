@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { LoadingState } from "@/components/LoadingState";
 import { MemberHero } from "@/components/MemberHero";
+import { useTranslation } from "@/contexts/LanguageContext";
 import { getMeRecentViews } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
 import { loadMemberItems } from "@/lib/memberItems";
@@ -19,6 +20,7 @@ import { useCardPagination } from "@/lib/useCardPagination";
 
 export default function RecentViewsPage() {
   const router = useRouter();
+  const { t, locale } = useTranslation();
   const authHeaders = useAuthHeaders();
   const [userKey, setUserKey] = useState("");
   const [views, setViews] = useState<RecentViewOut[] | null>(null);
@@ -53,18 +55,20 @@ export default function RecentViewsPage() {
   }
 
   if (error) return <ErrorState message={error} onRetry={() => window.location.reload()} />;
-  if (!items || !views) return <LoadingState message="กำลังโหลดรายการที่ดูล่าสุด..." />;
+  if (!items || !views) return <LoadingState message={t("recent.loading")} />;
   return (
     <div className="section-stack">
-      <MemberHero title="ดูล่าสุด" subtitle="ชุดการแสดงที่คุณเปิดดูในช่วง 30 วันที่ผ่านมา โดยแสดงแต่ละรายการเพียงครั้งเดียว" />
+      <MemberHero title={t("recent.title")} subtitle={t("recent.subtitle")} />
       {!items.length ? (
-        <EmptyState title="ยังไม่มีรายการที่ดูล่าสุด" message="เมื่อเปิดดูรายละเอียดชุดการแสดง รายการจะปรากฏที่นี่" />
+        <EmptyState title={t("recent.emptyTitle")} message={t("recent.emptyMessage")} />
       ) : (
         <>
           <div id="recent-card-results" className="profile-compact-grid">
             {pageItems.map((item) => (
               <div key={item.id} className="profile-compact-entry">
-                <p className="profile-card-status">ดูล่าสุด {formatDate(viewByItem.get(item.id)?.viewed_at)}</p>
+                <p className="profile-card-status">
+                  {t("recent.lastViewed").replace("{date}", formatDate(viewByItem.get(item.id)?.viewed_at, locale))}
+                </p>
                 <CatalogItemCard
                   item={item}
                   userKey={userKey}
@@ -86,7 +90,14 @@ export default function RecentViewsPage() {
   );
 }
 
-function formatDate(value?: string): string {
+function formatDate(value?: string, locale: string = "th"): string {
   if (!value) return "—";
-  return new Intl.DateTimeFormat("th-TH", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+  try {
+    return new Intl.DateTimeFormat(locale === "en" ? "en-US" : "th-TH", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(value));
+  } catch {
+    return value;
+  }
 }

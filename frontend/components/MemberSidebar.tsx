@@ -6,21 +6,13 @@ import React, { useEffect, useState } from "react";
 
 import type { UserOut, UserSummaryOut } from "@/lib/types";
 import { getReadableUserName } from "@/lib/auth";
+import { useTranslation } from "@/contexts/LanguageContext";
 
 interface SidebarLink {
   href: string;
   label: string;
   glyph: string;
 }
-
-const LINKS: SidebarLink[] = [
-  { href: "/profile", label: "ข้อมูลผู้ใช้", glyph: "⌂" },
-  { href: "/profile/favorites", label: "รายการโปรด", glyph: "♥" },
-  { href: "/profile/ratings", label: "ประวัติการให้คะแนน", glyph: "★" },
-  { href: "/profile/recent", label: "ดูล่าสุด", glyph: "◷" },
-  { href: "/recommend#recommend-from-history", label: "แนะนำจากสิ่งที่คุณชอบ", glyph: "✦" },
-  { href: "/recommend#discover-new-performances", label: "ค้นหาการแสดงใหม่", glyph: "⌕" },
-];
 
 /**
  * Left sidebar for the member_user mockup pages (catalog, profile).
@@ -38,11 +30,21 @@ export function MemberSidebar({
   summary: UserSummaryOut | null;
   showInterestCard?: boolean;
 }) {
+  const { locale, t } = useTranslation();
   const pathname = usePathname();
   const [currentHash, setCurrentHash] = useState("");
-  const name = user ? getReadableUserName(user) : "สมาชิก";
-  const initial = (name || "น").trim().charAt(0);
+  const name = user ? getReadableUserName(user) : (locale === "en" ? "Member" : "สมาชิก");
+  const initial = (name || (locale === "en" ? "M" : "น")).trim().charAt(0);
   const isAuthed = Boolean(user);
+
+  const links: SidebarLink[] = [
+    { href: "/profile", label: t("memberSidebar.userProfile"), glyph: "⌂" },
+    { href: "/profile/favorites", label: t("memberSidebar.favorites"), glyph: "♥" },
+    { href: "/profile/ratings", label: t("memberSidebar.ratings"), glyph: "★" },
+    { href: "/profile/recent", label: t("memberSidebar.recent"), glyph: "◷" },
+    { href: "/recommend#recommend-from-history", label: t("memberSidebar.recommendedFromHistory"), glyph: "✦" },
+    { href: "/recommend#discover-new-performances", label: t("memberSidebar.discoverNew"), glyph: "⌕" },
+  ];
 
   useEffect(() => {
     const syncHash = () => setCurrentHash(window.location.hash);
@@ -52,7 +54,7 @@ export function MemberSidebar({
   }, [pathname]);
 
   return (
-    <aside className="member-sidebar" aria-label="ข้อมูลสมาชิกและเมนู">
+    <aside className="member-sidebar" aria-label={t("nav.profile")}>
       <section className="member-profile-card">
         <div className="member-profile-head">
           <div className="member-avatar" aria-hidden="true">{initial}</div>
@@ -61,9 +63,9 @@ export function MemberSidebar({
             <p className="member-profile-meta">
               {isAuthed
                 ? user?.is_admin
-                  ? "ผู้ดูแลระบบ (Admin)"
-                  : "สมาชิกที่ลงทะเบียน"
-                : "ผู้เยี่ยมชม (ยังไม่ได้เข้าสู่ระบบ)"}
+                  ? t("memberSidebar.adminMember")
+                  : t("memberSidebar.registeredMember")
+                : t("memberSidebar.guestMember")}
             </p>
           </div>
         </div>
@@ -86,14 +88,14 @@ export function MemberSidebar({
                 textAlign: "center",
               }}
             >
-              ⚙ กลับไป Admin Console
+              {t("memberSidebar.backToAdmin")}
             </Link>
           </div>
         ) : null}
       </section>
 
-      <nav className="member-side-nav" aria-label="เมนูกิจกรรม">
-        {LINKS.map((link) => {
+      <nav className="member-side-nav" aria-label={t("nav.menu")}>
+        {links.map((link) => {
           const [linkPath, linkHash] = link.href.split("#");
           const isDefaultRecommendLink = linkHash === "recommend-from-history" && !currentHash;
           const isActive = linkHash
@@ -123,8 +125,8 @@ export function MemberSidebar({
         <>
           <div className="member-side-divider" />
 
-          <section className="member-interest" aria-label="ความสนใจของฉัน">
-            <h3>ความสนใจของฉัน</h3>
+          <section className="member-interest" aria-label={t("memberSidebar.myInterests")}>
+            <h3>{t("memberSidebar.myInterests")}</h3>
             {summary && summary.interests.length > 0 ? (
               <div>
                 {summary.interests.map((bucket) => (
@@ -143,13 +145,12 @@ export function MemberSidebar({
                   className="member-profile-meta"
                   style={{ marginTop: "var(--space-2)", textAlign: "right" }}
                 >
-                  เปิดดู {summary.recent_view_count} รายการในช่วง 30 วันที่ผ่านมา
+                  {t("memberSidebar.viewCount").replace("{count}", String(summary.recent_view_count))}
                 </p>
               </div>
             ) : (
               <p className="member-interest-empty">
-                ยังไม่มีข้อมูลความสนใจ เริ่มกดถูกใจ/บันทึก/ให้คะแนนรายการที่ชอบ
-                เพื่อให้ระบบเรียนรู้รสนิยมของคุณ
+                {t("memberSidebar.noInterests")}
               </p>
             )}
             <p className="member-side-divider" />
@@ -158,8 +159,8 @@ export function MemberSidebar({
               className="member-side-cta"
               style={{ textDecoration: "none" }}
             >
-              <strong>ดูแนะนำเฉพาะคุณ →</strong>
-              <span>ระบบจะจัดอันดับจากประวัติและความสนใจของคุณ</span>
+              <strong>{t("memberSidebar.viewPersonalizedRec")}</strong>
+              <span>{t("memberSidebar.personalizedRecSub")}</span>
             </Link>
           </section>
         </>

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { EmptyState } from "@/components/EmptyState";
@@ -11,6 +12,7 @@ import { MemberHero } from "@/components/MemberHero";
 import { MemberShell } from "@/components/MemberShell";
 import { MemberStats } from "@/components/MemberStats";
 import { RecommendationCard } from "@/components/RecommendationCard";
+import { useTranslation } from "@/contexts/LanguageContext";
 
 import {
   ApiClientError,
@@ -33,6 +35,7 @@ import { useCardPagination } from "@/lib/useCardPagination";
 function ResultsContent() {
   const router = useRouter();
   const params = useSearchParams();
+  const { locale, t } = useTranslation();
 
   const contextIdStr = params.get("context_id");
   const topKStr = params.get("top_k") ?? "10";
@@ -85,7 +88,7 @@ function ResultsContent() {
   useEffect(() => {
     if (!ready) return;
     if (!contextId || isNaN(contextId)) {
-      setError("ไม่พบ context_id ใน URL — กรุณากลับไปเลือกบริบท");
+      setError(t("results.missingContextError"));
       setErrorCode("missing_context_id");
       return;
     }
@@ -114,7 +117,7 @@ function ResultsContent() {
     return () => {
       cancelled = true;
     };
-  }, [ready, contextId, topK, keywordsCsv, reloadKey, userKey, authHeaders]);
+  }, [ready, contextId, topK, keywordsCsv, reloadKey, userKey, authHeaders, t]);
 
   useEffect(() => {
     if (!ready || keywordIds.length === 0) return;
@@ -146,6 +149,12 @@ function ResultsContent() {
     });
   }, []);
 
+  const contextDisplayName = data
+    ? locale === "en" && data.selected_context.name_en
+      ? data.selected_context.name_en
+      : data.selected_context.name
+    : "";
+
   const summaryHeader = useMemo(() => {
     if (!data) return null;
     const requestedKeywordCount = keywordIds.length;
@@ -164,21 +173,33 @@ function ResultsContent() {
         }}
       >
         <p className="muted" style={{ margin: 0 }}>
-          บริบท: <strong>{data.selected_context.name}</strong> · คุณลักษณะที่ส่งไป:{" "}
-          <strong>{requestedKeywordCount}</strong> · backend รับรู้:{" "}
-          <strong>{resolvedKeywordCount}</strong> · candidates:{" "}
-          <strong>{data.candidate_count}</strong> · top-K: <strong>{data.top_k}</strong>
-          {" "}· embedding: <strong>{data.embedding_backend.toUpperCase()}</strong>
+          {t("results.contextLabel")} <strong>{contextDisplayName}</strong> ·{" "}
+          {t("results.requestedKeywordsLabel")} <strong>{requestedKeywordCount}</strong> ·{" "}
+          {t("results.backendRecognizedLabel")} <strong>{resolvedKeywordCount}</strong> ·{" "}
+          {t("results.candidatesLabel")} <strong>{data.candidate_count}</strong> ·{" "}
+          {t("results.topKLabel")} <strong>{data.top_k}</strong> ·{" "}
+          {t("results.embeddingLabel")} <strong>{data.embedding_backend.toUpperCase()}</strong>
           {" "}({data.embedding_latency_ms.toFixed(1)} ms)
         </p>
         {displayKeywords.length > 0 ? (
           <p className="muted" style={{ margin: "0.5rem 0 0 0", fontSize: "0.9rem" }}>
-            {displayKeywords.map((k) => k.name).join(" · ")}
+            {displayKeywords
+              .map((k) => (locale === "en" && k.name_en ? k.name_en : k.name))
+              .join(" · ")}
           </p>
         ) : null}
+        <div style={{ marginTop: "0.75rem", display: "flex", justifyContent: "flex-end" }}>
+          <Link
+            href="/recommend#discover-new-performances"
+            className="secondary"
+            style={{ fontSize: "0.85rem", padding: "0.35rem 0.75rem" }}
+          >
+            ← {t("results.adjustCriteria")}
+          </Link>
+        </div>
       </section>
     );
-  }, [data, keywordIds, keywordLookup]);
+  }, [data, keywordIds, keywordLookup, contextDisplayName, locale, t]);
 
   const recommendationResults = useMemo(() => data?.results ?? [], [data]);
   const {
@@ -197,17 +218,22 @@ function ResultsContent() {
     );
   }
   if (!ready) {
-    return <LoadingState message="กำลังตรวจสอบโปรไฟล์ผู้ใช้..." />;
+    return <LoadingState message={t("results.checkingProfile")} />;
   }
   if (!data) {
-    return <LoadingState message="กำลังคำนวณคำแนะนำ..." />;
+    return <LoadingState message={t("results.calculating")} />;
   }
+
+  const heroSubtitle =
+    locale === "en"
+      ? t("results.subtitleEn").replace("{context}", contextDisplayName)
+      : t("results.subtitle").replace("{context}", contextDisplayName);
 
   return (
     <MemberShell>
       <MemberHero
-        title="ผลคำแนะนำเฉพาะคุณ"
-        subtitle={`เรียงลำดับจากบริบท "${data.selected_context.name}" และสัญญาณความสนใจของผู้ใช้ พร้อมเหตุผลประกอบเป็นภาษาไทย`}
+        title={t("results.title")}
+        subtitle={heroSubtitle}
       />
 
       <MemberStats summary={summary} />
@@ -216,15 +242,18 @@ function ResultsContent() {
 
       {data.results.length === 0 ? (
         <EmptyState
-          title="ไม่มีผลลัพธ์"
-          message="บริบทนี้ไม่มี candidate ที่ผ่าน eligibility gate"
+          title={t("results.emptyTitle")}
+          message={t("results.emptyMessage")}
         />
       ) : (
-        <div className="member-section" aria-label="ผลลัพธ์แนะนำ">
+        <div className="member-section" aria-label={t("results.title")}>
           <div className="member-section-head">
-            <h2><span className="glyph" aria-hidden="true">✦</span> ผลลัพธ์แนะนำ {data.results.length} รายการ</h2>
+            <h2>
+              <span className="glyph" aria-hidden="true">✦</span>{" "}
+              {t("results.resultsHeader").replace("{count}", String(data.results.length))}
+            </h2>
             <span style={{ color: "var(--muted)", fontSize: 12 }}>
-              วิธี: {data.method} · request: {data.request_id.slice(0, 6)}
+              {t("results.method")} {data.method} · {t("results.request")} {data.request_id.slice(0, 6)}
             </span>
           </div>
           <div id="recommendation-card-results" className="member-grid recommendation-results-grid">
@@ -234,7 +263,7 @@ function ResultsContent() {
                 result={r}
                 userKey={userKey}
                 contextId={data.selected_context.id}
-                contextName={data.selected_context.name}
+                contextName={contextDisplayName}
                 requestId={data.request_id}
                 onUserStateChange={handleUserStateChange}
               />
@@ -253,8 +282,9 @@ function ResultsContent() {
 }
 
 export default function ResultsPage() {
+  const { t } = useTranslation();
   return (
-    <Suspense fallback={<LoadingState message="กำลังเตรียมผลลัพธ์..." />}>
+    <Suspense fallback={<LoadingState message={t("results.preparingResults")} />}>
       <ResultsContent />
     </Suspense>
   );

@@ -138,6 +138,8 @@ test("an empty development database is rebuilt from migrations and seed data", a
       { name: "CreateRecommendationRequests1787025600000" },
       { name: "AddArtifactPublication1787100000000" },
       { name: "CreatePasswordResetTokens1787200000000" },
+      { name: "FixAyutthayaPerformanceType1787300000000" },
+      { name: "AddBilingualCatalogueColumns1787400000000" },
     ]);
   } finally {
     await client.end();

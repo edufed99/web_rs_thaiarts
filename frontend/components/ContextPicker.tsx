@@ -3,8 +3,9 @@
 import React, { useEffect, useState } from "react";
 
 import { ApiClientError, getContexts } from "@/lib/api";
-import { groupContexts } from "@/lib/contextGroups";
+import { GROUP_LABELS_EN, groupContexts } from "@/lib/contextGroups";
 import type { ContextOut } from "@/lib/types";
+import { useTranslation } from "@/contexts/LanguageContext";
 
 import { ErrorState } from "./ErrorState";
 import { LoadingState } from "./LoadingState";
@@ -15,6 +16,7 @@ export interface ContextPickerProps {
 }
 
 export function ContextPicker({ value, onChange }: ContextPickerProps) {
+  const { locale, t } = useTranslation();
   const [contexts, setContexts] = useState<ContextOut[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | undefined>(undefined);
@@ -52,17 +54,22 @@ export function ContextPicker({ value, onChange }: ContextPickerProps) {
     );
   }
   if (!contexts) {
-    return <LoadingState message="กำลังโหลดบริบท..." />;
+    return <LoadingState message={t("recommend.occasionLoading")} />;
   }
   if (contexts.length === 0) {
-    return <ErrorState title="ไม่มีบริบท" message="ยังไม่มีบริบทในระบบ" />;
+    return (
+      <ErrorState
+        title={t("recommend.occasionEmptyTitle")}
+        message={t("recommend.occasionEmptyMessage")}
+      />
+    );
   }
 
   const contextGroups = groupContexts(contexts);
 
   return (
     <label className="field">
-      <span>โอกาสที่ใช้แสดง</span>
+      <span>{t("recommend.occasionLabel")}</span>
       <select
         value={value ?? ""}
         onChange={(e) => {
@@ -70,16 +77,20 @@ export function ContextPicker({ value, onChange }: ContextPickerProps) {
           onChange(v === "" ? null : Number(v));
         }}
       >
-        <option value="">— เลือกโอกาสที่ใช้แสดง —</option>
-        {contextGroups.map((group) => (
-          <optgroup key={group.label} label={group.label}>
-            {group.contexts.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </optgroup>
-        ))}
+        <option value="">{t("recommend.occasionPlaceholder")}</option>
+        {contextGroups.map((group) => {
+          const groupLabel =
+            locale === "en" ? (GROUP_LABELS_EN[group.label] ?? group.label) : group.label;
+          return (
+            <optgroup key={group.label} label={groupLabel}>
+              {group.contexts.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {locale === "en" && c.name_en ? c.name_en : c.name}
+                </option>
+              ))}
+            </optgroup>
+          );
+        })}
       </select>
     </label>
   );

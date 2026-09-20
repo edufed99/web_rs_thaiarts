@@ -7,20 +7,16 @@ import { useRouter } from "next/navigation";
 import { CardPagination } from "@/components/CardPagination";
 import { ContextPicker } from "@/components/ContextPicker";
 import { EmptyState } from "@/components/EmptyState";
-import { ItemActionBar } from "@/components/ItemActionBar";
 import { KeywordPicker } from "@/components/KeywordPicker";
 import { LoadingState } from "@/components/LoadingState";
 import { MemberHero } from "@/components/MemberHero";
 import { MemberShell } from "@/components/MemberShell";
-import {
-  PerformanceCardMedia,
-  resolvedImageUrl,
-} from "@/components/PerformanceCardMedia";
+import { ProfileRecommendationCard } from "@/components/ProfileRecommendationCard";
+import { useTranslation } from "@/contexts/LanguageContext";
 import { ApiClientError, getProfileRecommendations } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
 import type {
   ProfileRecommendationResponseOut,
-  RecommendationResultOut,
   UserState,
 } from "@/lib/types";
 import { useAuthHeaders } from "@/lib/useAuthHeaders";
@@ -31,6 +27,7 @@ type RecommendView = "history" | "discover";
 
 export default function RecommendPage() {
   const router = useRouter();
+  const { t } = useTranslation();
   const [ready, setReady] = useState(false);
   const [activeView, setActiveView] = useState<RecommendView>("history");
   const [profileData, setProfileData] = useState<ProfileRecommendationResponseOut | null>(null);
@@ -125,17 +122,17 @@ export default function RecommendPage() {
   } = useCardPagination(profileResults, profileData?.request_id ?? "");
 
   if (!ready) {
-    return <LoadingState message="กำลังตรวจสอบโปรไฟล์ผู้ใช้..." />;
+    return <LoadingState message={t("recommend.checkingProfile")} />;
   }
 
   return (
     <MemberShell>
     <form onSubmit={handleSubmit} className="section-stack recommend-page">
       <MemberHero
-        title={activeView === "history" ? "แนะนำจากสิ่งที่คุณชอบ" : "ค้นหาการแสดงใหม่"}
+        title={activeView === "history" ? t("recommend.heroHistoryTitle") : t("recommend.heroDiscoverTitle")}
         subtitle={activeView === "history"
-          ? "รายการแสดงที่ระบบคัดเลือกจากประวัติการถูกใจ บันทึก และให้คะแนนของคุณ"
-          : "เลือกโอกาสที่ใช้แสดงและคุณลักษณะที่สนใจ เพื่อค้นหาชุดการแสดงที่ตรงกับความต้องการ"}
+          ? t("recommend.heroHistorySubtitle")
+          : t("recommend.heroDiscoverSubtitle")}
       />
 
       {activeView === "history" ? <section
@@ -145,23 +142,28 @@ export default function RecommendPage() {
       >
         <div className="home-section-head recommend-profile-head">
           <div>
-            <h2 id="profile-recommendation-title">การแสดงที่คาดว่าคุณจะชอบจากพฤติกรรมในอดีต</h2>
+            <h2 id="profile-recommendation-title">{t("recommend.profileRecTitle")}</h2>
             <p>
-              ดูรายการแนะนำแบบย่อจากประวัติการถูกใจ บันทึก และให้คะแนนของคุณ
+              {t("recommend.profileRecSubtitle")}
             </p>
           </div>
           <div className="recommend-profile-actions">
-            <span className="context-pill">{profileData?.results.length ?? topK} รายการ</span>
+            <span className="context-pill">
+              {t("recommend.profileRecItemsCount").replace(
+                "{count}",
+                String(profileData?.results.length ?? topK),
+              )}
+            </span>
           </div>
         </div>
 
         {profileLoading ? (
-          <LoadingState message="กำลังคำนวณจากโปรไฟล์ผู้ใช้..." />
+          <LoadingState message={t("recommend.profileRecCalculating")} />
         ) : profileError ? (
-          <EmptyState title="โหลดคำแนะนำจากโปรไฟล์ไม่ได้" message={profileError} />
+          <EmptyState title={t("recommend.profileRecErrorTitle")} message={profileError} />
         ) : profileData && profileData.results.length > 0 ? (
           <>
-          <div id="profile-recommendation-results" className="profile-recommendation-grid" aria-label="รายการแนะนำจากพฤติกรรมในอดีต">
+          <div id="profile-recommendation-results" className="profile-recommendation-grid" aria-label={t("recommend.profileRecTitle")}>
             {visibleProfileResults.map((result) => (
               <ProfileRecommendationCard
                 key={result.item.id}
@@ -181,8 +183,8 @@ export default function RecommendPage() {
           </>
         ) : (
           <EmptyState
-            title="ยังไม่มีประวัติพอสำหรับคำแนะนำจากโปรไฟล์"
-            message="ลองถูกใจ บันทึก หรือให้คะแนนชุดการแสดงก่อน ระบบจะใช้ข้อมูลนั้นเพื่อแนะนำรายการที่ใกล้เคียงกับความสนใจของคุณ"
+            title={t("recommend.profileRecEmptyTitle")}
+            message={t("recommend.profileRecEmptyMessage")}
           />
         )}
       </section> : null}
@@ -194,10 +196,10 @@ export default function RecommendPage() {
       >
         <div className="recommend-config-heading">
           <div>
-            <p className="eyebrow">กำหนดคำแนะนำของคุณ</p>
-            <h2 id="recommend-config-title">ปรับคำแนะนำด้วยโอกาสและคุณลักษณะ</h2>
+            <p className="eyebrow">{t("recommend.configEyebrow")}</p>
+            <h2 id="recommend-config-title">{t("recommend.configTitle")}</h2>
             <p>
-              เลือกโอกาสที่ต้องการนำการแสดงไปใช้ แล้วระบุคุณลักษณะที่สนใจเพื่อให้ผลลัพธ์ตรงความต้องการมากขึ้น
+              {t("recommend.configSubtitle")}
             </p>
           </div>
         </div>
@@ -208,7 +210,7 @@ export default function RecommendPage() {
             </div>
             <div className="recommend-topk-field-wrap">
               <label className="field recommend-topk-field">
-                <span>จำนวนผลลัพธ์ (top-K)</span>
+                <span>{t("recommend.topKLabel")}</span>
                 <input
                   type="number"
                   min={1}
@@ -237,57 +239,12 @@ export default function RecommendPage() {
               disabled={!canSubmit}
               className="recommend-submit-button"
             >
-              {submitting ? "กำลังคำนวณ..." : "คำนวณคำแนะนำเฉพาะคุณ"}
+              {submitting ? t("recommend.calculatingButton") : t("recommend.calculateButton")}
             </button>
           </div>
         </div>
       </section> : null}
     </form>
     </MemberShell>
-  );
-}
-
-function ProfileRecommendationCard({
-  result,
-  userKey,
-  requestId,
-  onUserStateChange,
-}: {
-  result: RecommendationResultOut;
-  userKey: string;
-  requestId: string;
-  onUserStateChange: (itemId: number, next: UserState) => void;
-}) {
-  return (
-    <article className="popular-card profile-recommendation-card">
-      <PerformanceCardMedia
-        className="popular-card-media"
-        imageUrl={resolvedImageUrl(result.item.image_url)}
-        categoryGroup={result.item.category_group}
-        title={result.item.name}
-        variant="card"
-      />
-      <div className="popular-card-body">
-        <span className="popular-badge">อันดับที่ {result.rank}</span>
-        <h3 className="profile-recommendation-title">
-          {result.item.name}
-        </h3>
-        <p className="muted profile-recommendation-reason">
-          {result.explanation}
-        </p>
-        <div className="profile-card-footer">
-          <ItemActionBar
-            itemId={result.item.id}
-            userKey={userKey}
-            userState={result.item.user_state}
-            onChange={(next) => onUserStateChange(result.item.id, next)}
-            requestId={requestId}
-          />
-          <Link className="secondary profile-detail-link" href={`/items/${result.item.id}`}>
-            รายละเอียด
-          </Link>
-        </div>
-      </div>
-    </article>
   );
 }

@@ -324,7 +324,7 @@ test("anonymous context recommendations are served by Next.js with model-backed 
   assert.equal(body.embedding_backend, "e5");
   assert.ok(body.request_id.length > 0, "request_id must be present");
   assert.deepEqual(body.selected_keywords, [
-    { id: keywordChadaId, name: "ชฎา", taxonomy_path: "เครื่องแต่งกาย > ศีรษะ" },
+    { id: keywordChadaId, name: "ชฎา", name_en: null, taxonomy_path: "เครื่องแต่งกาย > ศีรษะ" },
   ]);
   assert.equal(body.metadata.fallback, false);
   assert.equal(body.metadata.model_service, "private-v1");

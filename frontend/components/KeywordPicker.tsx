@@ -4,9 +4,67 @@ import React, { useEffect, useMemo, useState } from "react";
 
 import { ApiClientError, getKeywords } from "@/lib/api";
 import type { KeywordOut } from "@/lib/types";
+import { useTranslation } from "@/contexts/LanguageContext";
 
 import { ErrorState } from "./ErrorState";
 import { LoadingState } from "./LoadingState";
+
+export const TAXONOMY_NODE_EN: Record<string, string> = {
+  "วรรณคดีและสิ่งมีชีวิตเชิงตำนาน": "Literature and Mythological Beings",
+  "นามานุกรมและประเภทตัวละคร": "Character Onomastics and Roles",
+  "เทวปกรณ์ อสูร และอมนุษย์": "Mythological Deities, Asuras, and Supernatural Beings",
+  "ตัวละครหลักและบทบาทในบทละคร": "Protagonists and Dramatic Roles",
+  "สถานภาพและลำดับชั้นทางสังคมในวรรณกรรม": "Social Hierarchy and Status in Literature",
+  "ฐานันดรศักดิ์และระบบเครือญาติ": "Royal Titles and Kinship Systems",
+  "ศิลปะการแสดงและดนตรี": "Performing Arts and Music",
+  "นาฏยศิลป์และการแสดง": "Dramatic Arts and Dance Choreography",
+  "กระบวนท่ารำและจารีตการแสดง": "Dance Postures and Performance Traditions",
+  "รูปแบบการแสดงและนาฏศิลป์ท้องถิ่น": "Performance Styles and Regional Dances",
+  "ดุริยางคศิลป์และคีตศิลป์": "Musicology and Vocal Arts",
+  "ระเบียบวิธีทางดนตรีและประเภทบทเพลง": "Musical Modes and Song Typology",
+  "เครื่องดนตรีและวงดนตรี": "Musical Instruments and Ensembles",
+  "บุคลากรและทักษะทางศิลปะ": "Artists, Roles, and Artistic Virtuosity",
+  "กลวิธีและสมรรถนะการแสดง": "Performance Techniques and Stage Skills",
+  "พิธีกรรม ความเชื่อ และจารีตวัฒนธรรม": "Rituals, Beliefs, and Cultural Traditions",
+  "ระบบความเชื่อและศาสนา": "Religious and Belief Systems",
+  "คติทางศาสนาและสิ่งศักดิ์สิทธิ์": "Sacred Concepts and Holy Entities",
+  "จารีตประเพณีและพิธีกรรม": "Traditions, Customs, and Ceremonies",
+  "พิธีการสำคัญและจารีตทางสังคม": "Key Ceremonies and Social Observances",
+  "คติความเชื่อและไสยศาสตร์": "Animism, Folklore, and Esotericism",
+  "การขจัดปัดเป่าและอำนาจเหนือธรรมชาติ": "Spiritual Apotropaism and Supernatural Powers",
+  "บริบทเชิงประวัติศาสตร์ ภูมิศาสตร์ และพื้นที่": "Historical, Geographical, and Spatial Context",
+  "ภูมิศาสตร์และอาณาบริเวณ": "Geography and Territories",
+  "เขตปกครองและภูมิภาค": "Administrative Regions and Topography",
+  "พื้นที่ในคติความเชื่อและประวัติศาสตร์": "Mythical Realms and Historical Landscapes",
+  "ยุคสมัยและเหตุการณ์สำคัญ": "Historical Eras and Notable Events",
+  "ลำดับเวลาและประวัติศาสตร์การสงคราม": "Chronology and Military History",
+  "พื้นที่ทางวัฒนธรรมและสถาบัน": "Cultural Spaces and Institutions",
+  "สถานที่จัดแสดงและเขตพระราชฐาน": "Performance Venues and Royal Precincts",
+  "วัฒนธรรมวัตถุ ศิลปกรรม และงานช่าง": "Material Culture, Fine Arts, and Craftsmanship",
+  "ประณีตศิลป์และทัศนศิลป์": "Fine Arts and Visual Arts",
+  "งานช่างศิลปกรรมและเทคนิควิธี": "Artistic Craftsmanship and Traditional Methods",
+  "สถาปัตยกรรมและพุทธศิลป์": "Architecture and Buddhist Art",
+  "ศาสนสถานและปูชนียวัตถุ": "Sacred Sanctuaries and Religious Artifacts",
+  "พัสตราภรณ์และเครื่องแต่งกาย": "Textiles, Regalia, and Costumery",
+  "ระเบียบการแต่งกายและอาวุธจำลอง": "Sartorial Conventions and Prop Weaponry",
+  "วัสดุและอัญมณี": "Materials and Gemstones",
+  "วัสดุธรรมชาติและรัตนชาติ": "Natural Resources and Precious Gems",
+  "กลุ่มชาติพันธุ์ ชุมชน และวิถีชีวิต": "Ethnic Groups, Communities, and Ways of Life",
+  "อัตลักษณ์ทางสังคมและกลุ่มคน": "Social Identity and Demographics",
+  "กลุ่มชาติพันธุ์และชุมชนท้องถิ่น": "Ethnic Minorities and Local Communities",
+  "โครงสร้างสังคมและบุคคลสำคัญ": "Social Structure and Historical Figures",
+  "ฐานันดรศักดิ์และบทบาททางสังคม": "Social Ranks and Civic Functions",
+  "วิถีชีวิตและระบบเศรษฐกิจ": "Traditional Livelihoods and Agrarian Economy",
+  "การประกอบอาชีพและโภชนาการ": "Occupational Practices and Culinary Culture",
+  "วิถีชีวิตและพฤติกรรมทางสังคม": "Social Customs, Folkways, and Everyday Life",
+  "จารีตการปฏิบัติและพรรณไม้ในวิถีชีวิต": "Folk Practices and Ethnobotany",
+  "คำศัพท์ทั่วไป": "General Vocabulary",
+  "คำค้นจากรายการการแสดง": "Catalogue Keywords",
+  "คำสำคัญมาตรฐาน": "Standard Keywords",
+  "เครื่องแต่งกาย": "Costumes & Attire",
+  "ศีรษะ": "Headwear & Crowns",
+  "ผู้หญิง": "Women",
+};
 
 export interface KeywordPickerProps {
   selectedIds: number[];
@@ -18,6 +76,7 @@ export interface KeywordPickerProps {
 }
 
 export function KeywordPicker({ selectedIds, onChange, contextId, limit = 12 }: KeywordPickerProps) {
+  const { locale, t } = useTranslation();
   const [keywords, setKeywords] = useState<KeywordOut[] | null>(null);
   const [search, setSearch] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -71,7 +130,7 @@ export function KeywordPicker({ selectedIds, onChange, contextId, limit = 12 }: 
     if (needle.length === 0) return [];
     return keywords
       .filter((k) =>
-        `${k.name} ${k.taxonomy_path}`.toLowerCase().includes(needle),
+        `${k.name} ${k.name_en ?? ""} ${k.taxonomy_path}`.toLowerCase().includes(needle),
       )
       .slice(0, limit);
   })();
@@ -94,7 +153,7 @@ export function KeywordPicker({ selectedIds, onChange, contextId, limit = 12 }: 
     );
   }
   if (!keywords) {
-    return <LoadingState message="กำลังโหลดคำสำคัญ..." />;
+    return <LoadingState message={t("recommend.keywordsLoading")} />;
   }
 
   const selectedSet = new Set(selectedIds);
@@ -113,15 +172,16 @@ export function KeywordPicker({ selectedIds, onChange, contextId, limit = 12 }: 
   return (
     <div className="keyword-picker-root">
       <div className="form-label keyword-picker-label">
-        เลือกคุณลักษณะและคำสำคัญที่สนใจ <span className="keyword-picker-optional">(ไม่บังคับ)</span>
+        {t("recommend.keywordsLabel")}{" "}
+        <span className="keyword-picker-optional">{t("recommend.keywordsOptional")}</span>
       </div>
       <div className="taxonomy-search-row">
         <input
           type="text"
           placeholder={
             waitsForContext
-              ? "เลือกโอกาสที่ใช้แสดงก่อน แล้วระบบจะแสดงคำสำคัญที่มีจริงในบริบทนั้น"
-              : "พิมพ์เพื่อค้นหาคำสำคัญ เช่น ราช โขน พิธี ภาคใต้"
+              ? t("recommend.keywordsWaitContext")
+              : t("recommend.keywordsSearchPlaceholder")
           }
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -133,49 +193,53 @@ export function KeywordPicker({ selectedIds, onChange, contextId, limit = 12 }: 
           onClick={() => setTaxonomyModalOpen(true)}
           disabled={keywordTree.length === 0}
         >
-          เลือกจากหมวดหมู่
+          {t("recommend.keywordsBrowseCategories")}
         </button>
       </div>
       {selectedKeywords.length > 0 ? (
         <div style={{ marginBottom: "0.85rem" }}>
           <div className="meta-line" style={{ marginBottom: "0.4rem" }}>
-            คุณลักษณะที่เลือกแล้ว
+            {t("recommend.keywordsSelectedLabel")}
           </div>
           <div className="pill-row">
-            {selectedKeywords.map((k) => (
-              <button
-                key={k.id}
-                type="button"
-                onClick={() => toggle(k.id)}
-                className="keyword-pill"
-                aria-label={`ลบ ${k.name}`}
-                title={k.taxonomy_path || k.name}
-                style={{ cursor: "pointer" }}
-              >
-                {k.name} ×
-              </button>
-            ))}
+            {selectedKeywords.map((k) => {
+              const displayName = locale === "en" && k.name_en ? k.name_en : k.name;
+              return (
+                <button
+                  key={k.id}
+                  type="button"
+                  onClick={() => toggle(k.id)}
+                  className="keyword-pill"
+                  aria-label={`${locale === "en" ? "Remove" : "ลบ"} ${displayName}`}
+                  title={k.taxonomy_path || displayName}
+                  style={{ cursor: "pointer" }}
+                >
+                  {displayName} ×
+                </button>
+              );
+            })}
           </div>
         </div>
       ) : null}
       {search.trim() ? (
         filtered.length === 0 ? (
-          <p style={{ color: "#777", margin: 0 }}>ไม่พบคำสำคัญที่ตรงกับการค้นหา</p>
+          <p style={{ color: "#777", margin: 0 }}>{t("recommend.keywordsNotFound")}</p>
         ) : (
           <div>
             <div className="meta-line" style={{ marginBottom: "0.4rem" }}>
-              ผลการค้นหา
+              {t("recommend.keywordsSearchResults")}
             </div>
             <div className="pill-row">
               {filtered.map((k) => {
                 const active = selectedSet.has(k.id);
+                const displayName = locale === "en" && k.name_en ? k.name_en : k.name;
                 return (
                   <button
                     key={k.id}
                     type="button"
                     onClick={() => toggle(k.id)}
                     aria-pressed={active}
-                    title={k.taxonomy_path || k.name}
+                    title={k.taxonomy_path || displayName}
                     style={{
                       padding: "0.45rem 0.85rem",
                       border: "1px solid",
@@ -188,8 +252,8 @@ export function KeywordPicker({ selectedIds, onChange, contextId, limit = 12 }: 
                       fontWeight: 800,
                     }}
                   >
-                    {active ? "เลือกแล้ว · " : null}
-                    {k.name}
+                    {active ? t("recommend.keywordsSelectedPrefix") : null}
+                    {displayName}
                   </button>
                 );
               })}
@@ -199,8 +263,8 @@ export function KeywordPicker({ selectedIds, onChange, contextId, limit = 12 }: 
       ) : (
         <p className="muted" style={{ margin: 0, fontSize: "0.9rem" }}>
           {waitsForContext
-            ? "เลือกโอกาสที่ใช้แสดงก่อน ระบบจะแสดงเฉพาะคำสำคัญที่พบในชุดการแสดงของบริบทนั้น"
-            : "พิมพ์คำที่สนใจหรือเลือกจากหมวดหมู่ ระบบจะแสดงเฉพาะคำที่ตรง ไม่แสดงรายการทั้งหมดในครั้งเดียว"}
+            ? t("recommend.keywordsHelperWaitsContext")
+            : t("recommend.keywordsHelperDefault")}
         </p>
       )}
       {taxonomyModalOpen ? (
@@ -218,13 +282,15 @@ export function KeywordPicker({ selectedIds, onChange, contextId, limit = 12 }: 
           >
             <div className="taxonomy-modal-head">
               <div>
-                <strong id="keyword-taxonomy-modal-title">เลือกจากหมวดหมู่ Keyword Taxonomy</strong>
-                <span>เลือก Level 1-3 แล้วกดคำสำคัญมาตรฐานที่ต้องการใช้คำนวณคำแนะนำ</span>
+                <strong id="keyword-taxonomy-modal-title">
+                  {t("recommend.taxonomyModalTitle")}
+                </strong>
+                <span>{t("recommend.taxonomyModalSubtitle")}</span>
               </div>
               <button
                 type="button"
                 onClick={() => setTaxonomyModalOpen(false)}
-                aria-label="ปิดหน้าต่างเลือกหมวดหมู่"
+                aria-label={t("recommend.taxonomyModalClose")}
               >
                 ×
               </button>
@@ -235,6 +301,9 @@ export function KeywordPicker({ selectedIds, onChange, contextId, limit = 12 }: 
                 title="Level 1"
                 options={keywordTree.map((node) => node.label)}
                 selected={selectedKeywordLevel1}
+                renderLabel={(opt) =>
+                  locale === "en" ? (TAXONOMY_NODE_EN[opt] || opt) : opt
+                }
                 onSelect={(value) => {
                   setSelectedKeywordLevel1(value);
                   setSelectedKeywordLevel2("");
@@ -246,19 +315,33 @@ export function KeywordPicker({ selectedIds, onChange, contextId, limit = 12 }: 
                 title="Level 2"
                 options={level2Options.map((node) => node.label)}
                 selected={selectedKeywordLevel2}
+                renderLabel={(opt) =>
+                  locale === "en" ? (TAXONOMY_NODE_EN[opt] || opt) : opt
+                }
                 onSelect={(value) => {
                   setSelectedKeywordLevel2(value);
                   setSelectedKeywordLevel3("");
                 }}
-                emptyText={selectedKeywordLevel1 ? "ไม่มี Level 2" : "เลือก Level 1 ก่อน"}
+                emptyText={
+                  selectedKeywordLevel1
+                    ? t("recommend.taxonomyNoLevel2")
+                    : t("recommend.taxonomySelectLevel1First")
+                }
               />
 
               <TaxonomyOptionList
                 title="Level 3"
                 options={level3Options.map((node) => node.label)}
                 selected={selectedKeywordLevel3}
+                renderLabel={(opt) =>
+                  locale === "en" ? (TAXONOMY_NODE_EN[opt] || opt) : opt
+                }
                 onSelect={(value) => setSelectedKeywordLevel3(value)}
-                emptyText={selectedKeywordLevel2 ? "ไม่มี Level 3" : "เลือก Level 2 ก่อน"}
+                emptyText={
+                  selectedKeywordLevel2
+                    ? t("recommend.taxonomyNoLevel3")
+                    : t("recommend.taxonomySelectLevel2First")
+                }
               />
 
               <div className="taxonomy-level-panel">
@@ -267,6 +350,8 @@ export function KeywordPicker({ selectedIds, onChange, contextId, limit = 12 }: 
                   <div className="taxonomy-option-grid">
                     {keywordOptions.map((keyword) => {
                       const active = selectedSet.has(keyword.id);
+                      const displayName =
+                        locale === "en" && keyword.name_en ? keyword.name_en : keyword.name;
                       return (
                         <button
                           key={keyword.id}
@@ -274,15 +359,17 @@ export function KeywordPicker({ selectedIds, onChange, contextId, limit = 12 }: 
                           className={active ? "taxonomy-option active" : "taxonomy-option"}
                           onClick={() => toggle(keyword.id)}
                         >
-                          {active ? "เลือกแล้ว · " : null}
-                          {keyword.name}
+                          {active ? t("recommend.keywordsSelectedPrefix") : null}
+                          {displayName}
                         </button>
                       );
                     })}
                   </div>
                 ) : (
                   <p className="taxonomy-empty">
-                    {selectedKeywordLevel3 ? "ไม่มีคำศัพท์ในหมวดนี้" : "เลือก Level 3 ก่อน"}
+                    {selectedKeywordLevel3
+                      ? t("recommend.taxonomyNoKeywords")
+                      : t("recommend.taxonomySelectLevel3First")}
                   </p>
                 )}
               </div>
@@ -295,11 +382,11 @@ export function KeywordPicker({ selectedIds, onChange, contextId, limit = 12 }: 
                   className="taxonomy-text-button"
                   onClick={() => onChange([])}
                 >
-                  ล้างคุณลักษณะที่เลือก
+                  {t("recommend.taxonomyClearSelected")}
                 </button>
               ) : null}
               <button type="button" onClick={() => setTaxonomyModalOpen(false)}>
-                เสร็จสิ้น
+                {t("recommend.taxonomyDone")}
               </button>
             </div>
           </div>
@@ -314,12 +401,14 @@ function TaxonomyOptionList({
   options,
   selected,
   onSelect,
+  renderLabel,
   emptyText = "ไม่มีตัวเลือก",
 }: {
   title: string;
   options: string[];
   selected: string;
   onSelect: (value: string) => void;
+  renderLabel?: (val: string) => string;
   emptyText?: string;
 }) {
   return (
@@ -334,7 +423,7 @@ function TaxonomyOptionList({
               className={option === selected ? "taxonomy-option active" : "taxonomy-option"}
               onClick={() => onSelect(option)}
             >
-              {option}
+              {renderLabel ? renderLabel(option) : option}
             </button>
           ))}
         </div>
@@ -347,16 +436,19 @@ function TaxonomyOptionList({
 
 interface KeywordTaxonomyLevel3 {
   label: string;
+  name_en?: string;
   keywords: KeywordOut[];
 }
 
 interface KeywordTaxonomyLevel2 {
   label: string;
+  name_en?: string;
   children: KeywordTaxonomyLevel3[];
 }
 
 interface KeywordTaxonomyLevel1 {
   label: string;
+  name_en?: string;
   children: KeywordTaxonomyLevel2[];
 }
 
@@ -374,12 +466,15 @@ function buildKeywordTaxonomy(keywords: KeywordOut[]): KeywordTaxonomyLevel1[] {
   return Array.from(tree.entries())
     .map(([level1, level2Map]) => ({
       label: level1,
+      name_en: TAXONOMY_NODE_EN[level1],
       children: Array.from(level2Map.entries())
         .map(([level2, level3Map]) => ({
           label: level2,
+          name_en: TAXONOMY_NODE_EN[level2],
           children: Array.from(level3Map.entries())
             .map(([level3, groupKeywords]) => ({
               label: level3,
+              name_en: TAXONOMY_NODE_EN[level3],
               keywords: groupKeywords.sort((a, b) => a.name.localeCompare(b.name, "th")),
             }))
             .sort((a, b) => a.label.localeCompare(b.label, "th")),

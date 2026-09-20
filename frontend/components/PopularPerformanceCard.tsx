@@ -6,6 +6,7 @@ import React, { useEffect, useState } from "react";
 import { useTranslation } from "@/contexts/LanguageContext";
 import { getItemLegacyStats } from "@/lib/api";
 import { resolvedImageUrl, PerformanceCardMedia } from "@/components/PerformanceCardMedia";
+import { getLocalizedItem } from "@/lib/localization";
 import type { EngagementOut, ItemOut, LegacyStatsOut } from "@/lib/types";
 
 interface Props {
@@ -52,10 +53,11 @@ export default function PopularPerformanceCard({
     };
   }, [item.id, variant]);
 
+  const localized = getLocalizedItem(item, locale);
   const description =
-    item.description && item.description.length > 96
-      ? `${item.description.slice(0, 96).trimEnd()}...`
-      : item.description;
+    localized.displayDescription && localized.displayDescription.length > 96
+      ? `${localized.displayDescription.slice(0, 96).trimEnd()}...`
+      : localized.displayDescription;
 
   const rawPrice = item.price_text ? item.price_text.replace(/\s*บาท\s*$/i, "").trim() : "";
   const priceText = rawPrice
@@ -116,14 +118,14 @@ export default function PopularPerformanceCard({
     <article className="popular-card">
       <PerformanceCardMedia
         imageUrl={resolvedImageUrl(item.image_url)}
-        categoryGroup={item.category_group}
-        title={item.name}
+        categoryGroup={localized.displayCategoryGroup}
+        title={localized.displayName}
         variant="card"
       />
       <div className="popular-card-body">
         {variant === "popular" ? null : renderBadge()}
         <h3 className="popular-card-title">
-          <Link href={`/items/${item.id}`} className="popular-title-link">{item.name}</Link>
+          <Link href={`/items/${item.id}`} className="popular-title-link">{localized.displayName}</Link>
         </h3>
         {variant === "popular" ? (
           <div className="popular-rating">

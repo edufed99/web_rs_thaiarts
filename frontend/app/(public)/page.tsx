@@ -190,15 +190,16 @@ export default function HomePage() {
   }, [live.items, live.legacy, live.engagementMonth]);
 
   const categoryTop6 = useMemo(() => {
-    const buckets = new Map<string, { count: number; sample_id: number }>();
+    const buckets = new Map<string, { nameEn: string; count: number; sample_id: number }>();
     for (const item of live.items) {
       const key = (item.category_group || "").trim() || "อื่นๆ";
+      const keyEn = (item.category_group_en || "").trim() || "Other";
       const cur = buckets.get(key);
       if (cur) cur.count += 1;
-      else buckets.set(key, { count: 1, sample_id: item.id });
+      else buckets.set(key, { nameEn: keyEn, count: 1, sample_id: item.id });
     }
     return Array.from(buckets.entries())
-      .map(([name, info]) => ({ name, count: info.count, sample_id: info.sample_id }))
+      .map(([name, info]) => ({ name, nameEn: info.nameEn, count: info.count, sample_id: info.sample_id }))
       .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "th"))
       .slice(0, 6);
   }, [live.items]);
@@ -334,7 +335,7 @@ export default function HomePage() {
                   alt=""
                   aria-hidden="true"
                 />
-                <strong>{cat.name}</strong>
+                <strong>{locale === "en" && cat.nameEn ? cat.nameEn : cat.name}</strong>
                 <small>{formatCount(cat.count, locale)} {t("home.itemsInCat")}</small>
               </Link>
             ))}
@@ -362,7 +363,7 @@ export default function HomePage() {
                   aria-hidden="true"
                 />
                 <span className="home-occasion-icon" aria-hidden="true">{chipIcon(occ.groupLabel)}</span>
-                <h3>{occ.context.name}</h3>
+                <h3>{locale === "en" && occ.context.name_en ? occ.context.name_en : occ.context.name}</h3>
                 <p>{formatCount(occ.context.active_item_count, locale)} {t("home.itemsInOccasion")}</p>
               </Link>
             ))}
